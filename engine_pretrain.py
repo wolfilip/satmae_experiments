@@ -103,8 +103,7 @@ def train_one_epoch_temporal(model: torch.nn.Module,
     if log_writer is not None:
         print('log_dir: {}'.format(log_writer.log_dir))
 
-    for data_iter_step, (samples, timestamps, _) in \
-            enumerate(metric_logger.log_every(data_loader, print_freq, header)):
+    for data_iter_step, ((samples, res, targets, target_res, timesteps), metadata) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
 
         # we use a per iteration (instead of per epoch) lr scheduler
         if data_iter_step % accum_iter == 0:
@@ -114,7 +113,7 @@ def train_one_epoch_temporal(model: torch.nn.Module,
         timestamps = timestamps.to(device, non_blocking=True)
 
         with torch.cuda.amp.autocast():
-            loss, _, _ = model(samples, timestamps, mask_ratio=args.mask_ratio)
+            loss, _, _ = model(samples, timestamps, mask_ratio=args.mask_ratio, input_res=res)
 
         loss_value = loss.item()
 

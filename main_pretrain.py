@@ -14,8 +14,10 @@ from pathlib import Path
 
 import wandb
 import torch
+import yaml
 import torch.backends.cudnn as cudnn
 from torch.utils.tensorboard import SummaryWriter
+import torchvision.transforms as tv_transforms
 
 import timm
 
@@ -25,6 +27,7 @@ import timm.optim.optim_factory as optim_factory
 import util.misc as misc
 from util.datasets import build_fmow_dataset
 from util.misc import NativeScalerWithGradNormCount as NativeScaler
+from lib.transforms import CustomCompose
 
 import models_mae
 import models_mae_group_channels
@@ -34,86 +37,177 @@ from engine_pretrain import train_one_epoch, train_one_epoch_temporal
 
 
 def get_args_parser():
-    parser = argparse.ArgumentParser('MAE pre-training', add_help=False)
-    parser.add_argument('--batch_size', default=64, type=int,
-                        help='Batch size per GPU (effective batch size is batch_size * accum_iter * # gpus')
-    parser.add_argument('--epochs', default=400, type=int)
-    parser.add_argument('--accum_iter', default=1, type=int,
-                        help='Accumulate gradient iterations (for increasing the effective batch size under memory constraints)')
+    parser = argparse.ArgumentParser("MAE pre-training", add_help=False)
+    parser.add_argument(
+        "--batch_size",
+        default=64,
+        type=int,
+        help="Batch size per GPU (effective batch size is batch_size * accum_iter * # gpus",
+    )
+    parser.add_argument("--epochs", default=400, type=int)
+    parser.add_argument(
+        "--accum_iter",
+        default=1,
+        type=int,
+        help="Accumulate gradient iterations (for increasing the effective batch size under memory constraints)",
+    )
 
     # Model parameters
-    parser.add_argument('--model_type', default=None, choices=['group_c', 'temporal', 'vanilla'],
-                        help='Use channel model')
-    parser.add_argument('--model', default='mae_vit_large_patch16', type=str, metavar='MODEL',
-                        help='Name of model to train')
+    parser.add_argument(
+        "--model_type",
+        default=None,
+        choices=["group_c", "temporal", "vanilla"],
+        help="Use channel model",
+    )
+    parser.add_argument(
+        "--model",
+        default="mae_vit_large_patch16",
+        type=str,
+        metavar="MODEL",
+        help="Name of model to train",
+    )
 
-    parser.add_argument('--input_size', default=224, type=int,
-                        help='images input size')
-    parser.add_argument('--patch_size', default=16, type=int,
-                        help='images input size')
+    parser.add_argument("--input_size", default=224, type=int, help="images input size")
+    parser.add_argument("--patch_size", default=16, type=int, help="images input size")
 
-    parser.add_argument('--mask_ratio', default=0.75, type=float,
-                        help='Masking ratio (percentage of removed patches).')
-    parser.add_argument('--spatial_mask', action='store_true', default=False,
-                        help='Whether to mask all channels of a spatial location. Only for indp c model')
+    parser.add_argument(
+        "--mask_ratio",
+        default=0.75,
+        type=float,
+        help="Masking ratio (percentage of removed patches).",
+    )
+    parser.add_argument(
+        "--spatial_mask",
+        action="store_true",
+        default=False,
+        help="Whether to mask all channels of a spatial location. Only for indp c model",
+    )
 
-    parser.add_argument('--norm_pix_loss', action='store_true',
-                        help='Use (per-patch) normalized pixels as targets for computing loss')
+    parser.add_argument(
+        "--norm_pix_loss",
+        action="store_true",
+        help="Use (per-patch) normalized pixels as targets for computing loss",
+    )
     parser.set_defaults(norm_pix_loss=False)
+    parser.add_argument(
+        "--target_size", nargs="*", type=int, help="images input size", default=[448]
+    )
+    parser.add_argument(
+        "--source_size", nargs="*", type=int, help="images source size", default=[224]
+    )
 
     # Optimizer parameters
-    parser.add_argument('--weight_decay', type=float, default=0.05,
-                        help='weight decay (default: 0.05)')
+    parser.add_argument(
+        "--weight_decay", type=float, default=0.05, help="weight decay (default: 0.05)"
+    )
 
-    parser.add_argument('--lr', type=float, default=None, metavar='LR',
-                        help='learning rate (absolute lr)')
-    parser.add_argument('--blr', type=float, default=1e-3, metavar='LR',
-                        help='base learning rate: absolute_lr = base_lr * total_batch_size / 256')
-    parser.add_argument('--min_lr', type=float, default=0., metavar='LR',
-                        help='lower lr bound for cyclic schedulers that hit 0')
+    parser.add_argument(
+        "--lr",
+        type=float,
+        default=None,
+        metavar="LR",
+        help="learning rate (absolute lr)",
+    )
+    parser.add_argument(
+        "--blr",
+        type=float,
+        default=1e-3,
+        metavar="LR",
+        help="base learning rate: absolute_lr = base_lr * total_batch_size / 256",
+    )
+    parser.add_argument(
+        "--min_lr",
+        type=float,
+        default=0.0,
+        metavar="LR",
+        help="lower lr bound for cyclic schedulers that hit 0",
+    )
 
-    parser.add_argument('--warmup_epochs', type=int, default=40, metavar='N',
-                        help='epochs to warmup LR')
+    parser.add_argument(
+        "--warmup_epochs", type=int, default=40, metavar="N", help="epochs to warmup LR"
+    )
 
     # Dataset parameters
-    parser.add_argument('--train_path', default='/home/train_62classes.csv', type=str,
-                        help='Train .csv path')
-    parser.add_argument('--dataset_type', default='rgb', choices=['rgb', 'temporal', 'sentinel', 'euro_sat', 'naip'],
-                        help='Whether to use fmow rgb, sentinel, or other dataset.')
-    parser.add_argument('--masked_bands', type=int, nargs='+', default=None,
-                        help='Sequence of band indices to mask (with mean val) in sentinel dataset')
-    parser.add_argument('--dropped_bands', type=int, nargs='+', default=None,
-                        help="Which bands (0 indexed) to drop from sentinel data.")
-    parser.add_argument('--grouped_bands', type=int, nargs='+', action='append',
-                        default=[], help="Bands to group for GroupC mae")
+    parser.add_argument(
+        "--train_path",
+        default="/home/train_62classes.csv",
+        type=str,
+        help="Train .csv path",
+    )
+    parser.add_argument(
+        "--dataset_type",
+        default="rgb",
+        choices=["rgb", "temporal", "sentinel", "euro_sat", "naip"],
+        help="Whether to use fmow rgb, sentinel, or other dataset.",
+    )
+    parser.add_argument(
+        "--masked_bands",
+        type=int,
+        nargs="+",
+        default=None,
+        help="Sequence of band indices to mask (with mean val) in sentinel dataset",
+    )
+    parser.add_argument(
+        "--dropped_bands",
+        type=int,
+        nargs="+",
+        default=None,
+        help="Which bands (0 indexed) to drop from sentinel data.",
+    )
+    parser.add_argument(
+        "--grouped_bands",
+        type=int,
+        nargs="+",
+        action="append",
+        default=[],
+        help="Bands to group for GroupC mae",
+    )
 
-    parser.add_argument('--output_dir', default='./output_dir',
-                        help='path where to save, empty for no saving')
-    parser.add_argument('--log_dir', default='./output_dir',
-                        help='path where to tensorboard log')
-    parser.add_argument('--device', default='cuda:0',
-                        help='device to use for training / testing')
-    parser.add_argument('--seed', default=0, type=int)
-    parser.add_argument('--resume', default='',
-                        help='resume from checkpoint')
-    parser.add_argument('--wandb', type=str, default=None,
-                        help="Wandb project name, eg: sentinel_pretrain")
+    parser.add_argument(
+        "--output_dir",
+        default="./output_dir",
+        help="path where to save, empty for no saving",
+    )
 
-    parser.add_argument('--start_epoch', default=1, type=int, metavar='N',
-                        help='start epoch')
-    parser.add_argument('--num_workers', default=10, type=int)
-    parser.add_argument('--pin_mem', action='store_true',
-                        help='Pin CPU memory in DataLoader for more efficient (sometimes) transfer to GPU.')
-    parser.add_argument('--no_pin_mem', action='store_false', dest='pin_mem')
+    parser.add_argument("--config", default="config.yaml", type=str, help="Config file")
+    parser.add_argument(
+        "--log_dir", default="./output_dir", help="path where to tensorboard log"
+    )
+    parser.add_argument(
+        "--device", default="cuda:0", help="device to use for training / testing"
+    )
+    parser.add_argument("--seed", default=0, type=int)
+    parser.add_argument("--resume", default="", help="resume from checkpoint")
+    parser.add_argument(
+        "--wandb",
+        type=str,
+        default=None,
+        help="Wandb project name, eg: sentinel_pretrain",
+    )
+
+    parser.add_argument(
+        "--start_epoch", default=1, type=int, metavar="N", help="start epoch"
+    )
+    parser.add_argument("--num_workers", default=10, type=int)
+    parser.add_argument(
+        "--pin_mem",
+        action="store_true",
+        help="Pin CPU memory in DataLoader for more efficient (sometimes) transfer to GPU.",
+    )
+    parser.add_argument("--no_pin_mem", action="store_false", dest="pin_mem")
     parser.set_defaults(pin_mem=True)
 
     # distributed training parameters
-    parser.add_argument('--world_size', default=1, type=int,
-                        help='number of distributed processes')
-    parser.add_argument('--local_rank', default=os.getenv('LOCAL_RANK', 0), type=int)  # prev default was -1
-    parser.add_argument('--dist_on_itp', action='store_true')
-    parser.add_argument('--dist_url', default='env://',
-                        help='url used to set up distributed training')
+    parser.add_argument(
+        "--world_size", default=1, type=int, help="number of distributed processes"
+    )
+    parser.add_argument(
+        "--local_rank", default=os.getenv("LOCAL_RANK", 0), type=int
+    )  # prev default was -1
+    parser.add_argument("--dist_on_itp", action="store_true")
+    parser.add_argument(
+        "--dist_url", default="env://", help="url used to set up distributed training"
+    )
 
     return parser
 
@@ -121,8 +215,8 @@ def get_args_parser():
 def main(args):
     misc.init_distributed_mode(args)
 
-    print('job dir: {}'.format(os.path.dirname(os.path.realpath(__file__))))
-    print("{}".format(args).replace(', ', ',\n'))
+    print("job dir: {}".format(os.path.dirname(os.path.realpath(__file__))))
+    print("{}".format(args).replace(", ", ",\n"))
 
     device = torch.device(args.device)
 
@@ -133,7 +227,41 @@ def main(args):
 
     cudnn.benchmark = True
 
-    dataset_train = build_fmow_dataset(is_train=True, args=args)
+    with open(args.config) as f:
+        config = yaml.safe_load(f.read())
+
+    if config["data"]["type"] in ["fmow"]:
+        # We read in an image from PIL and crop an area twice the size of input size
+        # transforms_train crops it down to a the proper target_size
+        transforms_init = tv_transforms.Compose(
+            [
+                tv_transforms.RandomCrop(args.input_size * 2, pad_if_needed=True),
+                tv_transforms.RandomHorizontalFlip(),
+                tv_transforms.ToTensor(),
+                tv_transforms.Normalize(
+                    mean=config["data"]["mean"], std=config["data"]["std"]
+                ),
+            ]
+        )
+        other_transforms = None
+
+    # We will pass in the largest target_size to RRC
+    target_size = max(args.target_size)
+    transforms_train = CustomCompose(
+        rescale_transform=K.RandomResizedCrop(
+            (target_size, target_size),
+            # (args.input_size, args.input_size),
+            ratio=(1.0, 1.0),
+            scale=(args.scale_min, args.scale_max),
+            resample=Resample.BICUBIC.name,
+        ),
+        other_transforms=other_transforms,
+        src_transform=K.Resize((args.input_size, args.input_size)),
+    )
+
+    dataset_train = build_fmow_dataset(
+        is_train=True, args=args, transforms=transforms_train
+    )
 
     if True:  # args.distributed:
         num_tasks = misc.get_world_size()
@@ -152,7 +280,8 @@ def main(args):
         log_writer = None
 
     data_loader_train = torch.utils.data.DataLoader(
-        dataset_train, sampler=sampler_train,
+        dataset_train,
+        sampler=sampler_train,
         batch_size=args.batch_size,
         num_workers=args.num_workers,
         pin_memory=args.pin_mem,
@@ -160,25 +289,31 @@ def main(args):
     )
 
     # define the model
-    if args.model_type == 'group_c':
+    if args.model_type == "group_c":
         # Workaround because action append will add to default list
         if len(args.grouped_bands) == 0:
             args.grouped_bands = [[0, 1, 2, 6], [3, 4, 5, 7], [8, 9]]
         print(f"Grouping bands {args.grouped_bands}")
-        model = models_mae_group_channels.__dict__[args.model](img_size=args.input_size,
-                                                               patch_size=args.patch_size,
-                                                               in_chans=dataset_train.in_c,
-                                                               channel_groups=args.grouped_bands,
-                                                               spatial_mask=args.spatial_mask,
-                                                               norm_pix_loss=args.norm_pix_loss)
-    elif args.model_type == 'temporal':
-        model = models_mae_temporal.__dict__[args.model](norm_pix_loss=args.norm_pix_loss)
+        model = models_mae_group_channels.__dict__[args.model](
+            img_size=args.input_size,
+            patch_size=args.patch_size,
+            in_chans=dataset_train.in_c,
+            channel_groups=args.grouped_bands,
+            spatial_mask=args.spatial_mask,
+            norm_pix_loss=args.norm_pix_loss,
+        )
+    elif args.model_type == "temporal":
+        model = models_mae_temporal.__dict__[args.model](
+            norm_pix_loss=args.norm_pix_loss
+        )
     # non-spatial, non-temporal
     else:
-        model = models_mae.__dict__[args.model](img_size=args.input_size,
-                                                patch_size=args.patch_size,
-                                                in_chans=dataset_train.in_c,
-                                                norm_pix_loss=args.norm_pix_loss)
+        model = models_mae.__dict__[args.model](
+            img_size=args.input_size,
+            patch_size=args.patch_size,
+            in_chans=dataset_train.in_c,
+            norm_pix_loss=args.norm_pix_loss,
+        )
     model.to(device)
 
     model_without_ddp = model
@@ -196,7 +331,9 @@ def main(args):
     print("effective batch size: %d" % eff_batch_size)
 
     if args.distributed:
-        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
+        model = torch.nn.parallel.DistributedDataParallel(
+            model, device_ids=[args.gpu], find_unused_parameters=True
+        )
         model_without_ddp = model.module
 
     # following timm: set wd as 0 for bias and norm layers
@@ -205,7 +342,12 @@ def main(args):
     print(optimizer)
     loss_scaler = NativeScaler()
 
-    misc.load_model(args=args, model_without_ddp=model_without_ddp, optimizer=optimizer, loss_scaler=loss_scaler)
+    misc.load_model(
+        args=args,
+        model_without_ddp=model_without_ddp,
+        optimizer=optimizer,
+        loss_scaler=loss_scaler,
+    )
 
     # Set up wandb
     if global_rank == 0 and args.wandb is not None:
@@ -213,8 +355,15 @@ def main(args):
         wandb.config.update(args)
         wandb.watch(model)
 
-    misc.save_model(args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer, loss_scaler=loss_scaler, epoch=0)
-    print('saving random init model')
+    misc.save_model(
+        args=args,
+        model=model,
+        model_without_ddp=model_without_ddp,
+        optimizer=optimizer,
+        loss_scaler=loss_scaler,
+        epoch=0,
+    )
+    print("saving random init model")
 
     print(f"Start training for {args.epochs} epochs")
     start_time = time.time()
@@ -222,33 +371,50 @@ def main(args):
         if args.distributed:
             data_loader_train.sampler.set_epoch(epoch)
 
-        if args.model_type == 'temporal':
+        if args.model_type == "temporal":
             train_stats = train_one_epoch_temporal(
-                model, data_loader_train,
-                optimizer, device, epoch, loss_scaler,
+                model,
+                data_loader_train,
+                optimizer,
+                device,
+                epoch,
+                loss_scaler,
                 log_writer=log_writer,
-                args=args
+                args=args,
             )
         else:
             train_stats = train_one_epoch(
-                model, data_loader_train,
-                optimizer, device, epoch, loss_scaler,
+                model,
+                data_loader_train,
+                optimizer,
+                device,
+                epoch,
+                loss_scaler,
                 log_writer=log_writer,
-                args=args
+                args=args,
             )
 
         if args.output_dir and (epoch % 1 == 0 or epoch + 1 == args.epochs):
             misc.save_model(
-                args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
-                loss_scaler=loss_scaler, epoch=epoch)
+                args=args,
+                model=model,
+                model_without_ddp=model_without_ddp,
+                optimizer=optimizer,
+                loss_scaler=loss_scaler,
+                epoch=epoch,
+            )
 
-        log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
-                     'epoch': epoch, }
+        log_stats = {
+            **{f"train_{k}": v for k, v in train_stats.items()},
+            "epoch": epoch,
+        }
 
         if args.output_dir and misc.is_main_process():
             if log_writer is not None:
                 log_writer.flush()
-            with open(os.path.join(args.output_dir, "log.txt"), mode="a", encoding="utf-8") as f:
+            with open(
+                os.path.join(args.output_dir, "log.txt"), mode="a", encoding="utf-8"
+            ) as f:
                 f.write(json.dumps(log_stats) + "\n")
 
             # try:
@@ -258,10 +424,10 @@ def main(args):
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
-    print('Training time {}'.format(total_time_str))
+    print("Training time {}".format(total_time_str))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     args = get_args_parser()
     args = args.parse_args()
     if args.output_dir:

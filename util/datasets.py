@@ -199,7 +199,7 @@ class FMoWTemporalStacked(SatelliteDataset):
 
 
 class CustomDatasetFromImagesTemporal(SatelliteDataset):
-    def __init__(self, csv_path: str):
+    def __init__(self, csv_path: str, transforms):
         """
         Creates temporal dataset for fMoW RGB
         :param csv_path: Path to csv file containing paths to images
@@ -207,11 +207,12 @@ class CustomDatasetFromImagesTemporal(SatelliteDataset):
         """
         super().__init__(in_c=3)
 
+
         # Transforms
-        self.transforms = transforms.Compose([
-            # transforms.Scale(224),
-            transforms.RandomCrop(224),
-        ])
+        self.transforms = transforms
+
+        self.base_resolution = base_resolution
+
         # Read the csv file
         self.data_info = pd.read_csv(csv_path, header=0)
         # First column contains the image paths
@@ -350,7 +351,7 @@ class CustomDatasetFromImagesTemporal(SatelliteDataset):
         del img_as_tensor_2
         del img_as_tensor_3
 
-        return (imgs, ts, single_image_label)
+        return (imgs_src, imgs_src_res, imgs, res, ts), None
 
     def parse_timestamp(self, name):
         #print(name)
@@ -367,6 +368,19 @@ class CustomDatasetFromImagesTemporal(SatelliteDataset):
     def __len__(self):
 
         return self.data_len
+
+
+class TransformCollateFn:
+    def __init__(self, transforms, base_resolution=1.0):
+        self.transforms = transforms
+        self.base_resolution = base_resolution
+
+    def __call__(self, samples):
+        imgs = torch.stack(list(zip(*samples))[0])
+        imgs, imgs_src, ratios, _, _ = self.transforms(imgs)
+        res = ratios * self.base_resolution
+        imgs_src_res = res * (imgs.shape[-1] / imgs_src.shape[-1])
+        return (imgs_src, imgs_src_res, imgs, res), None
 
 
 #########################################################
@@ -574,7 +588,7 @@ class EuroSat(SatelliteDataset):
         return img_as_tensor, label
 
 
-def build_fmow_dataset(is_train: bool, args) -> SatelliteDataset:
+def build_fmow_dataset(is_train: bool, args, transforms) -> SatelliteDataset:
     """
     Initializes a SatelliteDataset object given provided args.
     :param is_train: Whether we want the dataset for training or evaluation
@@ -589,7 +603,7 @@ def build_fmow_dataset(is_train: bool, args) -> SatelliteDataset:
         transform = CustomDatasetFromImages.build_transform(is_train, args.input_size, mean, std)
         dataset = CustomDatasetFromImages(csv_path, transform)
     elif args.dataset_type == 'temporal':
-        dataset = CustomDatasetFromImagesTemporal(csv_path)
+        dataset = CustomDatasetFromImagesTemporal(csv_path, transforms)
     elif args.dataset_type == 'sentinel':
         mean = SentinelIndividualImageDataset.mean
         std = SentinelIndividualImageDataset.std
