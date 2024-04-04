@@ -18,6 +18,9 @@ import yaml
 import torch.backends.cudnn as cudnn
 from torch.utils.tensorboard import SummaryWriter
 import torchvision.transforms as tv_transforms
+import kornia.augmentation as K
+from kornia.constants import Resample
+
 
 import timm
 
@@ -90,11 +93,13 @@ def get_args_parser():
     )
     parser.set_defaults(norm_pix_loss=False)
     parser.add_argument(
-        "--target_size", nargs="*", type=int, help="images input size", default=[448]
+        "--target_size", nargs="*", type=int, help="images input size", default=[224]
     )
     parser.add_argument(
         "--source_size", nargs="*", type=int, help="images source size", default=[224]
     )
+    parser.add_argument("--scale_min", default=0.2, type=float, help="Min RRC scale")
+    parser.add_argument("--scale_max", default=1.0, type=float, help="Max RRC scale")
 
     # Optimizer parameters
     parser.add_argument(
@@ -114,6 +119,12 @@ def get_args_parser():
         default=1e-3,
         metavar="LR",
         help="base learning rate: absolute_lr = base_lr * total_batch_size / 256",
+    )
+    parser.add_argument(
+        "--base_resolution",
+        default=2.5,
+        type=float,
+        help="The base resolution to use for the period of the sin wave for positional embeddings",
     )
     parser.add_argument(
         "--min_lr",
@@ -202,7 +213,7 @@ def get_args_parser():
         "--world_size", default=1, type=int, help="number of distributed processes"
     )
     parser.add_argument(
-        "--local_rank", default=os.getenv("LOCAL_RANK", 0), type=int
+        "--local-rank", default=os.getenv("LOCAL_RANK", 0), type=int
     )  # prev default was -1
     parser.add_argument("--dist_on_itp", action="store_true")
     parser.add_argument(
@@ -235,7 +246,7 @@ def main(args):
         # transforms_train crops it down to a the proper target_size
         transforms_init = tv_transforms.Compose(
             [
-                tv_transforms.RandomCrop(args.input_size * 2, pad_if_needed=True),
+                tv_transforms.RandomCrop(args.input_size, pad_if_needed=True),
                 tv_transforms.RandomHorizontalFlip(),
                 tv_transforms.ToTensor(),
                 tv_transforms.Normalize(
@@ -337,9 +348,11 @@ def main(args):
         model_without_ddp = model.module
 
     # following timm: set wd as 0 for bias and norm layers
-    param_groups = optim_factory.add_weight_decay(model_without_ddp, args.weight_decay)
+    param_groups = optim_factory.param_groups_layer_decay(
+        model_without_ddp, args.weight_decay
+    )
     optimizer = torch.optim.AdamW(param_groups, lr=args.lr, betas=(0.9, 0.95))
-    print(optimizer)
+    # print(optimizer)
     loss_scaler = NativeScaler()
 
     misc.load_model(
