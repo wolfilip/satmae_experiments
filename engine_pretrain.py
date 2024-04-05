@@ -125,12 +125,12 @@ def train_one_epoch_temporal(
 
     if log_writer is not None:
         print("log_dir: {}".format(log_writer.log_dir))
-    for data_iter_step, (samples, res, timestamps, _) in enumerate(
+    # for data_iter_step, (samples, res, timestamps) in enumerate(
+    #     metric_logger.log_every(data_loader, print_freq, header)
+    # ):
+    for data_iter_step, (samples, timestamps, _) in enumerate(
         metric_logger.log_every(data_loader, print_freq, header)
     ):
-        # for data_iter_step, (samples, timestamps, _) in enumerate(
-        #     metric_logger.log_every(data_loader, print_freq, header)
-        # ):
         # for data_iter_step, ((samples, res, targets, target_res, timesteps), metadata) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
 
         # we use a per iteration (instead of per epoch) lr scheduler
@@ -139,18 +139,21 @@ def train_one_epoch_temporal(
                 optimizer, data_iter_step / len(data_loader) + epoch, args
             )
 
-        samples = samples.to(device, non_blocking=True)
+        samples = [
+            samples[0].to(device, non_blocking=True),
+            samples[1].to(device, non_blocking=True),
+            samples[2].to(device, non_blocking=True),
+        ]
         timestamps = timestamps.to(device, non_blocking=True)
 
         with torch.cuda.amp.autocast():
-            loss, y, mask, mean, var, pos_emb, pos_emb_decoder, samples = model(
-                samples,
-                input_res=res,
-                mask_ratio=args.mask_ratio,
-                timestamps=timestamps,
-            )
+            # loss, y, mask, mean, var, pos_emb, pos_emb_decoder, samples = model(
+            #     samples,
+            #     mask_ratio=args.mask_ratio,
+            #     timestamps=timestamps,
+            # )
             # loss, _, _ = model(samples, timestamps, ratios, mask_ratio=args.mask_ratio)
-            # loss, _, _ = model(samples, timestamps, mask_ratio=args.mask_ratio)
+            loss, _, _ = model(samples, timestamps, mask_ratio=args.mask_ratio)
 
         loss_value = loss.item()
 

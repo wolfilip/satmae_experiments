@@ -28,7 +28,7 @@ import timm
 import timm.optim.optim_factory as optim_factory
 
 import util.misc as misc
-from util.datasets import build_fmow_dataset
+from util.datasets import build_fmow_dataset, TransformCollateFn
 from util.misc import NativeScalerWithGradNormCount as NativeScaler
 from lib.transforms import CustomCompose
 
@@ -241,38 +241,50 @@ def main(args):
     with open(args.config) as f:
         config = yaml.safe_load(f.read())
 
-    if config["data"]["type"] in ["fmow"]:
-        # We read in an image from PIL and crop an area twice the size of input size
-        # transforms_train crops it down to a the proper target_size
-        transforms_init = tv_transforms.Compose(
-            [
-                tv_transforms.RandomCrop(args.input_size, pad_if_needed=True),
-                tv_transforms.RandomHorizontalFlip(),
-                tv_transforms.ToTensor(),
-                tv_transforms.Normalize(
-                    mean=config["data"]["mean"], std=config["data"]["std"]
-                ),
-            ]
-        )
-        other_transforms = None
+    transforms_train_0 = K.Resize((224, 224))
+    transforms_train_1 = K.Resize((168, 168))
+    transforms_train_2 = K.Resize((112, 112))
 
-    # We will pass in the largest target_size to RRC
-    target_size = max(args.target_size)
-    transforms_train = CustomCompose(
-        rescale_transform=K.RandomResizedCrop(
-            (target_size, target_size),
-            # (args.input_size, args.input_size),
-            ratio=(1.0, 1.0),
-            scale=(args.scale_min, args.scale_max),
-            resample=Resample.BICUBIC.name,
-        ),
-        other_transforms=other_transforms,
-        src_transform=K.Resize((args.input_size, args.input_size)),
-    )
+    # transforms_train_0 = tv_transforms.Compose(
+    #     [
+    #         tv_transforms.RandomHorizontalFlip(),
+    #         tv_transforms.Resize((224, 224)),
+    #         tv_transforms.ToTensor(),
+    #         tv_transforms.Normalize(
+    #             mean=config["data"]["mean"], std=config["data"]["std"]
+    #         ),
+    #     ]
+    # )
 
-    dataset_train = build_fmow_dataset(
-        is_train=True, args=args, transforms=transforms_train
-    )
+    # transforms_train_1 = tv_transforms.Compose(
+    #     [
+    #         tv_transforms.RandomHorizontalFlip(),
+    #         tv_transforms.Resize((168, 168)),
+    #         tv_transforms.ToTensor(),
+    #         tv_transforms.Normalize(
+    #             mean=config["data"]["mean"], std=config["data"]["std"]
+    #         ),
+    #     ]
+    # )
+
+    # transforms_train_2 = tv_transforms.Compose(
+    #     [
+    #         tv_transforms.RandomHorizontalFlip(),
+    #         tv_transforms.Resize((112, 112)),
+    #         tv_transforms.ToTensor(),
+    #         tv_transforms.Normalize(
+    #             mean=config["data"]["mean"], std=config["data"]["std"]
+    #         ),
+    #     ]
+    # )
+
+    transforms = [transforms_train_0, transforms_train_1, transforms_train_2]
+
+    # dataset_train = build_fmow_dataset(
+    #     is_train=True, args=args, transforms=[transforms_train_1, transforms_train_2]
+    # )
+
+    dataset_train = build_fmow_dataset(is_train=True, args=args)
 
     if True:  # args.distributed:
         num_tasks = misc.get_world_size()
@@ -290,6 +302,8 @@ def main(args):
     else:
         log_writer = None
 
+    train_collate = TransformCollateFn(transforms, args.base_resolution)
+
     data_loader_train = torch.utils.data.DataLoader(
         dataset_train,
         sampler=sampler_train,
@@ -297,6 +311,7 @@ def main(args):
         num_workers=args.num_workers,
         pin_memory=args.pin_mem,
         drop_last=True,
+        # collate_fn=train_collate,
     )
 
     # define the model

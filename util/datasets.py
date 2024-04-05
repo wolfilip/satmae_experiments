@@ -14,6 +14,7 @@ from torchvision import transforms
 from PIL import Image
 import rasterio
 from rasterio import logging
+import kornia.augmentation as K
 
 log = logging.getLogger()
 log.setLevel(logging.ERROR)
@@ -254,7 +255,7 @@ class FMoWTemporalStacked(SatelliteDataset):
 
 
 class CustomDatasetFromImagesTemporal(SatelliteDataset):
-    def __init__(self, csv_path: str, transforms_train, base_resolution=1.0):
+    def __init__(self, csv_path: str, base_resolution=1.0):
         """
         Creates temporal dataset for fMoW RGB
         :param csv_path: Path to csv file containing paths to images
@@ -263,8 +264,14 @@ class CustomDatasetFromImagesTemporal(SatelliteDataset):
         super().__init__(in_c=3)
 
         # Transforms
-        self.transforms = transforms_train
+        # self.transforms = transforms
         self.base_resolution = base_resolution
+        self.transforms = transforms.Compose(
+            [
+                # transforms.Scale(224),
+                transforms.RandomCrop(224),
+            ]
+        )
 
         # self.base_resolution = base_resolution
         # self.transforms = transforms.Compose(
@@ -311,6 +318,12 @@ class CustomDatasetFromImagesTemporal(SatelliteDataset):
         self.normalization = transforms.Normalize(mean, std)
         self.totensor = transforms.ToTensor()
         self.scale = transforms.Resize(224)
+        self.scale_1 = transforms.Resize(224)
+        self.scale_2 = transforms.Resize(168)
+        self.scale_3 = transforms.Resize(112)
+        self.transforms_train_0 = K.Resize((224, 224))
+        self.transforms_train_1 = K.Resize((168, 168))
+        self.transforms_train_2 = K.Resize((112, 112))
 
     def __getitem__(self, index):
 
@@ -363,66 +376,70 @@ class CustomDatasetFromImagesTemporal(SatelliteDataset):
         del img_as_img_1
         del img_as_img_2
         del img_as_img_3
-        img_as_tensor_1 = self.scale(img_as_tensor_1)
-        img_as_tensor_2 = self.scale(img_as_tensor_2)
-        img_as_tensor_3 = self.scale(img_as_tensor_3)
-        try:
-            if (
-                img_as_tensor_1.shape[2] > 224
-                and img_as_tensor_2.shape[2] > 224
-                and img_as_tensor_3.shape[2] > 224
-            ):
-                min_w = min(
-                    img_as_tensor_1.shape[2],
-                    min(img_as_tensor_2.shape[2], img_as_tensor_3.shape[2]),
-                )
-                img_as_tensor = torch.cat(
-                    [
-                        img_as_tensor_1[..., :min_w],
-                        img_as_tensor_2[..., :min_w],
-                        img_as_tensor_3[..., :min_w],
-                    ],
-                    dim=-3,
-                )
-            elif (
-                img_as_tensor_1.shape[1] > 224
-                and img_as_tensor_2.shape[1] > 224
-                and img_as_tensor_3.shape[1] > 224
-            ):
-                min_w = min(
-                    img_as_tensor_1.shape[1],
-                    min(img_as_tensor_2.shape[1], img_as_tensor_3.shape[1]),
-                )
-                img_as_tensor = torch.cat(
-                    [
-                        img_as_tensor_1[..., :min_w, :],
-                        img_as_tensor_2[..., :min_w, :],
-                        img_as_tensor_3[..., :min_w, :],
-                    ],
-                    dim=-3,
-                )
-            else:
-                img_as_img_1 = Image.open(single_image_name_1)
-                img_as_tensor_1 = self.totensor(img_as_img_1)
-                img_as_tensor_1 = self.scale(img_as_tensor_1)
-                img_as_tensor = torch.cat(
-                    [img_as_tensor_1, img_as_tensor_1, img_as_tensor_1], dim=-3
-                )
-        except:
-            print(img_as_tensor_1.shape, img_as_tensor_2.shape, img_as_tensor_3.shape)
-            assert False
+        img_as_tensor_1 = self.scale_1(img_as_tensor_1)
+        img_as_tensor_2 = self.scale_2(img_as_tensor_2)
+        img_as_tensor_3 = self.scale_3(img_as_tensor_3)
 
-        del img_as_tensor_1
-        del img_as_tensor_2
-        del img_as_tensor_3
+        # img_as_tensor = torch.cat(
+        #     [img_as_tensor_1, img_as_tensor_2, img_as_tensor_3], dim=-3
+        # )
+        # try:
+        #     if (
+        #         img_as_tensor_1.shape[2] > 224
+        #         and img_as_tensor_2.shape[2] > 224
+        #         and img_as_tensor_3.shape[2] > 224
+        #     ):
+        #         min_w = min(
+        #             img_as_tensor_1.shape[2],
+        #             min(img_as_tensor_2.shape[2], img_as_tensor_3.shape[2]),
+        #         )
+        #         img_as_tensor = torch.cat(
+        #             [
+        #                 img_as_tensor_1[..., :min_w],
+        #                 img_as_tensor_2[..., :min_w],
+        #                 img_as_tensor_3[..., :min_w],
+        #             ],
+        #             dim=-3,
+        #         )
+        #     elif (
+        #         img_as_tensor_1.shape[1] > 224
+        #         and img_as_tensor_2.shape[1] > 224
+        #         and img_as_tensor_3.shape[1] > 224
+        #     ):
+        #         min_w = min(
+        #             img_as_tensor_1.shape[1],
+        #             min(img_as_tensor_2.shape[1], img_as_tensor_3.shape[1]),
+        #         )
+        #         img_as_tensor = torch.cat(
+        #             [
+        #                 img_as_tensor_1[..., :min_w, :],
+        #                 img_as_tensor_2[..., :min_w, :],
+        #                 img_as_tensor_3[..., :min_w, :],
+        #             ],
+        #             dim=-3,
+        #         )
+        #     else:
+        #         img_as_img_1 = Image.open(single_image_name_1)
+        #         img_as_tensor_1 = self.totensor(img_as_img_1)
+        #         img_as_tensor_1 = self.scale(img_as_tensor_1)
+        #         img_as_tensor = torch.cat(
+        #             [img_as_tensor_1, img_as_tensor_1, img_as_tensor_1], dim=-3
+        #         )
+        # except:
+        #     print(img_as_tensor_1.shape, img_as_tensor_2.shape, img_as_tensor_3.shape)
+        #     assert False
 
-        img_as_tensor, imgs_src, ratios, _, _ = self.transforms(img_as_tensor)
-        res = ratios * self.base_resolution
+        # del img_as_tensor_1
+        # del img_as_tensor_2
+        # del img_as_tensor_3
+
+        # img_as_tensor, imgs_src, ratios, _, _ = self.transforms(img_as_tensor)
+        # res = ratios * self.base_resolution
         # img_as_tensor = self.transforms(img_as_tensor)
-        img_as_tensor_1, img_as_tensor_2, img_as_tensor_3 = torch.chunk(
-            img_as_tensor, 3, dim=-3
-        )
-        del img_as_tensor
+        # img_as_tensor_1, img_as_tensor_2, img_as_tensor_3 = torch.chunk(
+        #     img_as_tensor, 3, dim=-3
+        # )
+        # del img_as_tensor
         img_as_tensor_1 = self.normalization(img_as_tensor_1)
         img_as_tensor_2 = self.normalization(img_as_tensor_2)
         img_as_tensor_3 = self.normalization(img_as_tensor_3)
@@ -436,13 +453,17 @@ class CustomDatasetFromImagesTemporal(SatelliteDataset):
         # Get label(class) of the image based on the cropped pandas column
         single_image_label = self.label_arr[index]
 
-        imgs = torch.stack([img_as_tensor_1, img_as_tensor_2, img_as_tensor_3], dim=0)
+        # imgs = torch.stack([img_as_tensor_1, img_as_tensor_2, img_as_tensor_3], dim=0)
 
-        del img_as_tensor_1
-        del img_as_tensor_2
-        del img_as_tensor_3
+        # del img_as_tensor_1
+        # del img_as_tensor_2
+        # del img_as_tensor_3
 
-        return (imgs, res, ts, single_image_label)
+        return (
+            (img_as_tensor_1, img_as_tensor_2, img_as_tensor_3),
+            ts,
+            single_image_label,
+        )
         # return (imgs, ts, single_image_label)
 
     def parse_timestamp(self, name):
@@ -469,10 +490,10 @@ class TransformCollateFn:
 
     def __call__(self, samples):
         imgs = torch.stack(list(zip(*samples))[0])
-        imgs, imgs_src, ratios, _, _ = self.transforms(imgs)
-        res = ratios * self.base_resolution
-        imgs_src_res = res * (imgs.shape[-1] / imgs_src.shape[-1])
-        return (imgs_src, imgs_src_res, imgs, res), None
+        img_0 = self.transforms[0](imgs[:, :, 0, :, :])
+        img_1 = self.transforms[1](imgs[:, :, 1, :, :])
+        img_2 = self.transforms[2](imgs[:, :, 2, :, :])
+        return (img_0, img_1, img_2), None
 
 
 #########################################################
@@ -745,7 +766,7 @@ class EuroSat(SatelliteDataset):
         return img_as_tensor, label
 
 
-def build_fmow_dataset(is_train: bool, args, transforms) -> SatelliteDataset:
+def build_fmow_dataset(is_train: bool, args) -> SatelliteDataset:
     """
     Initializes a SatelliteDataset object given provided args.
     :param is_train: Whether we want the dataset for training or evaluation
@@ -762,9 +783,7 @@ def build_fmow_dataset(is_train: bool, args, transforms) -> SatelliteDataset:
         )
         dataset = CustomDatasetFromImages(csv_path, transform)
     elif args.dataset_type == "temporal":
-        dataset = CustomDatasetFromImagesTemporal(
-            csv_path, transforms, args.base_resolution
-        )
+        dataset = CustomDatasetFromImagesTemporal(csv_path, args.base_resolution)
     elif args.dataset_type == "sentinel":
         mean = SentinelIndividualImageDataset.mean
         std = SentinelIndividualImageDataset.std

@@ -43,8 +43,9 @@ class MaskedAutoencoderViT(nn.Module):
 
         # --------------------------------------------------------------------------
         # MAE encoder specifics
-        self.patch_embed = PatchEmbed(img_size, patch_size, in_chans, embed_dim)
-        num_patches = self.patch_embed.num_patches
+        self.patch_embed_1 = PatchEmbed(224, patch_size, in_chans, embed_dim)
+        self.patch_embed_2 = PatchEmbed(168, patch_size, in_chans, embed_dim)
+        self.patch_embed_3 = PatchEmbed(112, patch_size, in_chans, embed_dim)
 
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
 
@@ -99,8 +100,8 @@ class MaskedAutoencoderViT(nn.Module):
         # initialization
 
         # initialize patch_embed like nn.Linear (instead of nn.Conv2d)
-        w = self.patch_embed.proj.weight.data
-        torch.nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
+        # w = self.patch_embed.proj.weight.data
+        # torch.nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
 
         # timm's trunc_normal_(std=.02) is effectively normal_(std=0.02) as cutoff is too big (2.)
         torch.nn.init.normal_(self.cls_token, std=0.02)
@@ -196,15 +197,14 @@ class MaskedAutoencoderViT(nn.Module):
 
         return x_masked, mask, ids_restore
 
-    def forward_encoder(self, x, timestamps, ratios, mask_ratio, mask=None):
+    def forward_encoder(self, x, timestamps, mask_ratio, mask=None):
         # def forward_encoder(self, x, timestamps, mask_ratio, mask=None, input_res=1.0):
         # embed patches
-        x = torch.squeeze(x)
-        ratios = torch.squeeze(ratios)
-        _, _, _, h, w = x.shape
-        x1 = self.patch_embed(x[:, 0])
-        x2 = self.patch_embed(x[:, 1])
-        x3 = self.patch_embed(x[:, 2])
+        # x = torch.squeeze(x)
+        # _, _, _, h, w = x.shape
+        x1 = self.patch_embed_1(x[0])
+        x2 = self.patch_embed_2(x[1])
+        x3 = self.patch_embed_3(x[2])
         x = torch.cat([x1, x2, x3], dim=1)
 
         # print(timestamps.shape, x.shape)
@@ -233,9 +233,9 @@ class MaskedAutoencoderViT(nn.Module):
         # print(ts_embed.shape)
         # ts_embed = torch.zeros_like(ts_embed)
 
-        num_patches = int(
-            (h * w) / (self.patch_embed.patch_size[0] * self.patch_embed.patch_size[1])
-        )
+        # num_patches = int(
+        #     (h * w) / (self.patch_embed.patch_size[0] * self.patch_embed.patch_size[1])
+        # )
 
         pos_embed = torch.cat(
             [
@@ -421,24 +421,27 @@ class MaskedAutoencoderViT(nn.Module):
         loss = (loss * mask).sum() / mask.sum()  # mean loss on removed patches
         return loss
 
-    def forward(
-        self,
-        imgs,
-        mask_ratio=0.75,
-        input_res=None,
-        timestamps=None,
-        mask=None,
-    ):
-        # def forward(
-        #     self, imgs, timestamps, ratios, mask_ratio=0.75, mask=None, input_res=1.0
-        # ):
-        # def forward(self, imgs, timestamps, mask_ratio=0.75, mask=None, input_res=1.0):
-        latent, mask, ids_restore, pos_embed_encoder = self.forward_encoder(
-            imgs, timestamps, input_res, mask_ratio, mask
-        )
+    # def forward(
+    #     self,
+    #     imgs,
+    #     mask_ratio=0.75,
+    #     input_res=None,
+    #     timestamps=None,
+    #     mask=None,
+    # ):
+    # def forward(
+    #     self, imgs, timestamps, ratios, mask_ratio=0.75, mask=None, input_res=1.0
+    # ):
+    def forward(self, imgs, timestamps, mask_ratio=0.75, mask=None, input_res=1.0):
+        # latent, mask, ids_restore, pos_embed_encoder = self.forward_encoder(
+        #     imgs, timestamps, input_res, mask_ratio, mask
+        # )
         # latent, mask, ids_restore = self.forward_encoder(
         #     imgs, timestamps, mask_ratio, mask, input_res
         # )
+        latent, mask, ids_restore = self.forward_encoder(
+            imgs, timestamps, mask_ratio, mask=mask
+        )
         pred = self.forward_decoder(latent, timestamps, ids_restore)  # [N, L, p*p*3]
         loss = self.forward_loss(imgs, pred, mask)
         return loss, pred, mask
