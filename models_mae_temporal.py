@@ -44,10 +44,11 @@ class MaskedAutoencoderViT(nn.Module):
         # --------------------------------------------------------------------------
         # MAE encoder specifics
         self.patch_embed_1 = PatchEmbed(224, patch_size, in_chans, embed_dim)
-        self.patch_embed_2 = PatchEmbed(168, patch_size, in_chans, embed_dim)
+        self.patch_embed_2 = PatchEmbed(160, patch_size, in_chans, embed_dim)
         self.patch_embed_3 = PatchEmbed(112, patch_size, in_chans, embed_dim)
 
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
+        self.cls_token_ = nn.Parameter(torch.zeros(1, 1, embed_dim))
 
         self.blocks = nn.ModuleList(
             [
@@ -70,6 +71,11 @@ class MaskedAutoencoderViT(nn.Module):
         self.decoder_embed = nn.Linear(embed_dim, decoder_embed_dim, bias=True)
 
         self.mask_token = nn.Parameter(torch.zeros(1, 1, decoder_embed_dim))
+
+        self.decoder_pos_embed = nn.Parameter(
+            torch.zeros(128, 345 + 1, decoder_embed_dim - 192),
+            requires_grad=False,
+        )  # fixed sin-cos embedding
 
         self.decoder_blocks = nn.ModuleList(
             [
@@ -125,7 +131,7 @@ class MaskedAutoencoderViT(nn.Module):
         imgs: (N, 3, H, W)
         x: (N, L, patch_size**2 *3)
         """
-        p = self.patch_embed.patch_size[0]
+        p = self.patch_embed_1.patch_size[0]
         assert imgs.shape[2] == imgs.shape[3] and imgs.shape[2] % p == 0
 
         h = w = imgs.shape[2] // p
@@ -200,14 +206,47 @@ class MaskedAutoencoderViT(nn.Module):
     def forward_encoder(self, x, timestamps, mask_ratio, mask=None):
         # def forward_encoder(self, x, timestamps, mask_ratio, mask=None, input_res=1.0):
         # embed patches
-        # x = torch.squeeze(x)
+        x[0] = torch.squeeze(x[0])
+        x[1] = torch.squeeze(x[1])
+        x[2] = torch.squeeze(x[2])
         # _, _, _, h, w = x.shape
-        x1 = self.patch_embed_1(x[0])
-        x2 = self.patch_embed_2(x[1])
-        x3 = self.patch_embed_3(x[2])
-        x = torch.cat([x1, x2, x3], dim=1)
+        self.x1 = self.patch_embed_1(x[0])
+        self.x2 = self.patch_embed_2(x[1])
+        self.x3 = self.patch_embed_3(x[2])
+        x = torch.cat([self.x1, self.x2, self.x3], dim=1)
+        mock_res_1 = torch.ones(128)
+        mock_res_2 = torch.ones(128)
+        mock_res_3 = torch.ones(128)
 
         # print(timestamps.shape, x.shape)
+
+        # ts_embed_1 = get_1d_sincos_pos_embed_from_grid_torch(
+        #     128, timestamps.reshape(-1, 3)[:, 0].float()
+        # )
+        # ts_embed_2 = get_1d_sincos_pos_embed_from_grid_torch(
+        #     128, timestamps.reshape(-1, 3)[:, 1].float()
+        # )
+        # ts_embed_3 = get_1d_sincos_pos_embed_from_grid_torch(
+        #     128, timestamps.reshape(-1, 3)[:, 2].float()
+        # )
+
+        # ts_embed_1 = ts_embed_1.reshape(-1, 3, ts_embed_1.shape[-1]).unsqueeze(2)
+        # ts_embed_2 = ts_embed_2.reshape(-1, 3, ts_embed_2.shape[-1]).unsqueeze(2)
+        # ts_embed_3 = ts_embed_3.reshape(-1, 3, ts_embed_3.shape[-1]).unsqueeze(2)
+
+        # ts_embed_1 = ts_embed_1.expand(-1, -1, x1.shape[1], -1)
+        # ts_embed_2 = ts_embed_2.expand(-1, -1, x2.shape[1] // 3, -1).reshape(
+        #     x2.shape[0], -1, ts_embed_2.shape[-1]
+        # )
+        # ts_embed_3 = ts_embed_3.expand(-1, -1, x3.shape[1], -1).reshape(
+        #     x3.shape[0], -1, ts_embed_3.shape[-1]
+        # )
+
+        # ts_embed = torch.cat(
+        #     [ts_embed_1, ts_embed_2, ts_embed_3],
+        #     dim=1,
+        # ).float()
+
         ts_embed = torch.cat(
             [
                 get_1d_sincos_pos_embed_from_grid_torch(
@@ -223,13 +262,23 @@ class MaskedAutoencoderViT(nn.Module):
             dim=1,
         ).float()
 
-        # print(ts_embed, ts_embed.shape)
+        # # print(ts_embed, ts_embed.shape)
 
         ts_embed = ts_embed.reshape(-1, 3, ts_embed.shape[-1]).unsqueeze(2)
-        # print(ts_embed.shape)
-        ts_embed = ts_embed.expand(-1, -1, x.shape[1] // 3, -1).reshape(
-            x.shape[0], -1, ts_embed.shape[-1]
-        )
+
+        ts_embed_1 = ts_embed[:, 0, :, :].expand(-1, self.x1.shape[1], -1)
+        ts_embed_2 = ts_embed[:, 1, :, :].expand(-1, self.x2.shape[1], -1)
+        ts_embed_3 = ts_embed[:, 2, :, :].expand(-1, self.x3.shape[1], -1)
+
+        ts_embed = torch.cat(
+            [ts_embed_1, ts_embed_2, ts_embed_3],
+            dim=1,
+        ).float()
+
+        # # print(ts_embed.shape)
+        # ts_embed = ts_embed.expand(-1, -1, x.shape[1] // 3, -1).reshape(
+        #     x.shape[0], -1, ts_embed.shape[-1]
+        # )
         # print(ts_embed.shape)
         # ts_embed = torch.zeros_like(ts_embed)
 
@@ -241,24 +290,24 @@ class MaskedAutoencoderViT(nn.Module):
             [
                 get_2d_sincos_pos_embed_with_resolution(
                     640,
-                    int(num_patches**0.5),
-                    ratios,
+                    int(196**0.5),
+                    mock_res_1,
                     cls_token=True,
-                    device=x1.device,
+                    device=self.x1.device,
                 ),
                 get_2d_sincos_pos_embed_with_resolution(
                     640,
-                    int(num_patches**0.5),
-                    ratios,
+                    int(100**0.5),
+                    mock_res_2,
                     cls_token=True,
-                    device=x2.device,
+                    device=self.x2.device,
                 ),
                 get_2d_sincos_pos_embed_with_resolution(
                     640,
-                    int(num_patches**0.5),
-                    ratios,
+                    int(49**0.5),
+                    mock_res_3,
                     cls_token=True,
-                    device=x3.device,
+                    device=self.x3.device,
                 ),
             ],
             dim=1,
@@ -282,20 +331,23 @@ class MaskedAutoencoderViT(nn.Module):
         x = self.norm(x)
 
         # Added back to the mask token in decoder for decoding modes != "demasking"
-        pos_embed_encoder = get_2d_sincos_pos_embed_with_resolution(
-            self.decoder_embed_dim,
-            int(num_patches**0.5),
-            ratios,
-            cls_token=True,
-            device=x.device,
-        )
+        # pos_embed_encoder = get_2d_sincos_pos_embed_with_resolution(
+        #     self.decoder_embed_dim,
+        #     int(num_patches**0.5),
+        #     ratios,
+        #     cls_token=True,
+        #     device=x.device,
+        # )
 
-        return x, mask, ids_restore, pos_embed_encoder
+        return x, mask, ids_restore
 
     def forward_decoder(self, x, timestamps, ids_restore):
         ##################################################################################
         # embed tokens
         x = self.decoder_embed(x)
+        mock_res_1 = torch.ones(128)
+        mock_res_2 = torch.ones(128)
+        mock_res_3 = torch.ones(128)
 
         # append mask tokens to sequence
         mask_tokens = self.mask_token.repeat(
@@ -324,9 +376,15 @@ class MaskedAutoencoderViT(nn.Module):
         ).float()
 
         ts_embed = ts_embed.reshape(-1, 3, ts_embed.shape[-1]).unsqueeze(2)
-        ts_embed = ts_embed.expand(-1, -1, x.shape[1] // 3, -1).reshape(
-            x.shape[0], -1, ts_embed.shape[-1]
-        )
+
+        ts_embed_1 = ts_embed[:, 0, :, :].expand(-1, self.x1.shape[1], -1)
+        ts_embed_2 = ts_embed[:, 1, :, :].expand(-1, self.x2.shape[1], -1)
+        ts_embed_3 = ts_embed[:, 2, :, :].expand(-1, self.x3.shape[1], -1)
+
+        ts_embed = torch.cat(
+            [ts_embed_1, ts_embed_2, ts_embed_3],
+            dim=1,
+        ).float()
 
         ts_embed = torch.cat(
             [
@@ -338,22 +396,45 @@ class MaskedAutoencoderViT(nn.Module):
             dim=1,
         )
 
+        pos_embed = torch.cat(
+            [
+                get_2d_sincos_pos_embed_with_resolution(
+                    320,
+                    int(196**0.5),
+                    mock_res_1,
+                    cls_token=True,
+                    device=x.device,
+                ),
+                get_2d_sincos_pos_embed_with_resolution(
+                    320,
+                    int(100**0.5),
+                    mock_res_2,
+                    cls_token=True,
+                    device=x.device,
+                ),
+                get_2d_sincos_pos_embed_with_resolution(
+                    320,
+                    int(49**0.5),
+                    mock_res_3,
+                    cls_token=True,
+                    device=x.device,
+                ),
+            ],
+            dim=1,
+        ).float()
+
+        pos_embed = torch.cat(
+            [
+                self.decoder_pos_embed[:, :1, :],
+                pos_embed,
+            ],
+            dim=1,
+        )
+
         # ts_embed = torch.zeros_like(ts_embed)
 
         # add pos embed
-        x = x + torch.cat(
-            [
-                torch.cat(
-                    [
-                        self.decoder_pos_embed[:, :1, :],
-                        self.decoder_pos_embed[:, 1:, :].repeat(1, 3, 1),
-                    ],
-                    dim=1,
-                ).expand(ts_embed.shape[0], -1, -1),
-                ts_embed,
-            ],
-            dim=-1,
-        )
+        x = x + torch.cat([pos_embed, ts_embed], dim=-1)
 
         # apply Transformer blocks
         for blk in self.decoder_blocks:
@@ -374,9 +455,9 @@ class MaskedAutoencoderViT(nn.Module):
         pred: [N, L, p*p*3]
         mask: [N, L], 0 is keep, 1 is remove,
         """
-        target1 = self.patchify(imgs[:, 0])
-        target2 = self.patchify(imgs[:, 1])
-        target3 = self.patchify(imgs[:, 2])
+        target1 = self.patchify(imgs[0])
+        target2 = self.patchify(imgs[1])
+        target3 = self.patchify(imgs[2])
         target = torch.cat([target1, target2, target3], dim=1)
         previous_target = target
         if self.norm_pix_loss:

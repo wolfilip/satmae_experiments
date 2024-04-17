@@ -242,7 +242,7 @@ def main(args):
         config = yaml.safe_load(f.read())
 
     transforms_train_0 = K.Resize((224, 224))
-    transforms_train_1 = K.Resize((168, 168))
+    transforms_train_1 = K.Resize((160, 160))
     transforms_train_2 = K.Resize((112, 112))
 
     # transforms_train_0 = tv_transforms.Compose(
@@ -259,7 +259,7 @@ def main(args):
     # transforms_train_1 = tv_transforms.Compose(
     #     [
     #         tv_transforms.RandomHorizontalFlip(),
-    #         tv_transforms.Resize((168, 168)),
+    #         tv_transforms.Resize((160, 160)),
     #         tv_transforms.ToTensor(),
     #         tv_transforms.Normalize(
     #             mean=config["data"]["mean"], std=config["data"]["std"]

@@ -319,10 +319,10 @@ class CustomDatasetFromImagesTemporal(SatelliteDataset):
         self.totensor = transforms.ToTensor()
         self.scale = transforms.Resize(224)
         self.scale_1 = transforms.Resize(224)
-        self.scale_2 = transforms.Resize(168)
+        self.scale_2 = transforms.Resize(160)
         self.scale_3 = transforms.Resize(112)
         self.transforms_train_0 = K.Resize((224, 224))
-        self.transforms_train_1 = K.Resize((168, 168))
+        self.transforms_train_1 = K.Resize((160, 160))
         self.transforms_train_2 = K.Resize((112, 112))
 
     def __getitem__(self, index):
@@ -376,9 +376,15 @@ class CustomDatasetFromImagesTemporal(SatelliteDataset):
         del img_as_img_1
         del img_as_img_2
         del img_as_img_3
-        img_as_tensor_1 = self.scale_1(img_as_tensor_1)
-        img_as_tensor_2 = self.scale_2(img_as_tensor_2)
-        img_as_tensor_3 = self.scale_3(img_as_tensor_3)
+        img_as_tensor_1 = self.transforms_train_0(img_as_tensor_1)
+        img_as_tensor_2 = self.transforms_train_1(img_as_tensor_2)
+        img_as_tensor_3 = self.transforms_train_2(img_as_tensor_3)
+        if img_as_tensor_3.size(dim=2) > 224:
+            print(single_image_name_3)
+        if img_as_tensor_2.size(dim=2) > 224:
+            print(single_image_name_2)
+        if img_as_tensor_1.size(dim=2) > 224:
+            print(single_image_name_1)
 
         # img_as_tensor = torch.cat(
         #     [img_as_tensor_1, img_as_tensor_2, img_as_tensor_3], dim=-3
