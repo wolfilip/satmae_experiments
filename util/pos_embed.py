@@ -131,9 +131,12 @@ def get_1d_sincos_pos_embed_from_grid_torch(embed_dim, pos):
 
     pos = pos.reshape(-1)  # (M,)
     out = torch.einsum("m,d->md", pos, omega)  # (M, D/2), outer product
+    # print(out[7])
 
     emb_sin = torch.sin(out)  # (M, D/2)
+    # print(emb_sin[7])
     emb_cos = torch.cos(out)  # (M, D/2)
+    # print(emb_cos[7])
 
     emb = torch.cat([emb_sin, emb_cos], dim=1)  # (M, D)
     return emb.double()

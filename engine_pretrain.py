@@ -128,7 +128,7 @@ def train_one_epoch_temporal(
     # for data_iter_step, (samples, res, timestamps) in enumerate(
     #     metric_logger.log_every(data_loader, print_freq, header)
     # ):
-    for data_iter_step, (samples, timestamps, _) in enumerate(
+    for data_iter_step, (samples, resolutions, timestamps, _) in enumerate(
         metric_logger.log_every(data_loader, print_freq, header)
     ):
         # for data_iter_step, ((samples, res, targets, target_res, timesteps), metadata) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
@@ -153,7 +153,9 @@ def train_one_epoch_temporal(
             #     timestamps=timestamps,
             # )
             # loss, _, _ = model(samples, timestamps, ratios, mask_ratio=args.mask_ratio)
-            loss, _, _ = model(samples, timestamps, mask_ratio=args.mask_ratio)
+            loss, _, _ = model(
+                samples, resolutions, timestamps, mask_ratio=args.mask_ratio
+            )
 
         loss_value = loss.item()
 

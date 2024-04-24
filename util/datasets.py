@@ -315,6 +315,8 @@ class CustomDatasetFromImagesTemporal(SatelliteDataset):
 
         mean = [0.4182007312774658, 0.4214799106121063, 0.3991275727748871]
         std = [0.28774282336235046, 0.27541765570640564, 0.2764017581939697]
+        self.min_res = 200
+        self.max_res = 16300
         self.normalization = transforms.Normalize(mean, std)
         self.totensor = transforms.ToTensor()
         self.scale = transforms.Resize(224)
@@ -370,6 +372,14 @@ class CustomDatasetFromImagesTemporal(SatelliteDataset):
         img_as_img_1 = Image.open(single_image_name_1)
         img_as_img_2 = Image.open(single_image_name_2)
         img_as_img_3 = Image.open(single_image_name_3)
+        img_scale_1 = (img_as_img_1.size[0] + img_as_img_1.size[1]) / 2
+        img_scale_1 = (img_scale_1 - self.min_res) / 900
+        img_scale_2 = (img_as_img_2.size[0] + img_as_img_2.size[1]) / 2
+        img_scale_2 = (img_scale_2 - self.min_res) / 900
+        img_scale_3 = (img_as_img_3.size[0] + img_as_img_3.size[1]) / 2
+        img_scale_3 = (img_scale_3 - self.min_res) / 900
+        # if img_as_img_1.size[0] > 2000:
+        #     print(single_image_name_1)
         img_as_tensor_1 = self.totensor(img_as_img_1)
         img_as_tensor_2 = self.totensor(img_as_img_2)
         img_as_tensor_3 = self.totensor(img_as_img_3)
@@ -467,6 +477,7 @@ class CustomDatasetFromImagesTemporal(SatelliteDataset):
 
         return (
             (img_as_tensor_1, img_as_tensor_2, img_as_tensor_3),
+            (img_scale_1, img_scale_2, img_scale_3),
             ts,
             single_image_label,
         )

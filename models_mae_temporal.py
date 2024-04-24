@@ -203,7 +203,7 @@ class MaskedAutoencoderViT(nn.Module):
 
         return x_masked, mask, ids_restore
 
-    def forward_encoder(self, x, timestamps, mask_ratio, mask=None):
+    def forward_encoder(self, x, resolutions, timestamps, mask_ratio, mask=None):
         # def forward_encoder(self, x, timestamps, mask_ratio, mask=None, input_res=1.0):
         # embed patches
         x[0] = torch.squeeze(x[0])
@@ -214,9 +214,12 @@ class MaskedAutoencoderViT(nn.Module):
         self.x2 = self.patch_embed_2(x[1])
         self.x3 = self.patch_embed_3(x[2])
         x = torch.cat([self.x1, self.x2, self.x3], dim=1)
-        mock_res_1 = torch.ones(128)
-        mock_res_2 = torch.ones(128)
-        mock_res_3 = torch.ones(128)
+        mock_res_1 = torch.ones(128) * resolutions[0]
+        mock_res_2 = torch.ones(128) * resolutions[1] * 1.4
+        mock_res_3 = torch.ones(128) * resolutions[2] * 2
+        # mock_res_1 = torch.ones(7)
+        # mock_res_2 = torch.ones(7) * resolutions[1] * 1.4
+        # mock_res_3 = torch.ones(7) * 2
 
         # print(timestamps.shape, x.shape)
 
@@ -341,13 +344,13 @@ class MaskedAutoencoderViT(nn.Module):
 
         return x, mask, ids_restore
 
-    def forward_decoder(self, x, timestamps, ids_restore):
+    def forward_decoder(self, x, resolutions, timestamps, ids_restore):
         ##################################################################################
         # embed tokens
         x = self.decoder_embed(x)
-        mock_res_1 = torch.ones(128)
-        mock_res_2 = torch.ones(128)
-        mock_res_3 = torch.ones(128)
+        mock_res_1 = torch.ones(128) * resolutions[0]
+        mock_res_2 = torch.ones(128) * resolutions[1] * 1.4
+        mock_res_3 = torch.ones(128) * resolutions[2] * 2
 
         # append mask tokens to sequence
         mask_tokens = self.mask_token.repeat(
@@ -513,7 +516,9 @@ class MaskedAutoencoderViT(nn.Module):
     # def forward(
     #     self, imgs, timestamps, ratios, mask_ratio=0.75, mask=None, input_res=1.0
     # ):
-    def forward(self, imgs, timestamps, mask_ratio=0.75, mask=None, input_res=1.0):
+    def forward(
+        self, imgs, resolutions, timestamps, mask_ratio=0.75, mask=None, input_res=1.0
+    ):
         # latent, mask, ids_restore, pos_embed_encoder = self.forward_encoder(
         #     imgs, timestamps, input_res, mask_ratio, mask
         # )
@@ -521,9 +526,11 @@ class MaskedAutoencoderViT(nn.Module):
         #     imgs, timestamps, mask_ratio, mask, input_res
         # )
         latent, mask, ids_restore = self.forward_encoder(
-            imgs, timestamps, mask_ratio, mask=mask
+            imgs, resolutions, timestamps, mask_ratio, mask=mask
         )
-        pred = self.forward_decoder(latent, timestamps, ids_restore)  # [N, L, p*p*3]
+        pred = self.forward_decoder(
+            latent, resolutions, timestamps, ids_restore
+        )  # [N, L, p*p*3]
         loss = self.forward_loss(imgs, pred, mask)
         return loss, pred, mask
 
@@ -572,7 +579,7 @@ def mae_vit_large_patch16_dec512d8b_samemask(**kwargs):
         mlp_ratio=4,
         norm_layer=partial(nn.LayerNorm, eps=1e-6),
         same_mask=True,
-        **kwargs
+        **kwargso
     )
     return model
 
