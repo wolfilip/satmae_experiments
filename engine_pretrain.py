@@ -144,6 +144,11 @@ def train_one_epoch_temporal(
             samples[1].to(device, non_blocking=True),
             samples[2].to(device, non_blocking=True),
         ]
+        # resolutions = [
+        #     resolutions[0].to(device, non_blocking=True),
+        #     resolutions[1].to(device, non_blocking=True),
+        #     resolutions[2].to(device, non_blocking=True),
+        # ]
         timestamps = timestamps.to(device, non_blocking=True)
 
         with torch.cuda.amp.autocast():

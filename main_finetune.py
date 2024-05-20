@@ -113,6 +113,12 @@ def get_args_parser():
         help="base learning rate: absolute_lr = base_lr * total_batch_size / 256",
     )
     parser.add_argument(
+        "--base_resolution",
+        default=2.5,
+        type=float,
+        help="The base resolution to use for the period of the sin wave for positional embeddings",
+    )
+    parser.add_argument(
         "--layer_decay",
         type=float,
         default=0.75,
@@ -315,7 +321,7 @@ def get_args_parser():
     parser.add_argument(
         "--world_size", default=1, type=int, help="number of distributed processes"
     )
-    parser.add_argument("--local_rank", default=os.getenv("LOCAL_RANK", 0), type=int)
+    parser.add_argument("--local-rank", default=os.getenv("LOCAL_RANK", 0), type=int)
     parser.add_argument("--dist_on_itp", action="store_true")
     parser.add_argument(
         "--dist_url", default="env://", help="url used to set up distributed training"

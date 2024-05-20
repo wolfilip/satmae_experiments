@@ -118,18 +118,34 @@ def train_one_epoch_temporal(model: torch.nn.Module, criterion: torch.nn.Module,
     if log_writer is not None:
         print('log_dir: {}'.format(log_writer.log_dir))
 
-    for data_iter_step, (samples, timestamps, targets) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
+    for data_iter_step, (samples, resolutions, timestamps, targets) in enumerate(
+        metric_logger.log_every(data_loader, print_freq, header)
+    ):
 
         # we use a per iteration (instead of per epoch) lr scheduler
         if data_iter_step % accum_iter == 0:
             lr_sched.adjust_learning_rate(optimizer, data_iter_step / len(data_loader) + epoch, args)
 
-        samples = samples.to(device, non_blocking=True)
+        samples = [
+            samples[0].to(device, non_blocking=True),
+            samples[1].to(device, non_blocking=True),
+            samples[2].to(device, non_blocking=True),
+        ]
+        resolutions = [
+            resolutions[0].to(device, non_blocking=True),
+            resolutions[1].to(device, non_blocking=True),
+            resolutions[2].to(device, non_blocking=True),
+        ]
         timestamps = timestamps.to(device, non_blocking=True)
         targets = targets.to(device, non_blocking=True)
+        # target_original = targets.clone()
 
-        if mixup_fn is not None:
-            samples, targets = mixup_fn(samples, targets)
+        # if mixup_fn is not None:
+        #     samples[0], targets = mixup_fn(samples[0], target_original)
+        #     samples[1], targets = mixup_fn(samples[1], target_original)
+        #     samples[2], targets = mixup_fn(samples[2], target_original)
+
+        # targets = F.one_hot(targets, 62)
 
         with torch.cuda.amp.autocast():
             outputs = model(samples, timestamps)
@@ -233,10 +249,10 @@ def evaluate_temporal(data_loader, model, device):
 
     for batch in metric_logger.log_every(data_loader, 10, header):
         images = batch[0]
-        timestamps = batch[1]
+        timestamps = batch[2]
         target = batch[-1]
 
-        batch_size = images.shape[0]
+        batch_size = images[0].shape[0]
         # print(images.shape, timestamps.shape, target.shape)
         if tta:
             images = images.reshape(-1, 3, 3, 224, 224)
@@ -244,7 +260,11 @@ def evaluate_temporal(data_loader, model, device):
             target = target.reshape(-1, 1)
         # images = images.reshape()
         # print('images and targets')
-        images = images.to(device, non_blocking=True)
+        images = [
+            images[0].to(device, non_blocking=True),
+            images[1].to(device, non_blocking=True),
+            images[2].to(device, non_blocking=True),
+        ]
         timestamps = timestamps.to(device, non_blocking=True)
         target = target.to(device, non_blocking=True)
 
@@ -271,7 +291,6 @@ def evaluate_temporal(data_loader, model, device):
         acc1, acc5 = accuracy(output, target, topk=(1, 5))
         # print(acc1, acc5, flush=True)
 
-        batch_size = images.shape[0]
         metric_logger.update(loss=loss.item())
         metric_logger.meters['acc1'].update(acc1.item(), n=batch_size)
         metric_logger.meters['acc5'].update(acc5.item(), n=batch_size)

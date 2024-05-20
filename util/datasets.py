@@ -146,8 +146,11 @@ class SatelliteDataset(Dataset):
 
 
 class CustomDatasetFromImages(SatelliteDataset):
-    mean = [0.4182007312774658, 0.4214799106121063, 0.3991275727748871]
-    std = [0.28774282336235046, 0.27541765570640564, 0.2764017581939697]
+    # resics
+    mean = [0.368, 0.381, 0.3436]
+    std = [0.2035, 0.1854, 0.1849]
+    # mean = [0.4182007312774658, 0.4214799106121063, 0.3991275727748871]
+    # std = [0.28774282336235046, 0.27541765570640564, 0.2764017581939697]
 
     def __init__(self, csv_path, transform):
         """
@@ -159,7 +162,7 @@ class CustomDatasetFromImages(SatelliteDataset):
         # Transforms
         self.transforms = transform
         # Read the csv file
-        self.data_info = pd.read_csv(csv_path, header=0)
+        self.data_info = pd.read_csv(csv_path, header=None)
         # First column contains the image paths
         self.image_arr = np.asarray(self.data_info.iloc[:, 1])
         # Second column is the labels
@@ -266,20 +269,24 @@ class CustomDatasetFromImagesTemporal(SatelliteDataset):
         # Transforms
         # self.transforms = transforms
         self.base_resolution = base_resolution
-        self.transforms = transforms.Compose(
+        self.transforms_1 = transforms.Compose(
             [
                 # transforms.Scale(224),
                 transforms.RandomCrop(224),
             ]
         )
-
-        # self.base_resolution = base_resolution
-        # self.transforms = transforms.Compose(
-        #     [
-        #         # transforms.Scale(224),
-        #         transforms.RandomCrop(224),
-        #     ]
-        # )
+        self.transforms_2 = transforms.Compose(
+            [
+                # transforms.Scale(224),
+                transforms.RandomCrop(160),
+            ]
+        )
+        self.transforms_3 = transforms.Compose(
+            [
+                # transforms.Scale(224),
+                transforms.RandomCrop(112),
+            ]
+        )
 
         # Read the csv file
         self.data_info = pd.read_csv(csv_path, header=0)
@@ -319,13 +326,17 @@ class CustomDatasetFromImagesTemporal(SatelliteDataset):
         self.max_res = 16300
         self.normalization = transforms.Normalize(mean, std)
         self.totensor = transforms.ToTensor()
-        self.scale = transforms.Resize(224)
-        self.scale_1 = transforms.Resize(224)
-        self.scale_2 = transforms.Resize(160)
-        self.scale_3 = transforms.Resize(112)
+        self.scale = transforms.Resize((224, 224))
+        self.scale_1 = transforms.Resize((224, 224))
+        self.scale_2 = transforms.Resize((160, 160))
+        self.scale_3 = transforms.Resize((112, 112))
+        # self.scale_2 = transforms.Resize(160)
+        # self.scale_3 = transforms.Resize(112)
         self.transforms_train_0 = K.Resize((224, 224))
         self.transforms_train_1 = K.Resize((160, 160))
         self.transforms_train_2 = K.Resize((112, 112))
+        # self.transforms_train_1 = K.Resize((160, 160))
+        # self.transforms_train_2 = K.Resize((112, 112))
 
     def __getitem__(self, index):
 
@@ -372,12 +383,9 @@ class CustomDatasetFromImagesTemporal(SatelliteDataset):
         img_as_img_1 = Image.open(single_image_name_1)
         img_as_img_2 = Image.open(single_image_name_2)
         img_as_img_3 = Image.open(single_image_name_3)
-        img_scale_1 = (img_as_img_1.size[0] + img_as_img_1.size[1]) / 2
-        img_scale_1 = (img_scale_1 - self.min_res) / 900
-        img_scale_2 = (img_as_img_2.size[0] + img_as_img_2.size[1]) / 2
-        img_scale_2 = (img_scale_2 - self.min_res) / 900
-        img_scale_3 = (img_as_img_3.size[0] + img_as_img_3.size[1]) / 2
-        img_scale_3 = (img_scale_3 - self.min_res) / 900
+        img_scale_1 = (img_as_img_1.size[0] + img_as_img_1.size[1]) / 1800
+        img_scale_2 = (img_as_img_2.size[0] + img_as_img_2.size[1]) / 1800
+        img_scale_3 = (img_as_img_3.size[0] + img_as_img_3.size[1]) / 1800
         # if img_as_img_1.size[0] > 2000:
         #     print(single_image_name_1)
         img_as_tensor_1 = self.totensor(img_as_img_1)
@@ -386,15 +394,16 @@ class CustomDatasetFromImagesTemporal(SatelliteDataset):
         del img_as_img_1
         del img_as_img_2
         del img_as_img_3
-        img_as_tensor_1 = self.transforms_train_0(img_as_tensor_1)
-        img_as_tensor_2 = self.transforms_train_1(img_as_tensor_2)
-        img_as_tensor_3 = self.transforms_train_2(img_as_tensor_3)
-        if img_as_tensor_3.size(dim=2) > 224:
-            print(single_image_name_3)
-        if img_as_tensor_2.size(dim=2) > 224:
-            print(single_image_name_2)
-        if img_as_tensor_1.size(dim=2) > 224:
-            print(single_image_name_1)
+
+        img_as_tensor_1 = self.scale_1(img_as_tensor_1)
+        img_as_tensor_2 = self.scale_2(img_as_tensor_2)
+        img_as_tensor_3 = self.scale_3(img_as_tensor_3)
+        # if img_as_tensor_3.size(dim=2) > 224:
+        #     print(single_image_name_3)
+        # if img_as_tensor_2.size(dim=2) > 224:
+        #     print(single_image_name_2)
+        # if img_as_tensor_1.size(dim=2) > 224:
+        #     print(single_image_name_1)
 
         # img_as_tensor = torch.cat(
         #     [img_as_tensor_1, img_as_tensor_2, img_as_tensor_3], dim=-3
@@ -451,11 +460,16 @@ class CustomDatasetFromImagesTemporal(SatelliteDataset):
 
         # img_as_tensor, imgs_src, ratios, _, _ = self.transforms(img_as_tensor)
         # res = ratios * self.base_resolution
-        # img_as_tensor = self.transforms(img_as_tensor)
+        # img_as_tensor = self.transforms_1(img_as_tensor)
         # img_as_tensor_1, img_as_tensor_2, img_as_tensor_3 = torch.chunk(
         #     img_as_tensor, 3, dim=-3
         # )
         # del img_as_tensor
+
+        img_as_tensor_1 = self.transforms_1(img_as_tensor_1)
+        img_as_tensor_2 = self.transforms_2(img_as_tensor_2)
+        img_as_tensor_3 = self.transforms_3(img_as_tensor_3)
+
         img_as_tensor_1 = self.normalization(img_as_tensor_1)
         img_as_tensor_2 = self.normalization(img_as_tensor_2)
         img_as_tensor_3 = self.normalization(img_as_tensor_3)

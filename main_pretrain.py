@@ -17,20 +17,15 @@ import torch
 import yaml
 import torch.backends.cudnn as cudnn
 from torch.utils.tensorboard import SummaryWriter
-import torchvision.transforms as tv_transforms
 import kornia.augmentation as K
-from kornia.constants import Resample
 
-
-import timm
 
 # assert timm.__version__ == "0.3.2"  # version check
 import timm.optim.optim_factory as optim_factory
 
 import util.misc as misc
-from util.datasets import build_fmow_dataset, TransformCollateFn
+from util.datasets import build_fmow_dataset
 from util.misc import NativeScalerWithGradNormCount as NativeScaler
-from lib.transforms import CustomCompose
 
 import models_mae
 import models_mae_group_channels
@@ -212,9 +207,7 @@ def get_args_parser():
     parser.add_argument(
         "--world_size", default=1, type=int, help="number of distributed processes"
     )
-    parser.add_argument(
-        "--local-rank", default=os.getenv("LOCAL_RANK", 0), type=int
-    )  # prev default was -1
+    parser.add_argument("--local-rank", default=os.getenv("LOCAL_RANK", 0), type=int)
     parser.add_argument("--dist_on_itp", action="store_true")
     parser.add_argument(
         "--dist_url", default="env://", help="url used to set up distributed training"
@@ -238,12 +231,12 @@ def main(args):
 
     cudnn.benchmark = True
 
-    with open(args.config) as f:
-        config = yaml.safe_load(f.read())
+    # with open(args.config) as f:
+    #     config = yaml.safe_load(f.read())
 
-    transforms_train_0 = K.Resize((224, 224))
-    transforms_train_1 = K.Resize((160, 160))
-    transforms_train_2 = K.Resize((112, 112))
+    # transforms_train_0 = K.Resize((224, 224))
+    # transforms_train_1 = K.Resize((160, 160))
+    # transforms_train_2 = K.Resize((112, 112))
 
     # transforms_train_0 = tv_transforms.Compose(
     #     [
@@ -278,7 +271,7 @@ def main(args):
     #     ]
     # )
 
-    transforms = [transforms_train_0, transforms_train_1, transforms_train_2]
+    # transforms = [transforms_train_0, transforms_train_1, transforms_train_2]
 
     # dataset_train = build_fmow_dataset(
     #     is_train=True, args=args, transforms=[transforms_train_1, transforms_train_2]
@@ -302,7 +295,7 @@ def main(args):
     else:
         log_writer = None
 
-    train_collate = TransformCollateFn(transforms, args.base_resolution)
+    # train_collate = TransformCollateFn(transforms, args.base_resolution)
 
     data_loader_train = torch.utils.data.DataLoader(
         dataset_train,
@@ -367,7 +360,7 @@ def main(args):
         model_without_ddp, args.weight_decay
     )
     optimizer = torch.optim.AdamW(param_groups, lr=args.lr, betas=(0.9, 0.95))
-    # print(optimizer)
+    print(optimizer)
     loss_scaler = NativeScaler()
 
     misc.load_model(
