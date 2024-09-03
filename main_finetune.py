@@ -5,41 +5,41 @@
 import argparse
 import datetime
 import json
-import numpy as np
 import os
 import time
-import wandb
 from pathlib import Path
 
-
+import numpy as np
+import timm
 import torch
 import torch.backends.cudnn as cudnn
-from torch.utils.tensorboard import SummaryWriter
-
-import timm
-
-# assert timm.__version__ == "0.3.2"  # version check
-from timm.models.layers import trunc_normal_
+import wandb
 from timm.data.mixup import Mixup
 from timm.loss import LabelSmoothingCrossEntropy, SoftTargetCrossEntropy
 
-import util.lr_decay as lrd
-import util.misc as misc
-from util.datasets import build_fmow_dataset
-from util.pos_embed import interpolate_pos_embed
-from util.misc import NativeScalerWithGradNormCount as NativeScaler
+# assert timm.__version__ == "0.3.2"  # version check
+from timm.models.layers import trunc_normal_
+from torch.utils.tensorboard import SummaryWriter
 
+import atm_head
 import models_resnet
 import models_vit
-import models_vit_temporal
 import models_vit_group_channels
-
+import models_vit_segmentaton
+import models_vit_temporal
+import util.lr_decay as lrd
+import util.misc as misc
 from engine_finetune import (
-    train_one_epoch,
-    train_one_epoch_temporal,
     evaluate,
     evaluate_temporal,
+    evaluate_segmentation,
+    train_one_epoch,
+    train_one_epoch_segmentation,
+    train_one_epoch_temporal,
 )
+from util.datasets import build_fmow_dataset
+from util.misc import NativeScalerWithGradNormCount as NativeScaler
+from util.pos_embed import interpolate_pos_embed
 
 
 def get_args_parser():
@@ -64,7 +64,14 @@ def get_args_parser():
     parser.add_argument(
         "--model_type",
         default=None,
-        choices=["group_c", "resnet", "resnet_pre", "temporal", "vanilla"],
+        choices=[
+            "group_c",
+            "resnet",
+            "resnet_pre",
+            "temporal",
+            "vanilla",
+            "segmentation",
+        ],
         help="Use channel model",
     )
     parser.add_argument(
@@ -75,7 +82,7 @@ def get_args_parser():
         help="Name of model to train",
     )
 
-    parser.add_argument("--input_size", default=224, type=int, help="images input size")
+    parser.add_argument("--input_size", default=384, type=int, help="images input size")
     parser.add_argument("--patch_size", default=16, type=int, help="images input size")
 
     parser.add_argument(
@@ -151,7 +158,7 @@ def get_args_parser():
         default="rand-m9-mstd0.5-inc1",
         metavar="NAME",
         help='Use AutoAugment policy. "v0" or "original". " + "(default: rand-m9-mstd0.5-inc1)',
-    ),
+    )
     parser.add_argument(
         "--smoothing", type=float, default=0.1, help="Label smoothing (default: 0.1)"
     )
@@ -242,7 +249,7 @@ def get_args_parser():
     parser.add_argument(
         "--dataset_type",
         default="rgb",
-        choices=["rgb", "temporal", "sentinel", "euro_sat", "naip"],
+        choices=["rgb", "temporal", "sentinel", "euro_sat", "naip", "spacenet"],
         help="Whether to use fmow rgb, sentinel, or other dataset.",
     )
     parser.add_argument(
@@ -436,6 +443,15 @@ def main(args):
             drop_path_rate=args.drop_path,
             global_pool=args.global_pool,
         )
+    elif args.model_type == "segmentation":
+        model = models_vit_segmentaton.__dict__[args.model](
+            patch_size=args.patch_size,
+            img_size=args.input_size,
+            in_chans=dataset_train.in_c,
+            num_classes=args.nb_classes,
+            drop_path_rate=args.drop_path,
+            global_pool=args.global_pool,
+        )
     else:
         model = models_vit.__dict__[args.model](
             patch_size=args.patch_size,
@@ -495,6 +511,9 @@ def main(args):
 
     model.to(device)
 
+    # for param in model.parameters():
+    #     print(param)
+
     model_without_ddp = model
     n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
 
@@ -548,7 +567,7 @@ def main(args):
 
     # Set up wandb
     if global_rank == 0 and args.wandb is not None:
-        wandb.init(project=args.wandb, entity="mae-sentinel")
+        wandb.init(project=args.wandb)
         wandb.config.update(args)
         wandb.watch(model)
 
@@ -566,12 +585,38 @@ def main(args):
     print(f"Start training for {args.epochs} epochs")
     start_time = time.time()
     max_accuracy = 0.0
+    max_iou = 0.0
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
             data_loader_train.sampler.set_epoch(epoch)
 
         if args.model_type == "temporal":
             train_stats = train_one_epoch_temporal(
+                model,
+                criterion,
+                data_loader_train,
+                optimizer,
+                device,
+                epoch,
+                loss_scaler,
+                args.clip_grad,
+                mixup_fn,
+                log_writer=log_writer,
+                args=args,
+            )
+        elif args.model_type == "segmentation":
+            # test_stats = evaluate_segmentation(data_loader_val, model, device)
+            # print(
+            #     f"mIoU of the network on the {len(dataset_val)} test images: {test_stats['IoU']:.3f}"
+            # )
+            # max_iou = max(max_iou, test_stats["IoU"])
+            # print(f"Max IoU: {max_iou:.3f}")
+
+            # if log_writer is not None:
+            #     log_writer.add_scalar("perf/test_iou", test_stats["IoU"], epoch)
+            #     log_writer.add_scalar("perf/test_loss", test_stats["loss"], epoch)
+
+            train_stats = train_one_epoch_segmentation(
                 model,
                 criterion,
                 data_loader_train,
@@ -613,19 +658,32 @@ def main(args):
 
         if args.model_type == "temporal":
             test_stats = evaluate_temporal(data_loader_val, model, device)
+        elif args.model_type == "segmentation":
+            test_stats = evaluate_segmentation(data_loader_val, model, device)
         else:
             test_stats = evaluate(data_loader_val, model, device)
 
-        print(
-            f"Accuracy of the network on the {len(dataset_val)} test images: {test_stats['acc1']:.1f}%"
-        )
-        max_accuracy = max(max_accuracy, test_stats["acc1"])
-        print(f"Max accuracy: {max_accuracy:.2f}%")
+        if args.model_type == "segmentation":
+            print(
+                f"mIoU of the network on the {len(dataset_val)} test images: {test_stats['IoU']:.3f}"
+            )
+            max_iou = max(max_iou, test_stats["IoU"])
+            print(f"Max IoU: {max_iou:.3f}")
 
-        if log_writer is not None:
-            log_writer.add_scalar("perf/test_acc1", test_stats["acc1"], epoch)
-            log_writer.add_scalar("perf/test_acc5", test_stats["acc5"], epoch)
-            log_writer.add_scalar("perf/test_loss", test_stats["loss"], epoch)
+            if log_writer is not None:
+                log_writer.add_scalar("perf/test_iou", test_stats["IoU"], epoch)
+                log_writer.add_scalar("perf/test_loss", test_stats["loss"], epoch)
+        else:
+            print(
+                f"Accuracy of the network on the {len(dataset_val)} test images: {test_stats['acc1']:.1f}%"
+            )
+            max_accuracy = max(max_accuracy, test_stats["acc1"])
+            print(f"Max accuracy: {max_accuracy:.2f}%")
+
+            if log_writer is not None:
+                log_writer.add_scalar("perf/test_acc1", test_stats["acc1"], epoch)
+                log_writer.add_scalar("perf/test_acc5", test_stats["acc5"], epoch)
+                log_writer.add_scalar("perf/test_loss", test_stats["loss"], epoch)
 
         log_stats = {
             **{f"train_{k}": v for k, v in train_stats.items()},

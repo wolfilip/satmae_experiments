@@ -1,26 +1,46 @@
 import os
-import pandas as pd
-import numpy as np
-import warnings
 import random
 import re
+import warnings
 from glob import glob
+from typing import Any, List, Optional
 
-from typing import Any, Optional, List
-
-import torch
-from torch.utils.data.dataset import Dataset
-from torchvision import transforms
-from PIL import Image
-import rasterio
-from rasterio import logging
+import cv2
 import kornia.augmentation as K
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import rasterio
+import rasterio as rio
+from sympy import im
+import torch
+import torch.nn as nn
+from osgeo import gdal, ogr
+from PIL import Image
+from rasterio import logging
+from rasterio.enums import Resampling
+from torch.nn import functional as F
+from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.utils.data import DataLoader, Dataset
+from torch.utils.data.dataset import Dataset
+import torchvision.transforms.v2 as transforms
+from tqdm import tqdm
 
 log = logging.getLogger()
 log.setLevel(logging.ERROR)
 
 Image.MAX_IMAGE_PIXELS = None
 warnings.simplefilter("ignore", Image.DecompressionBombWarning)
+
+DataFolder = "/home/filip/SpaceNetV1/"
+Raster = DataFolder + "3band/"
+Vector = DataFolder + "geojson/"
+Mask = DataFolder + "mask/"
+
+raster_list = os.listdir(Raster)
+raster_list.sort()
+mask_list = os.listdir(Mask)
+mask_list.sort()
 
 
 CATEGORIES = [
@@ -145,6 +165,66 @@ class SatelliteDataset(Dataset):
         return transforms.Compose(t)
 
 
+class SpaceNetDataset(SatelliteDataset):
+    def __init__(self, raster_list, mask_list, is_train):
+        super().__init__(in_c=3)
+        self.raster_list = raster_list
+        self.mask_list = mask_list
+        self.s = 384
+        self.is_train = is_train
+        self.transforms_train = transforms.Compose(
+            [
+                # transforms.Scale(224),
+                transforms.RandomCrop(224),
+                transforms.RandomHorizontalFlip(),
+                # transforms.RandomPhotometricDistort(),
+            ]
+        )
+
+        self.transforms_distort = transforms.Compose(
+            [
+                transforms.RandomPhotometricDistort(),
+            ]
+        )
+
+        self.transforms_val = transforms.Compose(
+            [
+                # transforms.Scale(224),
+                transforms.Resize(224),
+            ]
+        )
+
+    def __len__(self):
+        return len(self.raster_list)
+
+    def __getitem__(self, index):
+        img = (
+            rio.open(Raster + raster_list[index]).read(
+                out_shape=(self.s, self.s), resampling=Resampling.bilinear
+            )
+            / 255
+        )
+        mask = (
+            rio.open(Mask + mask_list[index])
+            .read(out_shape=(self.s, self.s), resampling=Resampling.bilinear)
+            .squeeze()
+        )
+        img = torch.from_numpy(img.astype("float32"))
+        mask = torch.from_numpy(mask.astype("int64"))
+        # mask = F.one_hot(mask, num_classes=2).permute(2, 0, 1)
+        # if self.is_train:
+        #     image_and_mask = torch.cat([img, mask.unsqueeze(0)], dim=0)
+        #     image_and_mask = self.transforms_train(image_and_mask)
+        #     img, mask = torch.split(image_and_mask, [3, 1])
+        #     img = self.transforms_distort(img)
+        #     mask = mask.squeeze(0).to(torch.int64)
+        # else:
+        #     img = self.transforms_val(img)
+            # img, mask = torch.split(image_and_mask, [3, 1])
+            # image_and_mask = self.transforms_val(image_and_mask)
+        return img, mask
+
+
 class CustomDatasetFromImages(SatelliteDataset):
     # resics
     mean = [0.368, 0.381, 0.3436]
@@ -162,13 +242,16 @@ class CustomDatasetFromImages(SatelliteDataset):
         # Transforms
         self.transforms = transform
         # Read the csv file
-        self.data_info = pd.read_csv(csv_path, header=None)
+        self.data_info = pd.read_csv(csv_path, header=0)
         # First column contains the image paths
         self.image_arr = np.asarray(self.data_info.iloc[:, 1])
         # Second column is the labels
         self.label_arr = np.asarray(self.data_info.iloc[:, 0])
         # Calculate len
         self.data_len = len(self.data_info.index)
+
+        self.totensor = transforms.ToTensor()
+        self.scale = transforms.Resize((224, 224))
 
     def __getitem__(self, index):
         # Get image name from the pandas df
@@ -179,8 +262,21 @@ class CustomDatasetFromImages(SatelliteDataset):
         img_as_tensor = self.transforms(img_as_img)
         # Get label(class) of the image based on the cropped pandas column
         single_image_label = self.label_arr[index]
+        # cv2.imwrite(
+        #     os.path.join("/home/filip/satmae_experiments", "object_result.png"),
+        #     (255 * self.scale(self.totensor(img_as_img)))
+        #     .to(torch.uint8)
+        #     .cpu()
+        #     .detach()
+        #     .numpy()
+        #     .transpose(),
+        # )
 
-        return (img_as_tensor, single_image_label)
+        return (
+            img_as_tensor,
+            single_image_label,
+            self.scale(self.totensor(img_as_img)),
+        )
 
     def __len__(self):
         return self.data_len
@@ -327,9 +423,9 @@ class CustomDatasetFromImagesTemporal(SatelliteDataset):
         self.normalization = transforms.Normalize(mean, std)
         self.totensor = transforms.ToTensor()
         self.scale = transforms.Resize((224, 224))
-        self.scale_1 = transforms.Resize((224, 224))
-        self.scale_2 = transforms.Resize((160, 160))
-        self.scale_3 = transforms.Resize((112, 112))
+        self.scale_1 = transforms.Resize((64, 64))
+        self.scale_2 = transforms.Resize((224, 224))
+        self.scale_3 = transforms.Resize((224, 224))
         # self.scale_2 = transforms.Resize(160)
         # self.scale_3 = transforms.Resize(112)
         self.transforms_train_0 = K.Resize((224, 224))
@@ -382,22 +478,25 @@ class CustomDatasetFromImagesTemporal(SatelliteDataset):
         # print(single_image_name_1, single_image_name_2, single_image_name_3)
         img_as_img_1 = Image.open(single_image_name_1)
         img_as_img_2 = Image.open(single_image_name_2)
-        img_as_img_3 = Image.open(single_image_name_3)
+        # img_as_img_3 = Image.open(single_image_name_3)
         img_scale_1 = (img_as_img_1.size[0] + img_as_img_1.size[1]) / 1800
         img_scale_2 = (img_as_img_2.size[0] + img_as_img_2.size[1]) / 1800
-        img_scale_3 = (img_as_img_3.size[0] + img_as_img_3.size[1]) / 1800
+        # img_scale_3 = (img_as_img_3.size[0] + img_as_img_3.size[1]) / 1800
         # if img_as_img_1.size[0] > 2000:
         #     print(single_image_name_1)
         img_as_tensor_1 = self.totensor(img_as_img_1)
         img_as_tensor_2 = self.totensor(img_as_img_2)
-        img_as_tensor_3 = self.totensor(img_as_img_3)
+        # img_as_tensor_3 = self.totensor(img_as_img_3)
         del img_as_img_1
         del img_as_img_2
-        del img_as_img_3
+        # del img_as_img_3
 
         img_as_tensor_1 = self.scale_1(img_as_tensor_1)
-        img_as_tensor_2 = self.scale_2(img_as_tensor_2)
-        img_as_tensor_3 = self.scale_3(img_as_tensor_3)
+        img_as_tensor_2 = self.scale_3(img_as_tensor_2)
+        # img_as_tensor_3 = self.scale_3(img_as_tensor_3)
+
+        img_as_tensor_1 = self.scale_3(img_as_tensor_1)
+        # img_as_tensor_3 = self.scale_1(img_as_tensor_3)
         # if img_as_tensor_3.size(dim=2) > 224:
         #     print(single_image_name_3)
         # if img_as_tensor_2.size(dim=2) > 224:
@@ -408,6 +507,7 @@ class CustomDatasetFromImagesTemporal(SatelliteDataset):
         # img_as_tensor = torch.cat(
         #     [img_as_tensor_1, img_as_tensor_2, img_as_tensor_3], dim=-3
         # )
+        img_as_tensor = torch.cat([img_as_tensor_1, img_as_tensor_2], dim=-3)
         # try:
         #     if (
         #         img_as_tensor_1.shape[2] > 224
@@ -454,31 +554,33 @@ class CustomDatasetFromImagesTemporal(SatelliteDataset):
         #     print(img_as_tensor_1.shape, img_as_tensor_2.shape, img_as_tensor_3.shape)
         #     assert False
 
-        # del img_as_tensor_1
-        # del img_as_tensor_2
+        del img_as_tensor_1
+        del img_as_tensor_2
         # del img_as_tensor_3
 
         # img_as_tensor, imgs_src, ratios, _, _ = self.transforms(img_as_tensor)
         # res = ratios * self.base_resolution
-        # img_as_tensor = self.transforms_1(img_as_tensor)
+        img_as_tensor = self.transforms_1(img_as_tensor)
         # img_as_tensor_1, img_as_tensor_2, img_as_tensor_3 = torch.chunk(
         #     img_as_tensor, 3, dim=-3
         # )
-        # del img_as_tensor
+        img_as_tensor_1, img_as_tensor_2 = torch.chunk(img_as_tensor, 2, dim=-3)
+        del img_as_tensor
 
-        img_as_tensor_1 = self.transforms_1(img_as_tensor_1)
-        img_as_tensor_2 = self.transforms_2(img_as_tensor_2)
-        img_as_tensor_3 = self.transforms_3(img_as_tensor_3)
+        # img_as_tensor_1 = self.transforms_1(img_as_tensor_1)
+        # img_as_tensor_2 = self.transforms_2(img_as_tensor_2)
+        # img_as_tensor_3 = self.transforms_3(img_as_tensor_3)
 
         img_as_tensor_1 = self.normalization(img_as_tensor_1)
         img_as_tensor_2 = self.normalization(img_as_tensor_2)
-        img_as_tensor_3 = self.normalization(img_as_tensor_3)
+        # img_as_tensor_3 = self.normalization(img_as_tensor_3)
 
         ts1 = self.parse_timestamp(single_image_name_1)
         ts2 = self.parse_timestamp(single_image_name_2)
-        ts3 = self.parse_timestamp(single_image_name_3)
+        # ts3 = self.parse_timestamp(single_image_name_3)
 
-        ts = np.stack([ts1, ts2, ts3], axis=0)
+        # ts = np.stack([ts1, ts2, ts3], axis=0)
+        ts = np.stack([ts1, ts2], axis=0)
 
         # Get label(class) of the image based on the cropped pandas column
         single_image_label = self.label_arr[index]
@@ -490,8 +592,8 @@ class CustomDatasetFromImagesTemporal(SatelliteDataset):
         # del img_as_tensor_3
 
         return (
-            (img_as_tensor_1, img_as_tensor_2, img_as_tensor_3),
-            (img_scale_1, img_scale_2, img_scale_3),
+            (img_as_tensor_1, img_as_tensor_2),
+            (img_scale_1, img_scale_2),
             ts,
             single_image_label,
         )
@@ -845,13 +947,25 @@ def build_fmow_dataset(is_train: bool, args) -> SatelliteDataset:
         )
     elif args.dataset_type == "naip":
         from util.naip_loader import (
-            NAIP_train_dataset,
-            NAIP_test_dataset,
             NAIP_CLASS_NUM,
+            NAIP_test_dataset,
+            NAIP_train_dataset,
         )
 
         dataset = NAIP_train_dataset if is_train else NAIP_test_dataset
         args.nb_classes = NAIP_CLASS_NUM
+    elif args.dataset_type == "spacenet":
+        r = 0.7
+        train_raster_list = raster_list[: int(r * len(raster_list))]
+        train_mask_list = mask_list[: int(r * len(mask_list))]
+        val_raster_list = raster_list[int(r * len(raster_list)) :]
+        val_mask_list = mask_list[int(r * len(mask_list)) :]
+        mean = CustomDatasetFromImages.mean
+        std = CustomDatasetFromImages.std
+        if is_train:
+            dataset = SpaceNetDataset(train_raster_list, train_mask_list, is_train)
+        else:
+            dataset = SpaceNetDataset(val_raster_list, val_mask_list, is_train)
     else:
         raise ValueError(f"Invalid dataset type: {args.dataset_type}")
 

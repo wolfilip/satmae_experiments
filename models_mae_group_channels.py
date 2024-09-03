@@ -7,10 +7,10 @@ from functools import partial
 
 import torch
 import torch.nn as nn
+from timm.models.vision_transformer import Block, PatchEmbed
 
-from timm.models.vision_transformer import PatchEmbed, Block
-
-from util.pos_embed import get_2d_sincos_pos_embed, get_1d_sincos_pos_embed_from_grid
+from util.pos_embed import (get_1d_sincos_pos_embed_from_grid,
+                            get_2d_sincos_pos_embed)
 
 
 class MaskedAutoencoderGroupChannelViT(nn.Module):

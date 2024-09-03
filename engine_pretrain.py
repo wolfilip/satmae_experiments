@@ -9,8 +9,8 @@ from typing import Iterable
 import torch
 import wandb
 
-import util.misc as misc
 import util.lr_sched as lr_sched
+import util.misc as misc
 
 
 def train_one_epoch(
@@ -142,7 +142,7 @@ def train_one_epoch_temporal(
         samples = [
             samples[0].to(device, non_blocking=True),
             samples[1].to(device, non_blocking=True),
-            samples[2].to(device, non_blocking=True),
+            # samples[2].to(device, non_blocking=True),
         ]
         # resolutions = [
         #     resolutions[0].to(device, non_blocking=True),

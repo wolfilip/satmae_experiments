@@ -7,31 +7,27 @@
 import argparse
 import datetime
 import json
-import numpy as np
 import os
 import time
 from pathlib import Path
 
-import wandb
-import torch
-import yaml
-import torch.backends.cudnn as cudnn
-from torch.utils.tensorboard import SummaryWriter
 import kornia.augmentation as K
-
-
+import numpy as np
 # assert timm.__version__ == "0.3.2"  # version check
 import timm.optim.optim_factory as optim_factory
-
-import util.misc as misc
-from util.datasets import build_fmow_dataset
-from util.misc import NativeScalerWithGradNormCount as NativeScaler
+import torch
+import torch.backends.cudnn as cudnn
+import wandb
+import yaml
+from torch.utils.tensorboard import SummaryWriter
 
 import models_mae
 import models_mae_group_channels
 import models_mae_temporal
-
+import util.misc as misc
 from engine_pretrain import train_one_epoch, train_one_epoch_temporal
+from util.datasets import build_fmow_dataset
+from util.misc import NativeScalerWithGradNormCount as NativeScaler
 
 
 def get_args_parser():
@@ -372,7 +368,7 @@ def main(args):
 
     # Set up wandb
     if global_rank == 0 and args.wandb is not None:
-        wandb.init(project=args.wandb, entity="mae-sentinel")
+        wandb.init(project=args.wandb)
         wandb.config.update(args)
         wandb.watch(model)
 

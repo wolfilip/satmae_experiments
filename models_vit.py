@@ -7,10 +7,10 @@
 
 from functools import partial
 
+import timm.models.vision_transformer
 import torch
 import torch.nn as nn
 
-import timm.models.vision_transformer
 from util.pos_embed import get_2d_sincos_pos_embed
 
 

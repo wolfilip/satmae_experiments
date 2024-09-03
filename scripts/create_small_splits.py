@@ -1,7 +1,7 @@
 import os
 from sklearn.model_selection import train_test_split
 
-path = '/home/filip/resics-45/'
+path = "/home/filip/resics-45/"
 
 # open("train-resisc-metadata.txt", "w") as metadata_file:
 #     for root, dirs, files in os.walk(path):
@@ -32,10 +32,10 @@ new_array = f.readlines()
 
 print(len(new_array))
 
-_, arr_small = train_test_split(new_array, test_size=0.1)
+_, arr_small = train_test_split(new_array, test_size=0.05)
 
 print(len(arr_small))
 
-f = open(path + "train-resisc-metadata-10pc.txt", "w")
+f = open(path + "train-resisc-metadata-5pc.txt", "w")
 
 f.writelines(arr_small)
