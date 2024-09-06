@@ -82,7 +82,7 @@ def get_args_parser():
         help="Name of model to train",
     )
 
-    parser.add_argument("--input_size", default=384, type=int, help="images input size")
+    parser.add_argument("--input_size", default=224, type=int, help="images input size")
     parser.add_argument("--patch_size", default=16, type=int, help="images input size")
 
     parser.add_argument(

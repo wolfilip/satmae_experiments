@@ -170,7 +170,7 @@ class SpaceNetDataset(SatelliteDataset):
         super().__init__(in_c=3)
         self.raster_list = raster_list
         self.mask_list = mask_list
-        self.s = 384
+        self.s = 224
         self.is_train = is_train
         self.transforms_train = transforms.Compose(
             [
@@ -211,7 +211,7 @@ class SpaceNetDataset(SatelliteDataset):
         )
         img = torch.from_numpy(img.astype("float32"))
         mask = torch.from_numpy(mask.astype("int64"))
-        # mask = F.one_hot(mask, num_classes=2).permute(2, 0, 1)
+        mask = F.one_hot(mask, num_classes=2).permute(2, 0, 1)
         # if self.is_train:
         #     image_and_mask = torch.cat([img, mask.unsqueeze(0)], dim=0)
         #     image_and_mask = self.transforms_train(image_and_mask)
@@ -220,8 +220,8 @@ class SpaceNetDataset(SatelliteDataset):
         #     mask = mask.squeeze(0).to(torch.int64)
         # else:
         #     img = self.transforms_val(img)
-            # img, mask = torch.split(image_and_mask, [3, 1])
-            # image_and_mask = self.transforms_val(image_and_mask)
+        # img, mask = torch.split(image_and_mask, [3, 1])
+        # image_and_mask = self.transforms_val(image_and_mask)
         return img, mask
 
 

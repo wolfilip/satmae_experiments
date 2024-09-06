@@ -22,6 +22,166 @@ import numpy as np
 from util.pos_embed import get_2d_sincos_pos_embed
 
 
+def up_and_add(x, y):
+    return (
+        F.interpolate(
+            x, size=(y.size(2), y.size(3)), mode="bilinear", align_corners=True
+        )
+        + y
+    )
+
+
+class FPN_fuse(nn.Module):
+    def __init__(self, feature_channels=[256, 512, 1024, 2048], fpn_out=256):
+        super(FPN_fuse, self).__init__()
+        assert feature_channels[0] == fpn_out
+        self.conv1x1 = nn.ModuleList(
+            [
+                nn.Conv2d(ft_size, fpn_out, kernel_size=1)
+                for ft_size in feature_channels[1:]
+            ]
+        )
+        self.smooth_conv = nn.ModuleList(
+            [nn.Conv2d(fpn_out, fpn_out, kernel_size=3, padding=1)]
+            * (len(feature_channels) - 1)
+        )
+        self.conv_fusion = nn.Sequential(
+            nn.Conv2d(
+                len(feature_channels) * fpn_out,
+                fpn_out,
+                kernel_size=3,
+                padding=1,
+                bias=False,
+            ),
+            nn.BatchNorm2d(fpn_out),
+            nn.ReLU(inplace=True),
+        )
+
+    def forward(self, features):
+
+        features[1:] = [
+            conv1x1(feature) for feature, conv1x1 in zip(features[1:], self.conv1x1)
+        ]
+        P = [
+            up_and_add(features[i], features[i - 1])
+            for i in reversed(range(1, len(features)))
+        ]
+        P = [smooth_conv(x) for smooth_conv, x in zip(self.smooth_conv, P)]
+        P = list(reversed(P))
+        P.append(features[-1])  # P = [P1, P2, P3, P4]
+        H, W = P[0].size(2), P[0].size(3)
+        P[1:] = [
+            F.interpolate(feature, size=(H, W), mode="bilinear", align_corners=True)
+            for feature in P[1:]
+        ]
+
+        x = self.conv_fusion(torch.cat((P), dim=1))
+        return x
+
+
+class PSPModule(nn.Module):
+    # In the original inmplementation they use precise RoI pooling
+    # Instead of using adaptative average pooling
+    def __init__(self, in_channels, bin_sizes=[1, 2, 4, 6]):
+        super(PSPModule, self).__init__()
+        out_channels = in_channels // len(bin_sizes)
+        self.stages = nn.ModuleList(
+            [self._make_stages(in_channels, out_channels, b_s) for b_s in bin_sizes]
+        )
+        self.bottleneck = nn.Sequential(
+            nn.Conv2d(
+                in_channels + (out_channels * len(bin_sizes)),
+                in_channels,
+                kernel_size=3,
+                padding=1,
+                bias=False,
+            ),
+            nn.BatchNorm2d(in_channels),
+            nn.ReLU(inplace=True),
+            nn.Dropout2d(0.1),
+        )
+
+    def _make_stages(self, in_channels, out_channels, bin_sz):
+        prior = nn.AdaptiveAvgPool2d(output_size=bin_sz)
+        conv = nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=False)
+        bn = nn.BatchNorm2d(out_channels)
+        relu = nn.ReLU(inplace=True)
+        return nn.Sequential(prior, conv, bn, relu)
+
+    def forward(self, features):
+        h, w = features.size()[2], features.size()[3]
+        pyramids = [features]
+        pyramids.extend(
+            [
+                F.interpolate(
+                    stage(features), size=(h, w), mode="bilinear", align_corners=True
+                )
+                for stage in self.stages
+            ]
+        )
+        output = self.bottleneck(torch.cat(pyramids, dim=1))
+        return output
+
+
+class DoubleConv(nn.Module):
+    """(convolution => [BN] => ReLU) * 2"""
+
+    def __init__(self, in_channels, out_channels, mid_channels=None):
+        super().__init__()
+        if not mid_channels:
+            mid_channels = out_channels
+        self.double_conv = nn.Sequential(
+            nn.Conv2d(in_channels, mid_channels, kernel_size=3, padding=1),
+            nn.BatchNorm2d(mid_channels),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(mid_channels, out_channels, kernel_size=3, padding=1),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+        )
+
+    def forward(self, x):
+        return self.double_conv(x)
+
+
+class Up(nn.Module):
+    """Upscaling then double conv"""
+
+    def __init__(self, in_channels, out_channels, bilinear=True):
+        super().__init__()
+
+        # if bilinear, use the normal convolutions to reduce the number of channels
+        if bilinear:
+            self.up = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
+            self.conv = DoubleConv(in_channels, out_channels, in_channels // 2)
+        else:
+            self.up = nn.ConvTranspose2d(
+                in_channels, in_channels // 2, kernel_size=2, stride=2
+            )
+            self.conv = DoubleConv(in_channels, out_channels)
+
+    def forward(self, x1, x2):
+        x1 = self.up(x1)
+        # input is CHW
+        diffY = x2.size()[2] - x1.size()[2]
+        diffX = x2.size()[3] - x1.size()[3]
+
+        x1 = F.pad(x1, [diffX // 2, diffX - diffX // 2, diffY // 2, diffY - diffY // 2])
+        # if you have padding issues, see
+        # https://github.com/HaiyongJiang/U-Net-Pytorch-Unstructured-Buggy/commit/0e854509c2cea854e247a9c615f175f76fbb2e3a
+        # https://github.com/xiaopeng-liao/Pytorch-UNet/commit/8ebac70e633bac59fc22bb5195e513d5832fb3bd
+        x = torch.cat([x2, x1], dim=1)
+        return self.conv(x)
+
+
+class OutConv(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super().__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=1)
+
+    def forward(self, x):
+        return self.conv(x)
+
+
 class NestedTensor(object):
     def __init__(self, tensors, mask: Optional[Tensor]):
         self.tensors = tensors
@@ -376,22 +536,6 @@ class TPN_DecoderLayer(TransformerDecoderLayer):
         return tgt, attn2
 
 
-# class ShrinkLayer(TransformerEncoderLayer):
-#     def forward(self, x, shrink=False):
-#         if shrink:
-#             x = self.attn(
-#                 query=self.norm1(x[0]),
-#                 key=self.norm1(x[1]),
-#                 value=self.norm1(x[1]),
-#                 identity=x[0],
-#             )
-#         else:
-#             x = self.attn(self.norm1(x), identity=x)
-
-#         x = self.ffn(self.norm2(x), identity=x)
-#         return x
-
-
 class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
     """Vision Transformer with support for global average pooling"""
 
@@ -432,7 +576,7 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
             # decoder layer
             decoder_layer = TPN_DecoderLayer(
                 d_model=kwargs["embed_dim"],
-                nhead=8,
+                nhead=2,
                 dim_feedforward=kwargs["embed_dim"] * 4,
             )
             decoder = TPN_Decoder(decoder_layer, 3)
@@ -449,9 +593,21 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
 
         self.criterion = SetCriterion(2, losses=["masks", "labels"])
 
-        for block in self.blocks:
-            for param in block.parameters():
-                param.requires_grad = False
+        # for block in self.blocks:
+        #     for param in block.parameters():
+        #         param.requires_grad = False
+
+        feature_channels = [1024, 1024, 1024]
+
+        fpn_out = 1024
+        num_classes = 2
+        self.input_size = (224, 224)
+
+        self.PPN = PSPModule(feature_channels[-1])
+        self.FPN = FPN_fuse(feature_channels, fpn_out=fpn_out)
+        self.head = nn.Conv2d(fpn_out, num_classes, kernel_size=3, padding=1)
+        self.up_1 = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
+        self.up_2 = nn.Upsample(scale_factor=4, mode="bilinear", align_corners=True)
 
     def encoder_forward(self, x):
         B = x.shape[0]
@@ -543,10 +699,45 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
 
         return out
 
+    def decoder_upernet(self, features):
+
+        features[0] = torch.unflatten(features[0], dim=1, sizes=(14, 14))
+        features[1] = torch.unflatten(features[1], dim=1, sizes=(14, 14))
+        features[2] = torch.unflatten(features[2], dim=1, sizes=(14, 14))
+        features[0] = torch.permute(features[0], (0, 3, 1, 2))
+        features[1] = torch.permute(features[1], (0, 3, 1, 2))
+        features[2] = torch.permute(features[2], (0, 3, 1, 2))
+
+        features[1] = self.up_1(features[1])
+        features[0] = self.up_2(features[0])
+
+        features[-1] = self.PPN(features[-1])
+        x = self.head(self.FPN(features))
+
+        x = F.interpolate(x, size=self.input_size, mode="bilinear")
+        return x
+
     def forward(self, x):
         x = self.encoder_forward(x)
-        x = self.decoder_forward(x)
+        x = self.decoder_upernet(x)
         return x
+
+    def unpatchify(self, x, p, c):
+        """
+        x: (N, L, patch_size**2 *C)
+        p: Patch embed patch size
+        c: Num channels
+        imgs: (N, C, H, W)
+        """
+        # c = self.in_c
+        # p = self.patch_embed.patch_size[0]
+        h = w = int(x.shape[1] ** 0.5)
+        assert h * w == x.shape[1]
+
+        x = x.reshape(shape=(x.shape[0], h, w, p, p, c))
+        x = torch.einsum("nhwpqc->nchpwq", x)
+        imgs = x.reshape(shape=(x.shape[0], c, h * p, h * p))
+        return imgs
 
     def d4_to_d3(self, t):
         return t.flatten(-2).transpose(-1, -2)
@@ -575,13 +766,15 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
 
     def get_bce_loss(self, pred, mask):
         bce = nn.BCEWithLogitsLoss()
-        m = nn.Sigmoid()
+        # m = nn.Sigmoid()
+        # pred = pred.argmax(1)
+        # loss = F.binary_cross_entropy_with_logits(pred, mask)
         loss = bce(pred, mask)
         return loss
 
     def get_iou(self, pred, target, nclass):
-        target = target.to(torch.float32)
-        pred = torch.sigmoid(pred)
+        # target = target.to(torch.float32)
+        # pred = torch.sigmoid(pred)
 
         # print(torch.unique(pred[0].argmax(0)))
         # plt.imshow(target[0].argmax(0).cpu())
@@ -590,11 +783,11 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         # plt.imshow(pred[0].argmax(0).cpu())
         # print(torch.unique(pred[0].argmax(0).cpu()))
         # plt.savefig("bar_2.png")
-        pred = torch.argmax(pred, 1)
-        pred = F.one_hot(pred, num_classes=nclass).permute(0, 3, 1, 2)
-        pred = pred.cpu().detach().numpy().astype(int)
+        # pred = torch.argmax(pred, 1)
+        # pred = F.one_hot(pred, num_classes=nclass).permute(0, 3, 1, 2)
+        # pred = pred.cpu().detach().numpy().astype(int)
 
-        target = target.cpu().detach().numpy().astype(int)
+        # target = target.cpu().detach().numpy().astype(int)
         bla_1 = (pred & target).sum()
         bla_2 = (pred | target).sum()
         iou = (pred & target).sum() / ((pred | target).sum() + 1e-6)
@@ -713,7 +906,8 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         area_union = area_pred_label + area_label - area_intersect
         return area_intersect, area_union, area_pred_label, area_label
 
-    def total_intersect_and_union(self,
+    def total_intersect_and_union(
+        self,
         results,
         gt_seg_maps,
         num_classes,
@@ -766,15 +960,17 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
             total_area_pred_label,
             total_area_label,
         )
-    
 
-    def total_area_to_metrics(self, total_area_intersect,
-                          total_area_union,
-                          total_area_pred_label,
-                          total_area_label,
-                          metrics=['mIoU'],
-                          nan_to_num=None,
-                          beta=1):
+    def total_area_to_metrics(
+        self,
+        total_area_intersect,
+        total_area_union,
+        total_area_pred_label,
+        total_area_label,
+        metrics=["mIoU"],
+        nan_to_num=None,
+        beta=1,
+    ):
         """Calculate evaluation metrics
         Args:
             total_area_intersect (ndarray): The intersection of prediction and
@@ -794,53 +990,59 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         """
         if isinstance(metrics, str):
             metrics = [metrics]
-        allowed_metrics = ['mIoU', 'mDice', 'mFscore']
+        allowed_metrics = ["mIoU", "mDice", "mFscore"]
         if not set(metrics).issubset(set(allowed_metrics)):
-            raise KeyError('metrics {} is not supported'.format(metrics))
+            raise KeyError("metrics {} is not supported".format(metrics))
 
         all_acc = total_area_intersect.sum() / total_area_label.sum()
-        ret_metrics = OrderedDict({'aAcc': all_acc})
+        ret_metrics = OrderedDict({"aAcc": all_acc})
         for metric in metrics:
-            if metric == 'mIoU':
+            if metric == "mIoU":
                 iou = total_area_intersect / total_area_union
                 acc = total_area_intersect / total_area_label
-                ret_metrics['IoU'] = iou
-                ret_metrics['Acc'] = acc
-            elif metric == 'mDice':
-                dice = 2 * total_area_intersect / (
-                    total_area_pred_label + total_area_label)
+                ret_metrics["IoU"] = iou
+                ret_metrics["Acc"] = acc
+            elif metric == "mDice":
+                dice = (
+                    2
+                    * total_area_intersect
+                    / (total_area_pred_label + total_area_label)
+                )
                 acc = total_area_intersect / total_area_label
-                ret_metrics['Dice'] = dice
-                ret_metrics['Acc'] = acc
-            elif metric == 'mFscore':
+                ret_metrics["Dice"] = dice
+                ret_metrics["Acc"] = acc
+            elif metric == "mFscore":
                 precision = total_area_intersect / total_area_pred_label
                 recall = total_area_intersect / total_area_label
                 f_value = torch.tensor(
-                    [f_score(x[0], x[1], beta) for x in zip(precision, recall)])
-                ret_metrics['Fscore'] = f_value
-                ret_metrics['Precision'] = precision
-                ret_metrics['Recall'] = recall
+                    [f_score(x[0], x[1], beta) for x in zip(precision, recall)]
+                )
+                ret_metrics["Fscore"] = f_value
+                ret_metrics["Precision"] = precision
+                ret_metrics["Recall"] = recall
 
-        ret_metrics = {
-            metric: value.numpy()
-            for metric, value in ret_metrics.items()
-        }
+        ret_metrics = {metric: value.numpy() for metric, value in ret_metrics.items()}
         if nan_to_num is not None:
-            ret_metrics = OrderedDict({
-                metric: np.nan_to_num(metric_value, nan=nan_to_num)
-                for metric, metric_value in ret_metrics.items()
-            })
+            ret_metrics = OrderedDict(
+                {
+                    metric: np.nan_to_num(metric_value, nan=nan_to_num)
+                    for metric, metric_value in ret_metrics.items()
+                }
+            )
         return ret_metrics
-    
-    def eval_metrics(self, results,
-                 gt_seg_maps,
-                 num_classes,
-                 ignore_index,
-                 metrics=['mIoU'],
-                 nan_to_num=None,
-                 label_map=dict(),
-                 reduce_zero_label=False,
-                 beta=1):
+
+    def eval_metrics(
+        self,
+        results,
+        gt_seg_maps,
+        num_classes,
+        ignore_index,
+        metrics=["mIoU"],
+        nan_to_num=None,
+        label_map=dict(),
+        reduce_zero_label=False,
+        beta=1,
+    ):
         """Calculate evaluation metrics
         Args:
             results (list[ndarray] | list[str]): List of prediction segmentation
@@ -860,14 +1062,28 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
             ndarray: Per category evaluation metrics, shape (num_classes, ).
         """
 
-        total_area_intersect, total_area_union, total_area_pred_label, \
-            total_area_label = self.total_intersect_and_union(
-                results, gt_seg_maps, num_classes, ignore_index, label_map,
-                reduce_zero_label)
-        ret_metrics = self.total_area_to_metrics(total_area_intersect, total_area_union,
-                                            total_area_pred_label,
-                                            total_area_label, metrics, nan_to_num,
-                                            beta)
+        (
+            total_area_intersect,
+            total_area_union,
+            total_area_pred_label,
+            total_area_label,
+        ) = self.total_intersect_and_union(
+            results,
+            gt_seg_maps,
+            num_classes,
+            ignore_index,
+            label_map,
+            reduce_zero_label,
+        )
+        ret_metrics = self.total_area_to_metrics(
+            total_area_intersect,
+            total_area_union,
+            total_area_pred_label,
+            total_area_label,
+            metrics,
+            nan_to_num,
+            beta,
+        )
 
         return ret_metrics
 

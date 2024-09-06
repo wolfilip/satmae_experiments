@@ -250,7 +250,7 @@ def train_one_epoch_segmentation(model: torch.nn.Module, criterion: torch.nn.Mod
             # cv2.imwrite(os.path.join("/home/filip/satmae_experiments", "object_result.png"), bla.cpu().detach().numpy().transpose(),)
             loss_value, miou = calc_metrics(model, (samples, targets), device, 0, 0, nclass=2)
 
-        # loss_value = loss.item()
+        # loss_value = loss_value.item()
         # print(miou)
 
         if not math.isfinite(loss_value):
@@ -540,20 +540,20 @@ def calc_metrics(model, data, device, epoch_loss, epoch_iou, nclass):
     epoch_iou = epoch_iou
     data = data.to(device)
     pred = model(data)
-    bla = pred['pred_masks'].argmax(1)
+    # bla = pred['pred_masks'].argmax(1)
     # cv2.imwrite(os.path.join("/home/filip/satmae_experiments", "object_result.png"), 255*pred["pred"].cpu().detach().numpy().transpose(),)
-    # if not model.training:
-    #     f, axarr = plt.subplots(3)
-    #     axarr[0].imshow(data.cpu()[0].permute(1, 2, 0))
-    #     axarr[1].imshow(mask.cpu()[0])
-    #     axarr[2].imshow(pred['pred_masks'].argmax(1).cpu()[0])
-    #     plt.savefig("satmae_experiments/foo.png")
-    #     plt.close()
-    loss = model.loss(pred, mask)
-    loss = sum(loss.values())
+    if model.training:
+        f, axarr = plt.subplots(3)
+        axarr[0].imshow(data.cpu()[0].permute(1, 2, 0))
+        axarr[1].imshow(mask.argmax(1).cpu()[0])
+        axarr[2].imshow(pred.argmax(1).cpu()[0])
+        plt.savefig("foo.png")
+        plt.close()
+    loss = model.get_bce_loss(pred, mask.float())
+    # loss = sum(loss.values())
     # loss = model.get_bce_loss(pred["pred_logits"], mask)
     miou = MeanIoU(num_classes=2)
     miou = miou.to(device)
-    mIoU = miou(bla, mask)
+    mIoU = miou(pred.long(), mask.long())
     # IoU = model.get_iou(pred["pred"], mask, nclass)
     return loss, mIoU
