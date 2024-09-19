@@ -211,15 +211,18 @@ class SpaceNetDataset(SatelliteDataset):
         )
         img = torch.from_numpy(img.astype("float32"))
         mask = torch.from_numpy(mask.astype("int64"))
-        mask = F.one_hot(mask, num_classes=2).permute(2, 0, 1)
+        # mask = F.one_hot(mask, num_classes=2).permute(2, 0, 1)
         # if self.is_train:
-        #     image_and_mask = torch.cat([img, mask.unsqueeze(0)], dim=0)
+        #     image_and_mask = torch.cat([img, mask], dim=0)
         #     image_and_mask = self.transforms_train(image_and_mask)
-        #     img, mask = torch.split(image_and_mask, [3, 1])
+        #     img, mask = torch.split(image_and_mask, [3, 2])
         #     img = self.transforms_distort(img)
-        #     mask = mask.squeeze(0).to(torch.int64)
+        #     mask = mask.to(torch.int64)
         # else:
-        #     img = self.transforms_val(img)
+        #     image_and_mask = torch.cat([img, mask], dim=0)
+        #     image_and_mask = self.transforms_val(image_and_mask)
+        #     img, mask = torch.split(image_and_mask, [3, 2])
+        #     mask = mask.to(torch.int64)
         # img, mask = torch.split(image_and_mask, [3, 1])
         # image_and_mask = self.transforms_val(image_and_mask)
         return img, mask
@@ -960,8 +963,6 @@ def build_fmow_dataset(is_train: bool, args) -> SatelliteDataset:
         train_mask_list = mask_list[: int(r * len(mask_list))]
         val_raster_list = raster_list[int(r * len(raster_list)) :]
         val_mask_list = mask_list[int(r * len(mask_list)) :]
-        mean = CustomDatasetFromImages.mean
-        std = CustomDatasetFromImages.std
         if is_train:
             dataset = SpaceNetDataset(train_raster_list, train_mask_list, is_train)
         else:

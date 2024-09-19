@@ -23,6 +23,9 @@ import os
 from torchvision.utils import draw_segmentation_masks
 import matplotlib.pyplot as plt
 from torchmetrics.segmentation import MeanIoU
+from torchmetrics import JaccardIndex
+
+from models_vit_segmentaton import DiceLoss
 
 
 def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
@@ -217,6 +220,8 @@ def train_one_epoch_segmentation(model: torch.nn.Module, criterion: torch.nn.Mod
 
     optimizer.zero_grad()
 
+    cnt = 0
+
     if log_writer is not None:
         print('log_dir: {}'.format(log_writer.log_dir))
 
@@ -248,7 +253,7 @@ def train_one_epoch_segmentation(model: torch.nn.Module, criterion: torch.nn.Mod
             # # object_result_colored = maskrcnn_colorencode(samples, object_result.cpu().detach().numpy(), color_list)
             # cv2.imwrite(os.path.join("/home/filip/satmae_experiments", "object_result.png"), 255*bla.squeeze(0).cpu().detach().numpy().transpose())
             # cv2.imwrite(os.path.join("/home/filip/satmae_experiments", "object_result.png"), bla.cpu().detach().numpy().transpose(),)
-            loss_value, miou = calc_metrics(model, (samples, targets), device, 0, 0, nclass=2)
+            loss_value, miou = calc_metrics(model, (samples, targets), device, epoch, cnt, 0, 0, nclass=2)
 
         # loss_value = loss_value.item()
         # print(miou)
@@ -409,13 +414,15 @@ def evaluate_temporal(data_loader, model, device):
 
 
 @torch.no_grad()
-def evaluate_segmentation(data_loader, model, device):
+def evaluate_segmentation(data_loader, model, device, epoch):
 
     metric_logger = misc.MetricLogger(delimiter="  ")
     header = 'Test:'
 
     # switch to evaluation mode
     model.eval()
+
+    cnt = 0
 
     for batch in metric_logger.log_every(data_loader, 10, header):
         images = batch[0]
@@ -427,15 +434,17 @@ def evaluate_segmentation(data_loader, model, device):
         # print("before pass model")
         # compute output
         with torch.cuda.amp.autocast():
-            loss, IoU = calc_metrics(model, (images, target), device, 0, 0, nclass=2)
+            loss, IoU = calc_metrics(model, (images, target), device, cnt, epoch, 0, 0, nclass=2)
             # target = target.to(torch.float32)
             # pred = model(images)
             # loss = model.get_bce_loss(pred, target)
             # IoU = model.get_iou(pred, target, 2)
 
+        cnt += images.shape[0]
+
         batch_size = images.shape[0]
         metric_logger.update(loss=loss)
-        metric_logger.meters['IoU'].update(IoU.item(), n=batch_size)
+        metric_logger.meters['IoU'].update(IoU, n=batch_size)
 
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
@@ -534,26 +543,51 @@ def remove_small_mat(seg_mat, seg_obj, threshold=0.1):
         # sorted_mat_index = np.argsort(-np.asarray(mat_area))
     return seg_mat_new
 
-def calc_metrics(model, data, device, epoch_loss, epoch_iou, nclass):
+def calc_metrics(model, data, device, cnt, epoch, epoch_loss, epoch_iou, nclass):
     (data, mask) = data
     epoch_loss = epoch_loss
     epoch_iou = epoch_iou
     data = data.to(device)
     pred = model(data)
+    miou = JaccardIndex(task='binary', zero_division=1.0)
+    # dice_loss = DiceLoss()
+    # miou = MeanIoU(include_background=False, num_classes=1)
+    miou = miou.to(device)
+    mask_one_hot = F.one_hot(mask, num_classes=2).permute(0, 3, 1, 2)
+    # pred_bool = model.sigmoid(pred) >= 0.5
     # bla = pred['pred_masks'].argmax(1)
-    # cv2.imwrite(os.path.join("/home/filip/satmae_experiments", "object_result.png"), 255*pred["pred"].cpu().detach().numpy().transpose(),)
-    if model.training:
-        f, axarr = plt.subplots(3)
-        axarr[0].imshow(data.cpu()[0].permute(1, 2, 0))
-        axarr[1].imshow(mask.argmax(1).cpu()[0])
-        axarr[2].imshow(pred.argmax(1).cpu()[0])
-        plt.savefig("foo.png")
-        plt.close()
-    loss = model.get_bce_loss(pred, mask.float())
+    # cv2.imwrite(os.path.join("/home/filip/satmae_experiments", "object_result.png"), 255*ppppred["pred"].cpu().detach().numpy().transpose(),)
+    miou_sum = 0
+    if not model.training:
+        for i in range(data.shape[0]):
+            if epoch >= 200:
+                f, axarr = plt.subplots(3)
+                axarr[0].imshow(data.cpu()[i].permute(1, 2, 0))
+                axarr[1].imshow(mask_one_hot.argmax(1).cpu()[i])
+                axarr[2].imshow(pred.argmax(1).cpu()[i])
+                plt.savefig("satmae_experiments/image_results/frozen/img_" + str(cnt + i) + ".png")
+                plt.close()
+            # pred_bool = model.sigmoid(pred[i]) >= 0.5
+            mIoU = miou(pred.argmax(1)[i], mask[i]).item()
+            if torch.all(mask[i] == 0) and torch.all(pred.argmax(1)[i] == 0):
+                mIoU = 1.0
+            f = open("satmae_experiments/frozen_results/image_results_iou_" + str(epoch) + ".txt", "a")
+            f.write("img_" + str(cnt + i) + ": " + str(mIoU) + "\n")
+            f.close()
+            miou_sum += mIoU
+        # return model.get_bce_loss(pred, mask_one_hot.float()) + dice_loss(pred, mask_one_hot.float()), miou_sum / data.shape[0]
+        return model.get_bce_loss(pred, mask_one_hot.float()), miou_sum / data.shape[0]
+    
+    mask_one_hot = F.one_hot(mask, num_classes=2).permute(0, 3, 1, 2)
+    # loss_1 = model.get_bce_loss(pred, mask.float())
+    loss_1 = model.get_bce_loss(pred, mask_one_hot.float())
+    # loss_2 = dice_loss(pred, mask_one_hot.float())
     # loss = sum(loss.values())
     # loss = model.get_bce_loss(pred["pred_logits"], mask)
-    miou = MeanIoU(num_classes=2)
-    miou = miou.to(device)
-    mIoU = miou(pred.long(), mask.long())
-    # IoU = model.get_iou(pred["pred"], mask, nclass)
-    return loss, mIoU
+    # pred_bool = model.sigmoid(pred) >= 0.5
+    # pred_bool = pred_bool[:, 0:1, :, :]
+    mIoU = miou(pred.argmax(1), mask)
+    # if torch.all(mask == 0) and torch.all(pred.argmax(1) == 0):
+    #     mIoU = 1.0
+    # IoU = model.get_iou(pred, mask, nclass)
+    return loss_1, mIoU

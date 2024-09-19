@@ -22,6 +22,50 @@ import numpy as np
 from util.pos_embed import get_2d_sincos_pos_embed
 
 
+class DiceLoss(nn.Module):
+    """Dice Loss PyTorch
+        Created by: Zhang Shuai
+        Email: shuaizzz666@gmail.com
+        dice_loss = 1 - 2*p*t / (p^2 + t^2). p and t represent predict and target.
+    Args:
+        weight: An array of shape [C,]
+        predict: A float32 tensor of shape [N, C, *], for Semantic segmentation task is [N, C, H, W]
+        target: A int64 tensor of shape [N, *], for Semantic segmentation task is [N, H, W]
+    Return:
+        diceloss
+    """
+
+    def __init__(self, weight=None):
+        super(DiceLoss, self).__init__()
+        if weight is not None:
+            weight = torch.Tensor(weight)
+            self.weight = weight / torch.sum(weight)  # Normalized weight
+        self.smooth = 1e-5
+
+    def forward(self, predict, target):
+        N, C = predict.size()[:2]
+        predict = predict.view(N, C, -1)  # (N, C, *)
+        target = target.view(N, C, -1)  # (N, 1, *)
+
+        predict = F.softmax(predict, dim=1)  # (N, C, *) ==> (N, C, *)
+        ## convert target(N, 1, *) into one hot vector (N, C, *)
+        # target_onehot = torch.zeros(predict.size()).cuda()  # (N, 1, *) ==> (N, C, *)
+        # target_onehot.scatter_(1, target, 1)  # (N, C, *)
+
+        intersection = torch.sum(predict * target, dim=2)  # (N, C)
+        union = torch.sum(predict.pow(2), dim=2) + torch.sum(target, dim=2)  # (N, C)
+        ## p^2 + t^2 >= 2*p*t, target_onehot^2 == target_onehot
+        dice_coef = (2 * intersection + self.smooth) / (union + self.smooth)  # (N, C)
+
+        if hasattr(self, "weight"):
+            if self.weight.type() != predict.type():
+                self.weight = self.weight.type_as(predict)
+                dice_coef = dice_coef * self.weight * C  # (N, C)
+        dice_loss = 1 - torch.mean(dice_coef)  # 1
+
+        return dice_loss
+
+
 def up_and_add(x, y):
     return (
         F.interpolate(
@@ -588,19 +632,19 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         self.input_proj = input_proj
         self.proj_norm = proj_norm
         self.class_embed = nn.Linear(kwargs["embed_dim"], self.num_classes + 1)
-        self.image_size_train = 384
-        self.image_size_val = 384
+        self.image_size_train = 224
+        self.image_size_val = 224
 
         self.criterion = SetCriterion(2, losses=["masks", "labels"])
 
-        # for block in self.blocks:
-        #     for param in block.parameters():
-        #         param.requires_grad = False
+        for block in self.blocks:
+            for param in block.parameters():
+                param.requires_grad = False
 
         feature_channels = [1024, 1024, 1024]
 
         fpn_out = 1024
-        num_classes = 2
+        num_classes = 2 
         self.input_size = (224, 224)
 
         self.PPN = PSPModule(feature_channels[-1])
@@ -608,6 +652,9 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         self.head = nn.Conv2d(fpn_out, num_classes, kernel_size=3, padding=1)
         self.up_1 = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
         self.up_2 = nn.Upsample(scale_factor=4, mode="bilinear", align_corners=True)
+        self.up_3 = nn.Upsample(scale_factor=8, mode="bilinear", align_corners=True)
+        self.up_4 = nn.Upsample(scale_factor=16, mode="bilinear", align_corners=True)
+        self.sigmoid = nn.Sigmoid()
 
     def encoder_forward(self, x):
         B = x.shape[0]
@@ -625,11 +672,13 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         for i, blk in enumerate(self.blocks):
             x = blk(x)
             if i in [7, 15, 23]:
+                # if i in [5, 11, 17, 23]:
+                # if i in [3, 8, 13, 18, 23]:
                 outs.append(x)
 
         return outs
 
-    def decoder_forward(self, inputs):
+    def decoder_segvit(self, inputs):
         x = []
         for stage_ in inputs[:3]:
             x.append(self.d4_to_d3(stage_) if stage_.dim() > 3 else stage_)
@@ -704,10 +753,16 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         features[0] = torch.unflatten(features[0], dim=1, sizes=(14, 14))
         features[1] = torch.unflatten(features[1], dim=1, sizes=(14, 14))
         features[2] = torch.unflatten(features[2], dim=1, sizes=(14, 14))
+        # features[3] = torch.unflatten(features[3], dim=1, sizes=(14, 14))
+        # features[4] = torch.unflatten(features[4], dim=1, sizes=(14, 14))
         features[0] = torch.permute(features[0], (0, 3, 1, 2))
         features[1] = torch.permute(features[1], (0, 3, 1, 2))
         features[2] = torch.permute(features[2], (0, 3, 1, 2))
+        # features[3] = torch.permute(features[3], (0, 3, 1, 2))
+        # features[4] = torch.permute(features[4], (0, 3, 1, 2))
 
+        # features[3] = self.up_1(features[3])
+        # features[2] = self.up_1(features[2])
         features[1] = self.up_1(features[1])
         features[0] = self.up_2(features[0])
 
@@ -769,6 +824,7 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         # m = nn.Sigmoid()
         # pred = pred.argmax(1)
         # loss = F.binary_cross_entropy_with_logits(pred, mask)
+        # loss = bce(torch.clamp(pred, min=0.0001, max=1.0), torch.clamp(mask, min=0.0001, max=1.0))
         loss = bce(pred, mask)
         return loss
 

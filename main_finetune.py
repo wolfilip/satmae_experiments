@@ -41,6 +41,8 @@ from util.datasets import build_fmow_dataset
 from util.misc import NativeScalerWithGradNormCount as NativeScaler
 from util.pos_embed import interpolate_pos_embed
 
+# torch.autograd.detect_anomaly(True)
+
 
 def get_args_parser():
     parser = argparse.ArgumentParser(
@@ -659,7 +661,7 @@ def main(args):
         if args.model_type == "temporal":
             test_stats = evaluate_temporal(data_loader_val, model, device)
         elif args.model_type == "segmentation":
-            test_stats = evaluate_segmentation(data_loader_val, model, device)
+            test_stats = evaluate_segmentation(data_loader_val, model, device, epoch)
         else:
             test_stats = evaluate(data_loader_val, model, device)
 
