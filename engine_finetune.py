@@ -557,25 +557,30 @@ def calc_metrics(model, data, device, cnt, epoch, epoch_loss, epoch_iou, nclass)
     # pred_bool = model.sigmoid(pred) >= 0.5
     # bla = pred['pred_masks'].argmax(1)
     # cv2.imwrite(os.path.join("/home/filip/satmae_experiments", "object_result.png"), 255*ppppred["pred"].cpu().detach().numpy().transpose(),)
+    if not os.path.exists("satmae_experiments/image_results/3_blocks_conv/"):
+        os.makedirs("satmae_experiments/image_results/3_blocks_conv/")
+    if not os.path.exists("satmae_experiments/3_blocks_conv_results/"):
+        os.makedirs("satmae_experiments/3_blocks_conv_results/")
     miou_sum = 0
     if not model.training:
         for i in range(data.shape[0]):
-            if epoch >= 200:
+            if epoch == 400:
                 f, axarr = plt.subplots(3)
                 axarr[0].imshow(data.cpu()[i].permute(1, 2, 0))
                 axarr[1].imshow(mask_one_hot.argmax(1).cpu()[i])
                 axarr[2].imshow(pred.argmax(1).cpu()[i])
-                plt.savefig("satmae_experiments/image_results/frozen/img_" + str(cnt + i) + ".png")
+                plt.savefig("satmae_experiments/image_results/3_blocks_conv/img_" + str(cnt + i) + ".png")
                 plt.close()
             # pred_bool = model.sigmoid(pred[i]) >= 0.5
             mIoU = miou(pred.argmax(1)[i], mask[i]).item()
             if torch.all(mask[i] == 0) and torch.all(pred.argmax(1)[i] == 0):
                 mIoU = 1.0
-            f = open("satmae_experiments/frozen_results/image_results_iou_" + str(epoch) + ".txt", "a")
+            f = open("satmae_experiments/3_blocks_conv_results/image_results_iou_" + str(epoch) + ".txt", "a")
             f.write("img_" + str(cnt + i) + ": " + str(mIoU) + "\n")
             f.close()
             miou_sum += mIoU
         # return model.get_bce_loss(pred, mask_one_hot.float()) + dice_loss(pred, mask_one_hot.float()), miou_sum / data.shape[0]
+        # if miou_sum / data.shape[0] > best_miou
         return model.get_bce_loss(pred, mask_one_hot.float()), miou_sum / data.shape[0]
     
     mask_one_hot = F.one_hot(mask, num_classes=2).permute(0, 3, 1, 2)

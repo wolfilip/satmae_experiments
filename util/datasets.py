@@ -32,7 +32,7 @@ log.setLevel(logging.ERROR)
 Image.MAX_IMAGE_PIXELS = None
 warnings.simplefilter("ignore", Image.DecompressionBombWarning)
 
-DataFolder = "/home/filip/SpaceNetV1/"
+DataFolder = "/storage/local/ssd/filipwolf-workspace/SpaceNetV1/"
 Raster = DataFolder + "3band/"
 Vector = DataFolder + "geojson/"
 Mask = DataFolder + "mask/"
@@ -959,6 +959,8 @@ def build_fmow_dataset(is_train: bool, args) -> SatelliteDataset:
         args.nb_classes = NAIP_CLASS_NUM
     elif args.dataset_type == "spacenet":
         r = 0.7
+        # train_raster_list = raster_list[: int(0.1 * len(raster_list))]
+        # train_mask_list = mask_list[: int(0.1 * len(mask_list))]
         train_raster_list = raster_list[: int(r * len(raster_list))]
         train_mask_list = mask_list[: int(r * len(mask_list))]
         val_raster_list = raster_list[int(r * len(raster_list)) :]
