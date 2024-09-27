@@ -251,7 +251,15 @@ def get_args_parser():
     parser.add_argument(
         "--dataset_type",
         default="rgb",
-        choices=["rgb", "temporal", "sentinel", "euro_sat", "naip", "spacenet"],
+        choices=[
+            "rgb",
+            "temporal",
+            "sentinel",
+            "euro_sat",
+            "naip",
+            "spacenet",
+            "loveda",
+        ],
         help="Whether to use fmow rgb, sentinel, or other dataset.",
     )
     parser.add_argument(
@@ -576,12 +584,20 @@ def main(args):
     if args.eval:
         if args.model_type == "temporal":
             test_stats = evaluate_temporal(data_loader_val, model, device)
+        elif args.model_type == "segmentation":
+            test_stats = evaluate_segmentation(data_loader_val, model, device, 0)
         else:
             test_stats = evaluate(data_loader_val, model, device)
-        print(
-            f"Evaluation on {len(dataset_val)} test images- acc1: {test_stats['acc1']:.2f}%, "
-            f"acc5: {test_stats['acc5']:.2f}%"
-        )
+
+        if args.model_type == "segmentation":
+            print(
+                f"mIoU of the network on the {len(dataset_val)} test images: {test_stats['IoU']:.4f}"
+            )
+        else:
+            print(
+                f"Evaluation on {len(dataset_val)} test images- acc1: {test_stats['acc1']:.2f}%, "
+                f"acc5: {test_stats['acc5']:.2f}%"
+            )
         exit(0)
 
     print(f"Start training for {args.epochs} epochs")
@@ -593,59 +609,60 @@ def main(args):
         if args.distributed:
             data_loader_train.sampler.set_epoch(epoch)
 
-        if args.model_type == "temporal":
-            train_stats = train_one_epoch_temporal(
-                model,
-                criterion,
-                data_loader_train,
-                optimizer,
-                device,
-                epoch,
-                loss_scaler,
-                args.clip_grad,
-                mixup_fn,
-                log_writer=log_writer,
-                args=args,
-            )
-        elif args.model_type == "segmentation":
-            # test_stats = evaluate_segmentation(data_loader_val, model, device)
-            # print(
-            #     f"mIoU of the network on the {len(dataset_val)} test images: {test_stats['IoU']:.3f}"
-            # )
-            # max_iou = max(max_iou, test_stats["IoU"])
-            # print(f"Max IoU: {max_iou:.3f}")
+        if args.eval == False:
+            if args.model_type == "temporal":
+                train_stats = train_one_epoch_temporal(
+                    model,
+                    criterion,
+                    data_loader_train,
+                    optimizer,
+                    device,
+                    epoch,
+                    loss_scaler,
+                    args.clip_grad,
+                    mixup_fn,
+                    log_writer=log_writer,
+                    args=args,
+                )
+            elif args.model_type == "segmentation":
+                # test_stats = evaluate_segmentation(data_loader_val, model, device)
+                # print(
+                #     f"mIoU of the network on the {len(dataset_val)} test images: {test_stats['IoU']:.3f}"
+                # )
+                # max_iou = max(max_iou, test_stats["IoU"])
+                # print(f"Max IoU: {max_iou:.3f}")
 
-            # if log_writer is not None:
-            #     log_writer.add_scalar("perf/test_iou", test_stats["IoU"], epoch)
-            #     log_writer.add_scalar("perf/test_loss", test_stats["loss"], epoch)
+                # if log_writer is not None:
+                #     log_writer.add_scalar("perf/test_iou", test_stats["IoU"], epoch)
+                #     log_writer.add_scalar("perf/test_loss", test_stats["loss"], epoch)
 
-            train_stats = train_one_epoch_segmentation(
-                model,
-                criterion,
-                data_loader_train,
-                optimizer,
-                device,
-                epoch,
-                loss_scaler,
-                args.clip_grad,
-                mixup_fn,
-                log_writer=log_writer,
-                args=args,
-            )
-        else:
-            train_stats = train_one_epoch(
-                model,
-                criterion,
-                data_loader_train,
-                optimizer,
-                device,
-                epoch,
-                loss_scaler,
-                args.clip_grad,
-                mixup_fn,
-                log_writer=log_writer,
-                args=args,
-            )
+                train_stats = train_one_epoch_segmentation(
+                    model,
+                    criterion,
+                    data_loader_train,
+                    optimizer,
+                    device,
+                    epoch,
+                    loss_scaler,
+                    args.clip_grad,
+                    mixup_fn,
+                    log_writer=log_writer,
+                    args=args,
+                )
+            else:
+                train_stats = train_one_epoch(
+                    model,
+                    criterion,
+                    data_loader_train,
+                    optimizer,
+                    device,
+                    epoch,
+                    loss_scaler,
+                    args.clip_grad,
+                    mixup_fn,
+                    log_writer=log_writer,
+                    args=args,
+                )
 
         if args.output_dir and (
             epoch % args.save_every == 1 or epoch + 1 == args.epochs
@@ -668,10 +685,10 @@ def main(args):
 
         if args.model_type == "segmentation":
             print(
-                f"mIoU of the network on the {len(dataset_val)} test images: {test_stats['IoU']:.3f}"
+                f"mIoU of the network on the {len(dataset_val)} test images: {test_stats['IoU']:.4f}"
             )
             max_iou = max(max_iou, test_stats["IoU"])
-            print(f"Max IoU: {max_iou:.3f}")
+            print(f"Max IoU: {max_iou:.4f}")
 
             if log_writer is not None:
                 log_writer.add_scalar("perf/test_iou", test_stats["IoU"], epoch)
@@ -688,12 +705,19 @@ def main(args):
                 log_writer.add_scalar("perf/test_acc5", test_stats["acc5"], epoch)
                 log_writer.add_scalar("perf/test_loss", test_stats["loss"], epoch)
 
-        log_stats = {
-            **{f"train_{k}": v for k, v in train_stats.items()},
-            **{f"test_{k}": v for k, v in test_stats.items()},
-            "epoch": epoch,
-            "n_parameters": n_parameters,
-        }
+        if args.eval == False:
+            log_stats = {
+                **{f"train_{k}": v for k, v in train_stats.items()},
+                **{f"test_{k}": v for k, v in test_stats.items()},
+                "epoch": epoch,
+                "n_parameters": n_parameters,
+            }
+        else:
+            log_stats = {
+                **{f"test_{k}": v for k, v in test_stats.items()},
+                "epoch": epoch,
+                "n_parameters": n_parameters,
+            }
 
         if args.output_dir and misc.is_main_process():
             if log_writer is not None:

@@ -228,6 +228,83 @@ class SpaceNetDataset(SatelliteDataset):
         return img, mask
 
 
+class LoveDADataset(SatelliteDataset):
+    def __init__(self, data_paths, is_train):
+        super().__init__(in_c=3)
+        self.data_paths = data_paths
+        self.is_train = is_train
+        self.image_filenames = []  # List to store image file names
+        self.mask_filenames = []  # List to store mask file names
+
+        # Load image and mask file names
+        self.images_dir_1 = os.path.join(self.data_paths[0], "images_png")
+        self.masks_dir_1 = os.path.join(self.data_paths[0], "masks_png")
+
+        self.image_filenames_temp = sorted(os.listdir(self.images_dir_1))
+        self.mask_filenames_temp = sorted(os.listdir(self.masks_dir_1))
+
+        self.image_filenames = [
+            os.path.join(self.images_dir_1, file_name)
+            for file_name in self.image_filenames_temp
+        ]
+
+        self.mask_filenames = [
+            os.path.join(self.masks_dir_1, file_name)
+            for file_name in self.mask_filenames_temp
+        ]
+
+        self.images_dir_2 = os.path.join(self.data_paths[1], "images_png")
+        self.masks_dir_2 = os.path.join(self.data_paths[1], "masks_png")
+
+        self.image_filenames_temp = sorted(os.listdir(self.images_dir_2))
+        self.mask_filenames_temp = sorted(os.listdir(self.masks_dir_2))
+
+        self.image_filenames += [
+            os.path.join(self.images_dir_2, file_name)
+            for file_name in self.image_filenames_temp
+        ]
+
+        self.mask_filenames += [
+            os.path.join(self.masks_dir_2, file_name)
+            for file_name in self.mask_filenames_temp
+        ]
+
+    def __len__(self):
+        return len(self.image_filenames)
+
+    def __getitem__(self, idx):
+        image_path = self.image_filenames[idx]
+        mask_path = self.mask_filenames[idx]
+        # Load image and mask
+        image = Image.open(image_path).convert("RGB")
+        mask = Image.open(mask_path).convert("L")
+        if self.is_train:
+            self.data_transforms = transforms.Compose(
+                [
+                    transforms.RandomHorizontalFlip(),
+                    transforms.RandomVerticalFlip(),
+                    transforms.RandomRotation(15),
+                    transforms.ColorJitter(
+                        brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1
+                    ),
+                    transforms.Resize((224, 224)),
+                    transforms.ToTensor(),
+                ]
+            )
+        else:
+            self.data_transforms = transforms.Compose(
+                [transforms.Resize((224, 224)), transforms.ToTensor()]
+            )
+        image = self.data_transforms(image)
+        mask = self.data_transforms(mask)
+        # image = np.array(image)
+        mask = np.array(mask)
+        # mask = torch.from_numpy(mask.astype("int64"))
+        # image = np.transpose(image, (1, 2, 0)).astype(np.float32)
+        # return (torch.from_numpy(image), torch.from_numpy(mask))
+        return image, mask
+
+
 class CustomDatasetFromImages(SatelliteDataset):
     # resics
     mean = [0.368, 0.381, 0.3436]
@@ -969,6 +1046,15 @@ def build_fmow_dataset(is_train: bool, args) -> SatelliteDataset:
             dataset = SpaceNetDataset(train_raster_list, train_mask_list, is_train)
         else:
             dataset = SpaceNetDataset(val_raster_list, val_mask_list, is_train)
+    elif args.dataset_type == "loveda":
+        if is_train:
+            data_paths_rural = "/home/filip/LoveDA/Train/Train/Rural"
+            data_paths_urban = "/home/filip/LoveDA/Train/Train/Urban"
+            dataset = LoveDADataset((data_paths_rural, data_paths_urban), is_train)
+        else:
+            data_paths_rural = "/home/filip/LoveDA/Val/Val/Rural"
+            data_paths_urban = "/home/filip/LoveDA/Val/Val/Urban"
+            dataset = LoveDADataset((data_paths_rural, data_paths_urban), is_train)
     else:
         raise ValueError(f"Invalid dataset type: {args.dataset_type}")
 
