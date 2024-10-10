@@ -281,12 +281,12 @@ class LoveDADataset(SatelliteDataset):
         if self.is_train:
             self.data_transforms = transforms.Compose(
                 [
-                    transforms.RandomHorizontalFlip(),
-                    transforms.RandomVerticalFlip(),
-                    transforms.RandomRotation(15),
-                    transforms.ColorJitter(
-                        brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1
-                    ),
+                    # transforms.RandomHorizontalFlip(),
+                    # transforms.RandomVerticalFlip(),
+                    # transforms.RandomRotation(15),
+                    # transforms.ColorJitter(
+                    #     brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1
+                    # ),
                     transforms.Resize((224, 224)),
                     transforms.ToTensor(),
                 ]
@@ -355,7 +355,7 @@ class CustomDatasetFromImages(SatelliteDataset):
         return (
             img_as_tensor,
             single_image_label,
-            self.scale(self.totensor(img_as_img)),
+            # self.scale(self.totensor(img_as_img)),
         )
 
     def __len__(self):
@@ -1036,10 +1036,10 @@ def build_fmow_dataset(is_train: bool, args) -> SatelliteDataset:
         args.nb_classes = NAIP_CLASS_NUM
     elif args.dataset_type == "spacenet":
         r = 0.7
-        # train_raster_list = raster_list[: int(0.1 * len(raster_list))]
-        # train_mask_list = mask_list[: int(0.1 * len(mask_list))]
-        train_raster_list = raster_list[: int(r * len(raster_list))]
-        train_mask_list = mask_list[: int(r * len(mask_list))]
+        train_raster_list = raster_list[: int(0.1 * len(raster_list))]
+        train_mask_list = mask_list[: int(0.1 * len(mask_list))]
+        # train_raster_list = raster_list[: int(r * len(raster_list))]
+        # train_mask_list = mask_list[: int(r * len(mask_list))]
         val_raster_list = raster_list[int(r * len(raster_list)) :]
         val_mask_list = mask_list[int(r * len(mask_list)) :]
         if is_train:

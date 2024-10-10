@@ -305,7 +305,7 @@ def get_args_parser():
     parser.add_argument(
         "--save_every",
         type=int,
-        default=1,
+        default=50,
         help="How frequently (in epochs) to save ckpt",
     )
     parser.add_argument(
@@ -665,7 +665,7 @@ def main(args):
                 )
 
         if args.output_dir and (
-            epoch % args.save_every == 1 or epoch + 1 == args.epochs
+            epoch % args.save_every == 0 or epoch + 1 == args.epochs
         ):
             misc.save_model(
                 args=args,
@@ -679,7 +679,9 @@ def main(args):
         if args.model_type == "temporal":
             test_stats = evaluate_temporal(data_loader_val, model, device)
         elif args.model_type == "segmentation":
-            test_stats = evaluate_segmentation(data_loader_val, model, device, epoch)
+            test_stats = evaluate_segmentation(
+                data_loader_val, model, device, epoch, args
+            )
         else:
             test_stats = evaluate(data_loader_val, model, device)
 
