@@ -27,7 +27,7 @@ def train_one_epoch(
     metric_logger = misc.MetricLogger(delimiter="  ")
     metric_logger.add_meter("lr", misc.SmoothedValue(window_size=1, fmt="{value:.6f}"))
     header = "Epoch: [{}]".format(epoch)
-    print_freq = 200
+    print_freq = 100
 
     accum_iter = args.accum_iter
 

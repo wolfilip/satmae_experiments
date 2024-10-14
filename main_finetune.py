@@ -21,6 +21,7 @@ from timm.loss import LabelSmoothingCrossEntropy, SoftTargetCrossEntropy
 from timm.models.layers import trunc_normal_
 from torch.utils.tensorboard import SummaryWriter
 
+from DINOv2_features import DINOv2
 import atm_head
 import models_resnet
 import models_vit
@@ -73,6 +74,7 @@ def get_args_parser():
             "temporal",
             "vanilla",
             "segmentation",
+            "dinov2",
         ],
         help="Use channel model",
     )
@@ -462,6 +464,9 @@ def main(args):
             drop_path_rate=args.drop_path,
             global_pool=args.global_pool,
         )
+    elif args.model_type == "dinov2":
+        model_args = {"model_size": "large", "layer": "last"}
+        model = DINOv2(model_args, args, "cuda")
     else:
         model = models_vit.__dict__[args.model](
             patch_size=args.patch_size,
@@ -546,7 +551,9 @@ def main(args):
         model_without_ddp = model.module
 
     # build optimizer with layer-wise lr decay (lrd)
-    if args.model_type is not None and args.model_type.startswith("resnet"):
+    if args.model_type is not None and (
+        args.model_type.startswith("resnet") or args.model == "dinov2"
+    ):
         param_groups = model_without_ddp.parameters()
     else:
         param_groups = lrd.param_groups_lrd(
@@ -585,7 +592,7 @@ def main(args):
         if args.model_type == "temporal":
             test_stats = evaluate_temporal(data_loader_val, model, device)
         elif args.model_type == "segmentation":
-            test_stats = evaluate_segmentation(data_loader_val, model, device, 0)
+            test_stats = evaluate_segmentation(data_loader_val, model, device, 0, args)
         else:
             test_stats = evaluate(data_loader_val, model, device)
 
@@ -624,7 +631,7 @@ def main(args):
                     log_writer=log_writer,
                     args=args,
                 )
-            elif args.model_type == "segmentation":
+            elif args.model_type == "segmentation" or args.model_type == "dinov2":
                 # test_stats = evaluate_segmentation(data_loader_val, model, device)
                 # print(
                 #     f"mIoU of the network on the {len(dataset_val)} test images: {test_stats['IoU']:.3f}"
@@ -678,14 +685,14 @@ def main(args):
 
         if args.model_type == "temporal":
             test_stats = evaluate_temporal(data_loader_val, model, device)
-        elif args.model_type == "segmentation":
+        elif args.model_type == "segmentation" or args.model_type == "dinov2":
             test_stats = evaluate_segmentation(
                 data_loader_val, model, device, epoch, args
             )
         else:
             test_stats = evaluate(data_loader_val, model, device)
 
-        if args.model_type == "segmentation":
+        if args.model_type == "segmentation" or args.model_type == "dinov2":
             print(
                 f"mIoU of the network on the {len(dataset_val)} test images: {test_stats['IoU']:.4f}"
             )

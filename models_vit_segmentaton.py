@@ -587,12 +587,12 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         super(VisionTransformer, self).__init__(**kwargs)
 
         # Added by Samar, need default pos embedding
-        pos_embed = get_2d_sincos_pos_embed(
-            self.pos_embed.shape[-1],
-            int(self.patch_embed.num_patches**0.5),
-            cls_token=True,
-        )
-        self.pos_embed.data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
+        # pos_embed = get_2d_sincos_pos_embed(
+        #     self.pos_embed.shape[-1],
+        #     int(self.patch_embed.num_patches**0.5),
+        #     cls_token=True,
+        # )
+        # self.pos_embed.data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
 
         # self.global_pool = global_pool
         # if self.global_pool:
@@ -637,17 +637,18 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
 
         # self.criterion = SetCriterion(2, losses=["masks", "labels"])
 
-        for block in self.blocks:
-            for param in block.parameters():
-                param.requires_grad = False
+        # for block in self.blocks:
+        #     for param in block.parameters():
+        #         param.requires_grad = False
 
-        for param in self.patch_embed.parameters():
-            param.requires_grad = False
+        # for param in self.patch_embed.parameters():
+        #     param.requires_grad = False
 
-        # feature_channels = [1024 + 32, 1024, 1024, 1024]
-        feature_channels = [1024, 1024]
+        # feature_channels = [1024, 1024, 1024, 1024]
 
-        fpn_out = 1024
+        feature_channels = [768 + 32, 768]
+
+        fpn_out = 768 + 32
         self.input_size = (224, 224)
 
         self.PPN = PSPModule(feature_channels[-1])
@@ -754,12 +755,15 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         outs = []
         for i, blk in enumerate(self.blocks):
             x = blk(x)
-            if i in [3, 13]:
+            if i in [3, 11]:
                 # if i in [3, 9, 17, 23]:
                 # if i in [3, 8, 13, 18, 23]:
                 outs.append(x)
 
         return outs
+
+    def encoder_dino(self, x):
+        return self.model.get_features(x)
 
     def decoder_segvit(self, inputs):
         x = []
@@ -837,13 +841,13 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         # conv_2 = self.relu(self.bn(self.conv(conv_1)))
         # conv_3 = self.relu(self.bn(self.conv(conv_2)))
 
-        features[0] = torch.unflatten(features[0], dim=1, sizes=(14, 14))
-        features[1] = torch.unflatten(features[1], dim=1, sizes=(14, 14))
+        # features[0] = torch.unflatten(features[0], dim=1, sizes=(14, 14))
+        # features[1] = torch.unflatten(features[1], dim=1, sizes=(14, 14))
         # features[2] = torch.unflatten(features[2], dim=1, sizes=(14, 14))
         # features[3] = torch.unflatten(features[3], dim=1, sizes=(14, 14))
         # features[4] = torch.unflatten(features[4], dim=1, sizes=(14, 14))
-        features[0] = torch.permute(features[0], (0, 3, 1, 2))
-        features[1] = torch.permute(features[1], (0, 3, 1, 2))
+        # features[0] = torch.permute(features[0], (0, 3, 1, 2))
+        # features[1] = torch.permute(features[1], (0, 3, 1, 2))
         # features[2] = torch.permute(features[2], (0, 3, 1, 2))
         # features[3] = torch.permute(features[3], (0, 3, 1, 2))
         # features[4] = torch.permute(features[4], (0, 3, 1, 2))
@@ -886,7 +890,8 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         # conv_embeds = self.encoder_conv(x)
         # x = self.encoder_forward(x)
         # x = self.decoder_upernet(x, conv_embeds)
-        x = self.encoder_forward(x)
+        x = self.encoder_dino(x)
+        # x = self.encoder_forward(x)
         x = self.decoder_upernet(x)
         return x
 
@@ -931,15 +936,6 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
             {"pred_logits": a, "pred_masks": b}
             for a, b in zip(outputs_class[:-1], outputs_seg_masks[:-1])
         ]
-
-    def get_bce_loss(self, pred, mask):
-        bce = nn.BCEWithLogitsLoss()
-        # m = nn.Sigmoid()
-        # pred = pred.argmax(1)
-        # loss = F.binary_cross_entropy_with_logits(pred, mask)
-        # loss = bce(torch.clamp(pred, min=0.0001, max=1.0), torch.clamp(mask, min=0.0001, max=1.0))
-        loss = bce(pred, mask)
-        return loss
 
     def get_iou(self, pred, target, nclass):
         # target = target.to(torch.float32)

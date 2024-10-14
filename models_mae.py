@@ -26,7 +26,7 @@ class MaskedAutoencoderViT(nn.Module):
         depth=24,
         num_heads=16,
         decoder_embed_dim=512,
-        decoder_depth=8,
+        decoder_depth=3,
         decoder_num_heads=16,
         mlp_ratio=4.0,
         norm_layer=nn.LayerNorm,
@@ -72,19 +72,19 @@ class MaskedAutoencoderViT(nn.Module):
             torch.zeros(1, num_patches + 1, decoder_embed_dim), requires_grad=False
         )  # fixed sin-cos embedding
 
-        # self.decoder_blocks = nn.ModuleList(
-        #     [
-        #         Block(
-        #             decoder_embed_dim,
-        #             decoder_num_heads,
-        #             mlp_ratio,
-        #             qkv_bias=True,
-        #             # qk_scale=None,
-        #             norm_layer=norm_layer,
-        #         )
-        #         for i in range(decoder_depth)
-        #     ]
-        # )
+        self.decoder_blocks = nn.ModuleList(
+            [
+                Block(
+                    decoder_embed_dim,
+                    decoder_num_heads,
+                    mlp_ratio,
+                    qkv_bias=True,
+                    # qk_scale=None,
+                    norm_layer=norm_layer,
+                )
+                for i in range(decoder_depth)
+            ]
+        )
 
         self.decoder_norm = norm_layer(decoder_embed_dim)
         self.decoder_pred = nn.Linear(
@@ -239,8 +239,8 @@ class MaskedAutoencoderViT(nn.Module):
         x = x + self.decoder_pos_embed
 
         # apply Transformer blocks
-        # for blk in self.decoder_blocks:
-        #     x = blk(x)
+        for blk in self.decoder_blocks:
+            x = blk(x)
         x = self.decoder_norm(x)
 
         # predictor projection
@@ -286,7 +286,7 @@ def mae_vit_base_patch16_dec512d8b(**kwargs):
         depth=12,
         num_heads=12,
         decoder_embed_dim=512,
-        decoder_depth=8,
+        decoder_depth=3,
         decoder_num_heads=16,
         mlp_ratio=4,
         norm_layer=partial(nn.LayerNorm, eps=1e-6),
@@ -301,7 +301,7 @@ def mae_vit_large_patch16_dec512d8b(**kwargs):
         depth=24,
         num_heads=16,
         decoder_embed_dim=512,
-        decoder_depth=8,
+        decoder_depth=3,
         decoder_num_heads=16,
         mlp_ratio=4,
         norm_layer=partial(nn.LayerNorm, eps=1e-6),

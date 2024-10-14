@@ -233,6 +233,15 @@ class LoveDADataset(SatelliteDataset):
         super().__init__(in_c=3)
         self.data_paths = data_paths
         self.is_train = is_train
+        self.lookup_table = {
+            0.0039: 0,
+            0.0078: 1,
+            0.0118: 2,
+            0.0157: 3,
+            0.0196: 4,
+            0.0235: 5,
+            0.0275: 6,
+        }
         self.image_filenames = []  # List to store image file names
         self.mask_filenames = []  # List to store mask file names
 
@@ -279,26 +288,47 @@ class LoveDADataset(SatelliteDataset):
         image = Image.open(image_path).convert("RGB")
         mask = Image.open(mask_path).convert("L")
         if self.is_train:
-            self.data_transforms = transforms.Compose(
+            self.data_transforms_all = transforms.Compose(
                 [
-                    # transforms.RandomHorizontalFlip(),
-                    # transforms.RandomVerticalFlip(),
-                    # transforms.RandomRotation(15),
-                    # transforms.ColorJitter(
-                    #     brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1
-                    # ),
+                    transforms.RandomHorizontalFlip(),
+                    transforms.RandomVerticalFlip(),
+                    transforms.RandomRotation(15),
                     transforms.Resize((224, 224)),
-                    transforms.ToTensor(),
+                    transforms.Compose(
+                        [
+                            transforms.ToImage(),
+                            transforms.ToDtype(torch.float32, scale=True),
+                        ]
+                    ),
                 ]
             )
+            self.data_transforms_img = transforms.Compose(
+                [
+                    transforms.ColorJitter(
+                        brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1
+                    ),
+                ]
+            )
+
+            image, mask = self.data_transforms_all(image, mask)
+            mask = (mask * 256).to(torch.int64)
+            image = self.data_transforms_img(image)
         else:
             self.data_transforms = transforms.Compose(
-                [transforms.Resize((224, 224)), transforms.ToTensor()]
+                [
+                    transforms.Resize((224, 224)),
+                    transforms.Compose(
+                        [
+                            transforms.ToImage(),
+                            transforms.ToDtype(torch.float32, scale=True),
+                        ]
+                    ),
+                ]
             )
-        image = self.data_transforms(image)
-        mask = self.data_transforms(mask)
+            image, mask = self.data_transforms(image, mask)
+            mask = (mask * 256).to(torch.int64)
+        # print(mask.unique())
         # image = np.array(image)
-        mask = np.array(mask)
         # mask = torch.from_numpy(mask.astype("int64"))
         # image = np.transpose(image, (1, 2, 0)).astype(np.float32)
         # return (torch.from_numpy(image), torch.from_numpy(mask))
@@ -307,10 +337,10 @@ class LoveDADataset(SatelliteDataset):
 
 class CustomDatasetFromImages(SatelliteDataset):
     # resics
-    mean = [0.368, 0.381, 0.3436]
-    std = [0.2035, 0.1854, 0.1849]
-    # mean = [0.4182007312774658, 0.4214799106121063, 0.3991275727748871]
-    # std = [0.28774282336235046, 0.27541765570640564, 0.2764017581939697]
+    # mean = [0.368, 0.381, 0.3436]
+    # std = [0.2035, 0.1854, 0.1849]
+    mean = [0.4182007312774658, 0.4214799106121063, 0.3991275727748871]
+    std = [0.28774282336235046, 0.27541765570640564, 0.2764017581939697]
 
     def __init__(self, csv_path, transform):
         """
@@ -330,8 +360,8 @@ class CustomDatasetFromImages(SatelliteDataset):
         # Calculate len
         self.data_len = len(self.data_info.index)
 
-        self.totensor = transforms.ToTensor()
-        self.scale = transforms.Resize((224, 224))
+        # self.totensor = transforms.ToTensor()
+        # self.scale = transforms.Resize((224, 224))
 
     def __getitem__(self, index):
         # Get image name from the pandas df
