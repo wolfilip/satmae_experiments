@@ -1,7 +1,9 @@
-import pandas as pd
 import ast
+
 import matplotlib
-matplotlib.use('Agg')
+import pandas as pd
+
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 f = open("SatMAE/outputs-checkpoint-finetune-eurosat-10pc/log.txt", "r")
@@ -11,7 +13,7 @@ accuracies = []
 
 for line in f:
     dict_list.append(ast.literal_eval(line))
-    accuracies.append(ast.literal_eval(line)['test_acc1'])
+    accuracies.append(ast.literal_eval(line)["test_acc1"])
 
 print(accuracies)
 

@@ -1,7 +1,6 @@
 import os
-import json
 from traceback import print_tb
-import numpy as np
+
 from PIL import Image
 
 Image.MAX_IMAGE_PIXELS = None

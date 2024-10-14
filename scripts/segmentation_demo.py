@@ -1,19 +1,13 @@
 import os
-import random
-from tqdm import tqdm
-from PIL import Image
-from osgeo import gdal, ogr
-import rasterio as rio
-from rasterio.enums import Resampling
-import numpy as np
-import matplotlib.pyplot as plt
 
-import cv2
+import rasterio as rio
 import torch
 import torch.nn as nn
+from rasterio.enums import Resampling
 from torch.nn import functional as F
-from torch.utils.data import Dataset, DataLoader
 from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.utils.data import DataLoader, Dataset
+from tqdm import tqdm
 
 DataFolder = "/home/filip/SpaceNetV1/"
 Raster = DataFolder + "3band/"

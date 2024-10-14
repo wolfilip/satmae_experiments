@@ -1,6 +1,5 @@
 import os
 
-
 path_dataset = "/home/filip/EuroSAT/EuroSAT_RGB/"
 backup_path = "/home/filip/resics-45-backup-2/"
 

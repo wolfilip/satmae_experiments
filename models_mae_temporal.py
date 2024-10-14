@@ -11,12 +11,10 @@ import torch
 import torch.nn as nn
 from timm.models.vision_transformer import Block, PatchEmbed
 from torchvision import transforms
-from torchvision.utils import save_image
 
 from util.pos_embed import (
     get_1d_sincos_pos_embed_from_grid_torch,
     get_2d_sincos_pos_embed,
-    get_2d_sincos_pos_embed_with_resolution,
 )
 
 
@@ -37,7 +35,6 @@ class MaskedAutoencoderViT(nn.Module):
         mlp_ratio=4.0,
         norm_layer=nn.LayerNorm,
         norm_pix_loss=False,
-        same_mask=False,
     ):
         super().__init__()
 
@@ -52,7 +49,7 @@ class MaskedAutoencoderViT(nn.Module):
 
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
         self.pos_embed = nn.Parameter(
-            torch.zeros(1, num_patches + 1, embed_dim - 256), requires_grad=False
+            torch.zeros(1, num_patches + 1, embed_dim - 256), requires_grad=False  # type: ignore
         )  # fixed sin-cos embedding
 
         self.blocks = nn.ModuleList(
@@ -78,7 +75,7 @@ class MaskedAutoencoderViT(nn.Module):
         self.mask_token = nn.Parameter(torch.zeros(1, 1, decoder_embed_dim))
 
         self.decoder_pos_embed = nn.Parameter(
-            torch.zeros(1, num_patches + 1, decoder_embed_dim - 128),
+            torch.zeros(1, num_patches + 1, decoder_embed_dim - 128),  # type: ignore
             requires_grad=False,
         )  # fixed sin-cos embedding
 
@@ -116,14 +113,14 @@ class MaskedAutoencoderViT(nn.Module):
         # initialize (and freeze) pos_embed by sin-cos embedding
         pos_embed = get_2d_sincos_pos_embed(
             self.pos_embed.shape[-1],
-            int(self.patch_embed.num_patches**0.5),
+            int(self.patch_embed.num_patches**0.5),  # type: ignore
             cls_token=True,
         )
         self.pos_embed.data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
 
         decoder_pos_embed = get_2d_sincos_pos_embed(
             self.decoder_pos_embed.shape[-1],
-            int(self.patch_embed.num_patches**0.5),
+            int(self.patch_embed.num_patches**0.5),  # type: ignore
             cls_token=True,
         )
         self.decoder_pos_embed.data.copy_(
@@ -162,7 +159,7 @@ class MaskedAutoencoderViT(nn.Module):
         h = w = imgs.shape[2] // p
         x = imgs.reshape(shape=(imgs.shape[0], 3, h, p, w, p))
         x = torch.einsum("nchpwq->nhwpqc", x)
-        x = x.reshape(shape=(imgs.shape[0], h * w, p**2 * 3))
+        x = x.reshape(shape=(imgs.shape[0], h * w, p**2 * 3))  # type: ignore
         return x
 
     def unpatchify(self, x):
@@ -176,7 +173,7 @@ class MaskedAutoencoderViT(nn.Module):
 
         x = x.reshape(shape=(x.shape[0], h, w, p, p, 3))
         x = torch.einsum("nhwpqc->nchpwq", x)
-        imgs = x.reshape(shape=(x.shape[0], 3, h * p, h * p))
+        imgs = x.reshape(shape=(x.shape[0], 3, h * p, h * p))  # type: ignore
         return imgs
 
     def random_masking(self, x, mask_ratio, mask=None):
@@ -1049,7 +1046,7 @@ def mae_vit_base_patch16_dec512d8b(**kwargs):
         decoder_depth=8,
         decoder_num_heads=16,
         mlp_ratio=4,
-        norm_layer=partial(nn.LayerNorm, eps=1e-6),
+        norm_layer=partial(nn.LayerNorm, eps=1e-6),  # type: ignore
         **kwargs
     )
     return model
@@ -1065,7 +1062,7 @@ def mae_vit_large_patch16_dec512d8b(**kwargs):
         decoder_depth=8,
         decoder_num_heads=16,
         mlp_ratio=4,
-        norm_layer=partial(nn.LayerNorm, eps=1e-6),
+        norm_layer=partial(nn.LayerNorm, eps=1e-6),  # type: ignore
         **kwargs
     )
     return model
@@ -1081,8 +1078,7 @@ def mae_vit_large_patch16_dec512d8b_samemask(**kwargs):
         decoder_depth=8,
         decoder_num_heads=16,
         mlp_ratio=4,
-        norm_layer=partial(nn.LayerNorm, eps=1e-6),
-        same_mask=True,
+        norm_layer=partial(nn.LayerNorm, eps=1e-6),  # type: ignore
         **kwargs
     )
     return model
@@ -1098,7 +1094,7 @@ def mae_vit_huge_patch14_dec512d8b(**kwargs):
         decoder_depth=8,
         decoder_num_heads=16,
         mlp_ratio=4,
-        norm_layer=partial(nn.LayerNorm, eps=1e-6),
+        norm_layer=partial(nn.LayerNorm, eps=1e-6),  # type: ignore
         **kwargs
     )
     return model

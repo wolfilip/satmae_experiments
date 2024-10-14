@@ -2,27 +2,25 @@
 # References:
 # MAE: https://github.com/facebookresearch/mae
 # --------------------------------------------------------
-import argparse
 import datetime
 import json
 import os
 import time
+from argparse import ArgumentParser
 from pathlib import Path
 
 import numpy as np
-import timm
 import torch
 import torch.backends.cudnn as cudnn
 import wandb
 from timm.data.mixup import Mixup
 from timm.loss import LabelSmoothingCrossEntropy, SoftTargetCrossEntropy
-
-# assert timm.__version__ == "0.3.2"  # version check
 from timm.models.layers import trunc_normal_
-from torch.utils.tensorboard import SummaryWriter
+from torch.nn.parallel import DistributedDataParallel
+from torch.optim.adamw import AdamW
+from torch.utils.data import DataLoader, DistributedSampler, SequentialSampler
+from torch.utils.tensorboard.writer import SummaryWriter
 
-from DINOv2_features import DINOv2
-import atm_head
 import models_resnet
 import models_vit
 import models_vit_group_channels
@@ -30,10 +28,11 @@ import models_vit_segmentaton
 import models_vit_temporal
 import util.lr_decay as lrd
 import util.misc as misc
+from DINOv2_features import DINOv2
 from engine_finetune import (
     evaluate,
-    evaluate_temporal,
     evaluate_segmentation,
+    evaluate_temporal,
     train_one_epoch,
     train_one_epoch_segmentation,
     train_one_epoch_temporal,
@@ -42,13 +41,9 @@ from util.datasets import build_fmow_dataset
 from util.misc import NativeScalerWithGradNormCount as NativeScaler
 from util.pos_embed import interpolate_pos_embed
 
-# torch.autograd.detect_anomaly(True)
-
 
 def get_args_parser():
-    parser = argparse.ArgumentParser(
-        "MAE fine-tuning for image classification", add_help=False
-    )
+    parser = ArgumentParser("MAE fine-tuning for image classification", add_help=False)
     parser.add_argument(
         "--batch_size",
         default=64,
@@ -367,28 +362,24 @@ def main(args):
     dataset_train = build_fmow_dataset(is_train=True, args=args)
     dataset_val = build_fmow_dataset(is_train=False, args=args)
 
-    if True:  # args.distributed:
-        num_tasks = misc.get_world_size()
-        global_rank = misc.get_rank()
-        sampler_train = torch.utils.data.DistributedSampler(
-            dataset_train, num_replicas=num_tasks, rank=global_rank, shuffle=True
-        )
-        print("Sampler_train = %s" % str(sampler_train))
-        if args.dist_eval:
-            if len(dataset_val) % num_tasks != 0:
-                print(
-                    "Warning: Enabling distributed evaluation with an eval dataset not divisible by process number. "
-                    "This will slightly alter validation results as extra duplicate entries are added to achieve "
-                    "equal num of samples per-process."
-                )
-            sampler_val = torch.utils.data.DistributedSampler(
-                dataset_val, num_replicas=num_tasks, rank=global_rank, shuffle=True
-            )  # shuffle=True to reduce monitor bias
-        else:
-            sampler_val = torch.utils.data.SequentialSampler(dataset_val)
+    num_tasks = misc.get_world_size()
+    global_rank = misc.get_rank()
+    sampler_train = DistributedSampler(
+        dataset_train, num_replicas=num_tasks, rank=global_rank, shuffle=True
+    )
+    print("Sampler_train = %s" % str(sampler_train))
+    if args.dist_eval:
+        if len(dataset_val) % num_tasks != 0:  # type: ignore
+            print(
+                "Warning: Enabling distributed evaluation with an eval dataset not divisible by process number. "
+                "This will slightly alter validation results as extra duplicate entries are added to achieve "
+                "equal num of samples per-process."
+            )
+        sampler_val = DistributedSampler(
+            dataset_val, num_replicas=num_tasks, rank=global_rank, shuffle=True
+        )  # shuffle=True to reduce monitor bias
     else:
-        sampler_train = torch.utils.data.RandomSampler(dataset_train)
-        sampler_val = torch.utils.data.SequentialSampler(dataset_val)
+        sampler_val = SequentialSampler(dataset_val)  # type: ignore
 
     if global_rank == 0 and args.log_dir is not None and not args.eval:
         os.makedirs(args.log_dir, exist_ok=True)
@@ -396,7 +387,7 @@ def main(args):
     else:
         log_writer = None
 
-    data_loader_train = torch.utils.data.DataLoader(
+    data_loader_train = DataLoader(
         dataset_train,
         sampler=sampler_train,
         batch_size=args.batch_size,
@@ -405,7 +396,7 @@ def main(args):
         drop_last=True,
     )
 
-    data_loader_val = torch.utils.data.DataLoader(
+    data_loader_val = DataLoader(
         dataset_val,
         sampler=sampler_val,
         batch_size=args.batch_size,
@@ -547,7 +538,7 @@ def main(args):
     print("effective batch size: %d" % eff_batch_size)
 
     if args.distributed:
-        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
+        model = DistributedDataParallel(model, device_ids=[args.gpu])
         model_without_ddp = model.module
 
     # build optimizer with layer-wise lr decay (lrd)
@@ -562,7 +553,7 @@ def main(args):
             no_weight_decay_list=model_without_ddp.no_weight_decay(),
             layer_decay=args.layer_decay,
         )
-    optimizer = torch.optim.AdamW(param_groups, lr=args.lr)
+    optimizer = AdamW(param_groups, lr=args.lr)
     loss_scaler = NativeScaler()
 
     if mixup_fn is not None:
@@ -598,11 +589,11 @@ def main(args):
 
         if args.model_type == "segmentation":
             print(
-                f"mIoU of the network on the {len(dataset_val)} test images: {test_stats['IoU']:.4f}"
+                f"mIoU of the network on the {len(dataset_val)} test images: {test_stats['IoU']:.4f}"  # type: ignore
             )
         else:
             print(
-                f"Evaluation on {len(dataset_val)} test images- acc1: {test_stats['acc1']:.2f}%, "
+                f"Evaluation on {len(dataset_val)} test images- acc1: {test_stats['acc1']:.2f}%, "  # type: ignore
                 f"acc5: {test_stats['acc5']:.2f}%"
             )
         exit(0)
@@ -614,7 +605,7 @@ def main(args):
     # best_model = torch.clone(model)
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
-            data_loader_train.sampler.set_epoch(epoch)
+            data_loader_train.sampler.set_epoch(epoch)  # type: ignore
 
         if args.eval == False:
             if args.model_type == "temporal":
@@ -626,10 +617,9 @@ def main(args):
                     device,
                     epoch,
                     loss_scaler,
-                    args.clip_grad,
+                    log_writer,
+                    args,
                     mixup_fn,
-                    log_writer=log_writer,
-                    args=args,
                 )
             elif args.model_type == "segmentation" or args.model_type == "dinov2":
                 # test_stats = evaluate_segmentation(data_loader_val, model, device)
@@ -645,16 +635,14 @@ def main(args):
 
                 train_stats = train_one_epoch_segmentation(
                     model,
-                    criterion,
                     data_loader_train,
                     optimizer,
                     device,
                     epoch,
                     loss_scaler,
-                    args.clip_grad,
+                    log_writer,
+                    args,
                     mixup_fn,
-                    log_writer=log_writer,
-                    args=args,
                 )
             else:
                 train_stats = train_one_epoch(
@@ -665,10 +653,9 @@ def main(args):
                     device,
                     epoch,
                     loss_scaler,
-                    args.clip_grad,
+                    log_writer,
+                    args,
                     mixup_fn,
-                    log_writer=log_writer,
-                    args=args,
                 )
 
         if args.output_dir and (
@@ -694,7 +681,7 @@ def main(args):
 
         if args.model_type == "segmentation" or args.model_type == "dinov2":
             print(
-                f"mIoU of the network on the {len(dataset_val)} test images: {test_stats['IoU']:.4f}"
+                f"mIoU of the network on the {len(dataset_val)} test images: {test_stats['IoU']:.4f}"  # type: ignore
             )
             max_iou = max(max_iou, test_stats["IoU"])
             print(f"Max IoU: {max_iou:.4f}")
@@ -704,7 +691,7 @@ def main(args):
                 log_writer.add_scalar("perf/test_loss", test_stats["loss"], epoch)
         else:
             print(
-                f"Accuracy of the network on the {len(dataset_val)} test images: {test_stats['acc1']:.1f}%"
+                f"Accuracy of the network on the {len(dataset_val)} test images: {test_stats['acc1']:.1f}%"  # type: ignore
             )
             max_accuracy = max(max_accuracy, test_stats["acc1"])
             print(f"Max accuracy: {max_accuracy:.2f}%")

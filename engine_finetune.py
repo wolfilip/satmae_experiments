@@ -6,28 +6,26 @@
 # --------------------------------------------------------
 
 import math
+import os
 import sys
+from argparse import ArgumentParser
 from typing import Iterable, Optional
-import numpy as np
 
-import torch.nn as nn
-
+import matplotlib.pyplot as plt
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 import wandb
 from timm.data import Mixup
 from timm.utils import accuracy
+from torch import device
+from torch.nn import Module
+from torch.optim.optimizer import Optimizer
+from torchmetrics import JaccardIndex
 
 import util.lr_sched as lr_sched
 import util.misc as misc
-import cv2
-import os
-from torchvision.utils import draw_segmentation_masks
-import matplotlib.pyplot as plt
-from torchmetrics.segmentation import MeanIoU
-from torchmetrics import JaccardIndex
-
-from models_vit_segmentaton import DiceLoss
+from util.misc import NativeScalerWithGradNormCount as NativeScaler
 
 
 def get_bce_loss(pred, mask):
@@ -41,17 +39,17 @@ def get_bce_loss(pred, mask):
 
 
 def train_one_epoch(
-    model: torch.nn.Module,
-    criterion: torch.nn.Module,
+    model: Module,
+    criterion: Module,
     data_loader: Iterable,
-    optimizer: torch.optim.Optimizer,
-    device: torch.device,
+    optimizer: Optimizer,
+    device: device,
     epoch: int,
-    loss_scaler,
-    max_norm: float = 0,
+    loss_scaler: NativeScaler,
+    log_writer,
+    args: ArgumentParser,
     mixup_fn: Optional[Mixup] = None,
-    log_writer=None,
-    args=None,
+    max_norm: float = 0,
 ):
     model.train(True)
     metric_logger = misc.MetricLogger(delimiter="  ")
@@ -59,7 +57,7 @@ def train_one_epoch(
     header = "Epoch: [{}]".format(epoch)
     print_freq = 20
 
-    accum_iter = args.accum_iter
+    accum_iter = args.accum_iter  # type: ignore
 
     optimizer.zero_grad()
 
@@ -73,7 +71,7 @@ def train_one_epoch(
         # we use a per iteration (instead of per epoch) lr scheduler
         if data_iter_step % accum_iter == 0:
             lr_sched.adjust_learning_rate(
-                optimizer, data_iter_step / len(data_loader) + epoch, args
+                optimizer, data_iter_step / len(data_loader) + epoch, args  # type: ignore
             )
 
         samples = samples.to(device, non_blocking=True)
@@ -120,11 +118,11 @@ def train_one_epoch(
             """We use epoch_1000x as the x-axis in tensorboard.
             This calibrates different curves when batch size changes.
             """
-            epoch_1000x = int((data_iter_step / len(data_loader) + epoch) * 1000)
+            epoch_1000x = int((data_iter_step / len(data_loader) + epoch) * 1000)  # type: ignore
             log_writer.add_scalar("loss", loss_value_reduce, epoch_1000x)
             log_writer.add_scalar("lr", max_lr, epoch_1000x)
 
-            if args.local_rank == 0 and args.wandb is not None:
+            if args.local_rank == 0 and args.wandb is not None:  # type: ignore
                 try:
                     wandb.log(
                         {
@@ -143,17 +141,17 @@ def train_one_epoch(
 
 
 def train_one_epoch_temporal(
-    model: torch.nn.Module,
-    criterion: torch.nn.Module,
+    model: Module,
+    criterion: Module,
     data_loader: Iterable,
-    optimizer: torch.optim.Optimizer,
-    device: torch.device,
+    optimizer: Optimizer,
+    device: device,
     epoch: int,
-    loss_scaler,
-    max_norm: float = 0,
+    loss_scaler: NativeScaler,
+    log_writer,
+    args: ArgumentParser,
     mixup_fn: Optional[Mixup] = None,
-    log_writer=None,
-    args=None,
+    max_norm: float = 0,
 ):
     model.train(True)
     metric_logger = misc.MetricLogger(delimiter="  ")
@@ -161,7 +159,7 @@ def train_one_epoch_temporal(
     header = "Epoch: [{}]".format(epoch)
     print_freq = 20
 
-    accum_iter = args.accum_iter
+    accum_iter = args.accum_iter  # type: ignore
 
     optimizer.zero_grad()
 
@@ -175,7 +173,7 @@ def train_one_epoch_temporal(
         # we use a per iteration (instead of per epoch) lr scheduler
         if data_iter_step % accum_iter == 0:
             lr_sched.adjust_learning_rate(
-                optimizer, data_iter_step / len(data_loader) + epoch, args
+                optimizer, data_iter_step / len(data_loader) + epoch, args  # type: ignore
             )
 
         samples = [
@@ -199,7 +197,7 @@ def train_one_epoch_temporal(
 
         # targets = F.one_hot(targets, 62)
 
-        with torch.cuda.amp.autocast():
+        with torch.amp.autocast("cuda"):
             outputs = model(samples, timestamps)
             loss = criterion(outputs, targets)
 
@@ -237,11 +235,11 @@ def train_one_epoch_temporal(
             """We use epoch_1000x as the x-axis in tensorboard.
             This calibrates different curves when batch size changes.
             """
-            epoch_1000x = int((data_iter_step / len(data_loader) + epoch) * 1000)
+            epoch_1000x = int((data_iter_step / len(data_loader) + epoch) * 1000)  # type: ignore
             log_writer.add_scalar("loss", loss_value_reduce, epoch_1000x)
             log_writer.add_scalar("lr", max_lr, epoch_1000x)
 
-            if args.local_rank == 0 and args.wandb is not None:
+            if args.local_rank == 0 and args.wandb is not None:  # type: ignore
                 try:
                     wandb.log(
                         {
@@ -260,17 +258,16 @@ def train_one_epoch_temporal(
 
 
 def train_one_epoch_segmentation(
-    model: torch.nn.Module,
-    criterion: torch.nn.Module,
+    model: Module,
     data_loader: Iterable,
-    optimizer: torch.optim.Optimizer,
-    device: torch.device,
+    optimizer: Optimizer,
+    device: device,
     epoch: int,
-    loss_scaler,
-    max_norm: float = 0,
+    loss_scaler: NativeScaler,
+    log_writer,
+    args: ArgumentParser,
     mixup_fn: Optional[Mixup] = None,
-    log_writer=None,
-    args=None,
+    max_norm: float = 0,
 ):
     model.train(True)
     metric_logger = misc.MetricLogger(delimiter="  ")
@@ -278,7 +275,7 @@ def train_one_epoch_segmentation(
     header = "Epoch: [{}]".format(epoch)
     print_freq = 20
 
-    accum_iter = args.accum_iter
+    accum_iter = args.accum_iter  # type: ignore
 
     optimizer.zero_grad()
 
@@ -287,11 +284,11 @@ def train_one_epoch_segmentation(
     if log_writer is not None:
         print("log_dir: {}".format(log_writer.log_dir))
 
-    if args.dataset_type == "spacenet":
+    if args.dataset_type == "spacenet":  # type: ignore
         miou_metric = JaccardIndex(task="binary", zero_division=1.0)
-    elif args.dataset_type == "loveda":
+    elif args.dataset_type == "loveda":  # type: ignore
         miou_metric = JaccardIndex(
-            task="multiclass", num_classes=args.nb_classes, zero_division=1.0
+            task="multiclass", num_classes=args.nb_classes, zero_division=1.0  # type: ignore
         )
     miou_metric = miou_metric.to(device)
 
@@ -302,31 +299,13 @@ def train_one_epoch_segmentation(
         # we use a per iteration (instead of per epoch) lr scheduler
         if data_iter_step % accum_iter == 0:
             lr_sched.adjust_learning_rate(
-                optimizer, data_iter_step / len(data_loader) + epoch, args
+                optimizer, data_iter_step / len(data_loader) + epoch, args  # type: ignore
             )
 
         samples = samples.to(device, non_blocking=True)
         targets = targets.to(device, non_blocking=True)
 
-        # if mixup_fn is not None:
-        #     samples, targets = mixup_fn(samples, targets)
-
         with torch.amp.autocast("cuda"):
-            # np.random.seed(233)
-            # color_list = np.random.rand(1000, 3) * 0.7 + 0.3
-            # outputs = model(samples)
-            # object_result = outputs["pred"][0]
-            # samples_0 = samples[0]
-            # object_result  = torch.sigmoid(object_result )
-            # object_result  = torch.argmax(object_result, 0)
-            # object_result  = F.one_hot(object_result , num_classes=2).permute(2, 0, 1)
-            # bla_1 = (255*samples_0).to(torch.uint8)
-            # bla = draw_segmentation_masks(bla_1, object_result.to(torch.bool))
-            # # normalized_masks = torch.nn.functional.softmax(object_result, dim=1)
-            # # normalized_masks = object_result.argmax(dim=1)
-            # # object_result_colored = maskrcnn_colorencode(samples, object_result.cpu().detach().numpy(), color_list)
-            # cv2.imwrite(os.path.join("/home/filip/satmae_experiments", "object_result.png"), 255*bla.squeeze(0).cpu().detach().numpy().transpose())
-            # cv2.imwrite(os.path.join("/home/filip/satmae_experiments", "object_result.png"), bla.cpu().detach().numpy().transpose(),)
             loss_value = calc_metrics(
                 model, (samples, targets), miou_metric, device, epoch, cnt, args, 0, 0
             )
@@ -366,11 +345,11 @@ def train_one_epoch_segmentation(
             """We use epoch_1000x as the x-axis in tensorboard.
             This calibrates different curves when batch size changes.
             """
-            epoch_1000x = int((data_iter_step / len(data_loader) + epoch) * 1000)
+            epoch_1000x = int((data_iter_step / len(data_loader) + epoch) * 1000)  # type: ignore
             log_writer.add_scalar("loss", loss_value_reduce, epoch_1000x)
             log_writer.add_scalar("lr", max_lr, epoch_1000x)
 
-            if args.local_rank == 0 and args.wandb is not None:
+            if args.local_rank == 0 and args.wandb is not None:  # type: ignore
                 try:
                     wandb.log(
                         {
@@ -530,7 +509,7 @@ def evaluate_segmentation(data_loader, model, device, epoch, args):
 
         # print("before pass model")
         # compute output
-        with torch.cuda.amp.autocast():
+        with torch.amp.autocast("cuda"):
             loss = calc_metrics(
                 model, (images, target), miou_metric, device, epoch, cnt, args, 0, 0
             )
@@ -557,103 +536,6 @@ def evaluate_segmentation(data_loader, model, device, epoch, args):
     )
 
     return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
-
-
-def maskrcnn_colorencode(img, label_map, color_list):
-    # do not modify original list
-    label_map = np.array(np.expand_dims(label_map, axis=0), np.uint8)
-    # label_map = label_map.transpose(1, 2, 0)
-    label_list = list(np.unique(label_map))
-    out_img = img.clone()
-    for i, label in enumerate(label_list):
-        if label == 0:
-            continue
-        this_label_map = label_map == label
-        alpha = [0, 0, 0]
-        o = i
-        if o >= 6:
-            o = np.random.randint(1, 6)
-        o_lst = [o % 2, (o // 2) % 2, o // 4]
-        for j in range(3):
-            alpha[j] = np.random.random() * 0.5 + 0.45
-            alpha[j] *= o_lst[j]
-        out_img = MydrawMask(
-            out_img,
-            this_label_map,
-            alpha=alpha,
-            clrs=np.expand_dims(color_list[label], axis=0),
-        )
-    return out_img
-
-
-def MydrawMask(img, masks, lr=(None, None), alpha=None, clrs=None, info=None):
-    n, h, w = masks.shape[0], masks.shape[1], masks.shape[2]
-    if lr[0] is None:
-        lr = (0, n)
-    if alpha is None:
-        alpha = [0.4, 0.4, 0.4]
-    alpha = [0.6, 0.6, 0.6]
-    if clrs is None:
-        clrs = np.zeros((n, 3)).astype(np.float64)
-        for i in range(n):
-            for j in range(3):
-                clrs[i][j] = np.random.random() * 0.6 + 0.4
-
-    for i in range(max(0, lr[0]), min(n, lr[1])):
-        M = masks[i].reshape(-1)
-        B = np.zeros(h * w, dtype=np.int8)
-        ix, ax, iy, ay = 99999, 0, 99999, 0
-        for y in range(h - 1):
-            for x in range(w - 1):
-                k = y * w + x
-                if M[k] == 1:
-                    ix = min(ix, x)
-                    ax = max(ax, x)
-                    iy = min(iy, y)
-                    ay = max(ay, y)
-                if M[k] != M[k + 1]:
-                    B[k], B[k + 1] = 1, 1
-                if M[k] != M[k + w]:
-                    B[k], B[k + w] = 1, 1
-                if M[k] != M[k + 1 + w]:
-                    B[k], B[k + 1 + w] = 1, 1
-        M.shape = (h, w)
-        B.shape = (h, w)
-        for j in range(3):
-            O, c, a = img[:, :, j], clrs[i][j], alpha[j]
-            am = a * M
-            O = O - O * am + c * am * 255
-            img[:, :, j] = O * (1 - B) + c * B
-        # cv2.rectangle(img, (ix,iy), (ax,ay), (0,255,0))
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        x, y = ix - 1, iy - 1
-        if x < 0:
-            x = 0
-        if y < 10:
-            y += 7
-        if int(img[y, x, 0]) + int(img[y, x, 1]) + int(img[y, x, 2]) > 650:
-            col = (255, 0, 0)
-        else:
-            col = (255, 255, 255)
-        # col = (255,0,0)
-        # cv2.putText(img, id2class[info['category_id']]+': %.3f' % info['score'], (x, y), font, .3, col, 1)
-    return img
-
-
-def remove_small_mat(seg_mat, seg_obj, threshold=0.1):
-    object_list = np.unique(seg_obj)
-    seg_mat_new = np.zeros_like(seg_mat)
-    for obj_label in object_list:
-        obj_mask = seg_obj == obj_label
-        mat_result = seg_mat * obj_mask
-        mat_sum = obj_mask.sum()
-        for mat_label in np.unique(mat_result):
-            mat_area = (mat_result == mat_label).sum()
-            if mat_area / float(mat_sum) < threshold:
-                continue
-            seg_mat_new += mat_result * (mat_result == mat_label)
-        # sorted_mat_index = np.argsort(-np.asarray(mat_area))
-    return seg_mat_new
 
 
 def calc_metrics(

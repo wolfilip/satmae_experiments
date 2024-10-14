@@ -1,46 +1,26 @@
 import os
 import random
-import re
 import warnings
 from glob import glob
 from typing import Any, List, Optional
 
-import cv2
 import kornia.augmentation as K
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import rasterio
 import rasterio as rio
-from sympy import im
 import torch
-import torch.nn as nn
-from osgeo import gdal, ogr
+import torchvision.transforms.v2 as transforms
 from PIL import Image
 from rasterio import logging
 from rasterio.enums import Resampling
-from torch.nn import functional as F
-from torch.optim.lr_scheduler import ReduceLROnPlateau
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import Dataset
 from torch.utils.data.dataset import Dataset
-import torchvision.transforms.v2 as transforms
-from tqdm import tqdm
 
 log = logging.getLogger()
 log.setLevel(logging.ERROR)
 
-Image.MAX_IMAGE_PIXELS = None
 warnings.simplefilter("ignore", Image.DecompressionBombWarning)
-
-DataFolder = "/storage/local/ssd/filipwolf-workspace/SpaceNetV1/"
-Raster = DataFolder + "3band/"
-Vector = DataFolder + "geojson/"
-Mask = DataFolder + "mask/"
-
-raster_list = os.listdir(Raster)
-raster_list.sort()
-mask_list = os.listdir(Mask)
-mask_list.sort()
 
 
 CATEGORIES = [
@@ -166,8 +146,10 @@ class SatelliteDataset(Dataset):
 
 
 class SpaceNetDataset(SatelliteDataset):
-    def __init__(self, raster_list, mask_list, is_train):
+    def __init__(self, raster, mask, raster_list, mask_list, is_train):
         super().__init__(in_c=3)
+        self.raster = raster
+        self.mask = mask
         self.raster_list = raster_list
         self.mask_list = mask_list
         self.s = 224
@@ -199,13 +181,13 @@ class SpaceNetDataset(SatelliteDataset):
 
     def __getitem__(self, index):
         img = (
-            rio.open(Raster + raster_list[index]).read(
+            rio.open(self.raster + self.raster_list[index]).read(
                 out_shape=(self.s, self.s), resampling=Resampling.bilinear
             )
             / 255
         )
         mask = (
-            rio.open(Mask + mask_list[index])
+            rio.open(self.mask + self.mask_list[index])
             .read(out_shape=(self.s, self.s), resampling=Resampling.bilinear)
             .squeeze()
         )
@@ -367,7 +349,7 @@ class CustomDatasetFromImages(SatelliteDataset):
         # Get image name from the pandas df
         single_image_name = self.image_arr[index]
         # Open image
-        img_as_img = Image.open(single_image_name)
+        img_as_img = Image.open(single_image_name)  # type: ignore
         # Transform the image
         img_as_tensor = self.transforms(img_as_img)
         # Get label(class) of the image based on the cropped pandas column
@@ -421,14 +403,14 @@ class FMoWTemporalStacked(SatelliteDataset):
         # Get image name from the pandas df
         single_image_name_1 = self.image_arr[index]
 
-        splt = single_image_name_1.rsplit("/", 1)
+        splt = single_image_name_1.rsplit("/", 1)  # type: ignore
         base_path = splt[0]
         fname = splt[1]
         suffix = fname[-15:]
         prefix = fname[:-15].rsplit("_", 1)
         regexp = "{}/{}_*{}".format(base_path, prefix[0], suffix)
         temporal_files = glob(regexp)
-        temporal_files.remove(single_image_name_1)
+        temporal_files.remove(single_image_name_1)  # type: ignore
         if temporal_files == []:
             single_image_name_2 = single_image_name_1
             single_image_name_3 = single_image_name_1
@@ -442,13 +424,13 @@ class FMoWTemporalStacked(SatelliteDataset):
                 if single_image_name_3 != single_image_name_2:
                     break
 
-        img_as_img_1 = Image.open(single_image_name_1)
+        img_as_img_1 = Image.open(single_image_name_1)  # type: ignore
         img_as_tensor_1 = self.transforms(img_as_img_1)  # (3, h, w)
 
-        img_as_img_2 = Image.open(single_image_name_2)
+        img_as_img_2 = Image.open(single_image_name_2)  # type: ignore
         img_as_tensor_2 = self.transforms(img_as_img_2)  # (3, h, w)
 
-        img_as_img_3 = Image.open(single_image_name_3)
+        img_as_img_3 = Image.open(single_image_name_3)  # type: ignore
         img_as_tensor_3 = self.transforms(img_as_img_3)  # (3, h, w)
 
         # Get label(class) of the image based on the cropped pandas column
@@ -560,7 +542,7 @@ class CustomDatasetFromImagesTemporal(SatelliteDataset):
         # print(self.image_arr)
 
         suffix = single_image_name_1[-8:]
-        prefix = single_image_name_1[:-8].rsplit("_", 1)
+        prefix = single_image_name_1[:-8].rsplit("_", 1)  # type: ignore
         # print(prefix, suffix)
         regexp = "{}_*{}".format(prefix[0], suffix)
         # regexp = os.path.join(self.dataset_root_path, regexp)
@@ -572,7 +554,7 @@ class CustomDatasetFromImagesTemporal(SatelliteDataset):
         # print(regexp)
         # print(len(temporal_files))
         # print(single_image_name_1)
-        temporal_files.remove(single_image_name_1)
+        temporal_files.remove(single_image_name_1)  # type: ignore
         if temporal_files == []:
             single_image_name_2 = single_image_name_1
             single_image_name_3 = single_image_name_1
@@ -586,8 +568,8 @@ class CustomDatasetFromImagesTemporal(SatelliteDataset):
                 if single_image_name_3 != single_image_name_2:
                     break
         # print(single_image_name_1, single_image_name_2, single_image_name_3)
-        img_as_img_1 = Image.open(single_image_name_1)
-        img_as_img_2 = Image.open(single_image_name_2)
+        img_as_img_1 = Image.open(single_image_name_1)  # type: ignore
+        img_as_img_2 = Image.open(single_image_name_2)  # type: ignore
         # img_as_img_3 = Image.open(single_image_name_3)
         img_scale_1 = (img_as_img_1.size[0] + img_as_img_1.size[1]) / 1800
         img_scale_2 = (img_as_img_2.size[0] + img_as_img_2.size[1]) / 1800
@@ -726,19 +708,6 @@ class CustomDatasetFromImagesTemporal(SatelliteDataset):
         return self.data_len
 
 
-class TransformCollateFn:
-    def __init__(self, transforms, base_resolution=1.0):
-        self.transforms = transforms
-        self.base_resolution = base_resolution
-
-    def __call__(self, samples):
-        imgs = torch.stack(list(zip(*samples))[0])
-        img_0 = self.transforms[0](imgs[:, :, 0, :, :])
-        img_1 = self.transforms[1](imgs[:, :, 1, :, :])
-        img_2 = self.transforms[2](imgs[:, :, 2, :, :])
-        return (img_0, img_1, img_2), None
-
-
 #########################################################
 # SENTINEL DEFINITIONS
 #########################################################
@@ -848,7 +817,7 @@ class SentinelIndividualImageDataset(SatelliteDataset):
         self.masked_bands = masked_bands
         self.dropped_bands = dropped_bands
         if self.dropped_bands is not None:
-            self.in_c = self.in_c - len(dropped_bands)
+            self.in_c = self.in_c - len(dropped_bands)  # type: ignore
 
     def __len__(self):
         return len(self.df)
@@ -982,7 +951,7 @@ class EuroSat(SatelliteDataset):
         self.masked_bands = masked_bands
         self.dropped_bands = dropped_bands
         if self.dropped_bands is not None:
-            self.in_c = self.in_c - len(dropped_bands)
+            self.in_c = self.in_c - len(dropped_bands)  # type: ignore
 
     def __len__(self):
         return len(self.img_paths)
@@ -1055,27 +1024,31 @@ def build_fmow_dataset(is_train: bool, args) -> SatelliteDataset:
             masked_bands=args.masked_bands,
             dropped_bands=args.dropped_bands,
         )
-    elif args.dataset_type == "naip":
-        from util.naip_loader import (
-            NAIP_CLASS_NUM,
-            NAIP_test_dataset,
-            NAIP_train_dataset,
-        )
-
-        dataset = NAIP_train_dataset if is_train else NAIP_test_dataset
-        args.nb_classes = NAIP_CLASS_NUM
     elif args.dataset_type == "spacenet":
+        DataFolder = "/storage/local/ssd/filipwolf-workspace/SpaceNetV1/"
+        raster = DataFolder + "3band/"
+        mask = DataFolder + "mask/"
+
+        raster_list = os.listdir(raster)
+        raster_list.sort()
+        mask_list = os.listdir(mask)
+        mask_list.sort()
         r = 0.7
-        train_raster_list = raster_list[: int(0.1 * len(raster_list))]
-        train_mask_list = mask_list[: int(0.1 * len(mask_list))]
-        # train_raster_list = raster_list[: int(r * len(raster_list))]
-        # train_mask_list = mask_list[: int(r * len(mask_list))]
-        val_raster_list = raster_list[int(r * len(raster_list)) :]
-        val_mask_list = mask_list[int(r * len(mask_list)) :]
+
         if is_train:
-            dataset = SpaceNetDataset(train_raster_list, train_mask_list, is_train)
+            train_raster_list = raster_list[: int(0.1 * len(raster_list))]
+            train_mask_list = mask_list[: int(0.1 * len(mask_list))]
+            # train_raster_list = raster_list[: int(r * len(raster_list))]
+            # train_mask_list = mask_list[: int(r * len(mask_list))]
+            dataset = SpaceNetDataset(
+                raster, mask, train_raster_list, train_mask_list, is_train
+            )
         else:
-            dataset = SpaceNetDataset(val_raster_list, val_mask_list, is_train)
+            val_raster_list = raster_list[int(r * len(raster_list)) :]
+            val_mask_list = mask_list[int(r * len(mask_list)) :]
+            dataset = SpaceNetDataset(
+                raster, mask, val_raster_list, val_mask_list, is_train
+            )
     elif args.dataset_type == "loveda":
         if is_train:
             data_paths_rural = "/home/filip/LoveDA/Train/Train/Rural"
@@ -1088,4 +1061,4 @@ def build_fmow_dataset(is_train: bool, args) -> SatelliteDataset:
     else:
         raise ValueError(f"Invalid dataset type: {args.dataset_type}")
 
-    return dataset
+    return dataset  # type: ignore

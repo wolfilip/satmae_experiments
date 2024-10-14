@@ -1,21 +1,18 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
-from models_vit_segmentaton import FPN_fuse, PSPModule
 from einops import rearrange
-from torchvision.utils import save_image
 from torchvision.transforms.functional import resize
 
 
-class LinearClassifier(torch.nn.Module):
+class LinearClassifier(nn.Module):
     def __init__(self, in_channels, tokenW=32, tokenH=32, num_labels=1):
         super(LinearClassifier, self).__init__()
 
         self.in_channels = in_channels
         self.width = tokenW
         self.height = tokenH
-        self.classifier = torch.nn.Conv2d(in_channels, num_labels, (1, 1))
+        self.classifier = nn.Conv2d(in_channels, num_labels, (1, 1))
 
     def forward(self, embeddings):
         embeddings = embeddings.reshape(-1, self.height, self.width, self.in_channels)
@@ -44,8 +41,8 @@ class DINOv2(nn.Module):
         if self.model_size == "large":
             self.feat_extr = torch.hub.load("facebookresearch/dinov2", "dinov2_vitl14")
         self.layer_num = model_args["layer"]
-        self.feat_extr.eval()
-        self.feat_extr.to(device)
+        self.feat_extr.eval()  # type: ignore
+        self.feat_extr.to(device)  # type: ignore
         self.device = device
         self.patch_size = 14
         self.img_size = args.input_size
@@ -76,11 +73,11 @@ class DINOv2(nn.Module):
         # layer = self.layer_num[0] # TODO: make it a list
         with torch.no_grad():
             if self.layer_num == "last":
-                out = self.feat_extr.forward_features(imgs)
+                out = self.feat_extr.forward_features(imgs)  # type: ignore
                 patch = out["x_norm_patchtokens"]
                 cls = out["x_norm_clstoken"]
             elif self.layer_num == "first":
-                patch, cls = self.feat_extr.get_intermediate_layers(
+                patch, cls = self.feat_extr.get_intermediate_layers(  # type: ignore
                     imgs, return_class_token=True
                 )[0]
             elif self.layer_num == "avg":
@@ -134,9 +131,7 @@ class DINOv2(nn.Module):
         # x = self.encoder_forward(x)
         # x = self.decoder_upernet(x)
         logits = self.classifier(x)
-        logits = torch.nn.functional.interpolate(
-            logits, size=224, mode="bilinear", align_corners=False
-        )
+        logits = F.interpolate(logits, size=224, mode="bilinear", align_corners=False)
         return logits
 
     def visualize_features(self, x):

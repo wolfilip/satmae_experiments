@@ -12,9 +12,10 @@ import torch
 import torch.nn as nn
 from timm.models.vision_transformer import PatchEmbed
 
-from util.pos_embed import (get_1d_sincos_pos_embed_from_grid_torch,
-                            get_2d_sincos_pos_embed,
-                            get_2d_sincos_pos_embed_with_resolution)
+from util.pos_embed import (
+    get_1d_sincos_pos_embed_from_grid_torch,
+    get_2d_sincos_pos_embed_with_resolution,
+)
 
 
 class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
@@ -129,7 +130,7 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
             dim=1,
         )
 
-        cls_tokens = self.cls_token.expand(
+        cls_tokens = self.cls_token.expand(  # type: ignore
             B, -1, -1
         )  # stole cls_tokens impl from Phil Wang, thanks
         x = torch.cat((cls_tokens, x), dim=1)

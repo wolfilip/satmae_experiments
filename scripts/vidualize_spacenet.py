@@ -1,13 +1,8 @@
 import os
 import random
-from tqdm import tqdm
-from PIL import Image
-from osgeo import gdal
-from osgeo import ogr
-import rasterio as rio
-from rasterio.enums import Resampling
-import numpy as np
+
 import matplotlib.pyplot as plt
+import rasterio as rio
 
 DataFolder = "/home/filip/SpaceNetV1/"
 Raster = DataFolder + "3band/"
