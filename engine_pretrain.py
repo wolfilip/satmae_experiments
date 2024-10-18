@@ -16,7 +16,7 @@ import util.misc as misc
 def train_one_epoch(
     model: torch.nn.Module,
     data_loader: Iterable,
-    optimizer: torch.optim.Optimizer,
+    optimizer: torch.optim.Optimizer,  # type: ignore
     device: torch.device,
     epoch: int,
     loss_scaler,
@@ -29,7 +29,7 @@ def train_one_epoch(
     header = "Epoch: [{}]".format(epoch)
     print_freq = 100
 
-    accum_iter = args.accum_iter
+    accum_iter = args.accum_iter  # type: ignore
 
     optimizer.zero_grad()
 
@@ -43,20 +43,23 @@ def train_one_epoch(
         # we use a per iteration (instead of per epoch) lr scheduler
         if data_iter_step % accum_iter == 0:
             lr_sched.adjust_learning_rate(
-                optimizer, data_iter_step / len(data_loader) + epoch, args
+                optimizer, data_iter_step / len(data_loader) + epoch, args  # type: ignore
             )
 
         samples = samples.to(device, non_blocking=True)
 
-        with torch.cuda.amp.autocast():
-            loss, _, _ = model(samples, mask_ratio=args.mask_ratio)
+        with torch.amp.autocast("cuda"):  # type: ignore
+            loss_mae, loss_dino, _ = model(samples, mask_ratio=args.mask_ratio)  # type: ignore
 
-        loss_value = loss.item()
+        loss_mae_value, loss_dino_value = loss_mae.item(), loss_dino.item()
 
-        if not math.isfinite(loss_value):
-            print("Loss is {}, stopping training".format(loss_value))
-            raise ValueError(f"Loss is {loss_value}, stopping training")
+        if not math.isfinite(loss_mae_value) or not math.isfinite(loss_dino_value):
+            print("Loss is {}, stopping training".format(loss_mae_value))
+            raise ValueError(f"Loss is {loss_mae_value}, stopping training")
             # sys.exit(1)
+
+        loss = loss_mae + loss_dino
+        loss_value = loss_mae_value + loss_dino_value
 
         loss /= accum_iter
         loss_scaler(
@@ -70,22 +73,29 @@ def train_one_epoch(
 
         torch.cuda.synchronize()
 
-        metric_logger.update(loss=loss_value)
+        metric_logger.update(loss_mae=loss_mae_value, loss_dino=loss_dino_value)
 
         lr = optimizer.param_groups[0]["lr"]
         metric_logger.update(lr=lr)
 
+        loss_mae_value_reduce = misc.all_reduce_mean(loss_mae_value)
+        loss_dino_value_reduce = misc.all_reduce_mean(loss_dino_value)
         loss_value_reduce = misc.all_reduce_mean(loss_value)
+
         if log_writer is not None and (data_iter_step + 1) % accum_iter == 0:
             """We use epoch_1000x as the x-axis in tensorboard.
             This calibrates different curves when batch size changes.
             """
-            epoch_1000x = int((data_iter_step / len(data_loader) + epoch) * 1000)
-            log_writer.add_scalar("train_loss", loss_value_reduce, epoch_1000x)
+            epoch_1000x = int((data_iter_step / len(data_loader) + epoch) * 1000)  # type: ignore
+            log_writer.add_scalar("train_loss_mae", loss_mae_value_reduce, epoch_1000x)
+            log_writer.add_scalar(
+                "train_loss_dino", loss_dino_value_reduce, epoch_1000x
+            )
+            log_writer.add_scalar("train_loss_total", loss_value_reduce, epoch_1000x)
             log_writer.add_scalar("lr", lr, epoch_1000x)
 
             # Wandb logging
-            if args.local_rank == 0 and args.wandb is not None:
+            if args.local_rank == 0 and args.wandb is not None:  # type: ignore
                 try:
                     wandb.log(
                         {

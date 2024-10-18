@@ -23,8 +23,9 @@ from torch.utils.tensorboard.writer import SummaryWriter
 
 import models_resnet
 import models_vit
+import models_vit_dinov2_segmentation
 import models_vit_group_channels
-import models_vit_segmentaton
+import models_vit_segmentation
 import models_vit_temporal
 import util.lr_decay as lrd
 import util.misc as misc
@@ -70,6 +71,7 @@ def get_args_parser():
             "vanilla",
             "segmentation",
             "dinov2",
+            "dinov2_vit",
         ],
         help="Use channel model",
     )
@@ -82,7 +84,7 @@ def get_args_parser():
     )
 
     parser.add_argument("--input_size", default=224, type=int, help="images input size")
-    parser.add_argument("--patch_size", default=16, type=int, help="images input size")
+    parser.add_argument("--patch_size", default=14, type=int, help="images input size")
 
     parser.add_argument(
         "--drop_path",
@@ -447,17 +449,24 @@ def main(args):
             global_pool=args.global_pool,
         )
     elif args.model_type == "segmentation":
-        model = models_vit_segmentaton.__dict__[args.model](
+        model = models_vit_segmentation.__dict__[args.model](
             patch_size=args.patch_size,
             img_size=args.input_size,
             in_chans=dataset_train.in_c,
             num_classes=args.nb_classes,
             drop_path_rate=args.drop_path,
-            global_pool=args.global_pool,
         )
     elif args.model_type == "dinov2":
         model_args = {"model_size": "large", "layer": "last"}
         model = DINOv2(model_args, args, "cuda")
+    elif args.model_type == "dinov2_vit":
+        model = models_vit_dinov2_segmentation.__dict__[args.model](
+            patch_size=args.patch_size,
+            img_size=args.input_size,
+            in_chans=dataset_train.in_c,
+            num_classes=args.nb_classes,
+            drop_path_rate=args.drop_path,
+        )
     else:
         model = models_vit.__dict__[args.model](
             patch_size=args.patch_size,
@@ -537,9 +546,10 @@ def main(args):
     print("accumulate grad iterations: %d" % args.accum_iter)
     print("effective batch size: %d" % eff_batch_size)
 
-    if args.distributed:
-        model = DistributedDataParallel(model, device_ids=[args.gpu])
-        model_without_ddp = model.module
+    model = DistributedDataParallel(
+        model, device_ids=[global_rank], find_unused_parameters=True
+    )
+    model_without_ddp = model.module
 
     # build optimizer with layer-wise lr decay (lrd)
     if args.model_type is not None and (
@@ -604,8 +614,8 @@ def main(args):
     max_iou = 0.0
     # best_model = torch.clone(model)
     for epoch in range(args.start_epoch, args.epochs):
-        if args.distributed:
-            data_loader_train.sampler.set_epoch(epoch)  # type: ignore
+        # if args.distributed:
+        data_loader_train.sampler.set_epoch(epoch)  # type: ignore
 
         if args.eval == False:
             if args.model_type == "temporal":
@@ -621,7 +631,11 @@ def main(args):
                     args,
                     mixup_fn,
                 )
-            elif args.model_type == "segmentation" or args.model_type == "dinov2":
+            elif (
+                args.model_type == "segmentation"
+                or args.model_type == "dinov2"
+                or args.model_type == "dinov2_vit"
+            ):
                 # test_stats = evaluate_segmentation(data_loader_val, model, device)
                 # print(
                 #     f"mIoU of the network on the {len(dataset_val)} test images: {test_stats['IoU']:.3f}"
@@ -643,6 +657,7 @@ def main(args):
                     log_writer,
                     args,
                     mixup_fn,
+                    args.clip_grad,
                 )
             else:
                 train_stats = train_one_epoch(
@@ -672,14 +687,22 @@ def main(args):
 
         if args.model_type == "temporal":
             test_stats = evaluate_temporal(data_loader_val, model, device)
-        elif args.model_type == "segmentation" or args.model_type == "dinov2":
+        elif (
+            args.model_type == "segmentation"
+            or args.model_type == "dinov2"
+            or args.model_type == "dinov2_vit"
+        ):
             test_stats = evaluate_segmentation(
                 data_loader_val, model, device, epoch, args
             )
         else:
             test_stats = evaluate(data_loader_val, model, device)
 
-        if args.model_type == "segmentation" or args.model_type == "dinov2":
+        if (
+            args.model_type == "segmentation"
+            or args.model_type == "dinov2"
+            or args.model_type == "dinov2_vit"
+        ):
             print(
                 f"mIoU of the network on the {len(dataset_val)} test images: {test_stats['IoU']:.4f}"  # type: ignore
             )

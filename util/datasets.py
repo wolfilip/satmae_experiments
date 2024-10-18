@@ -353,7 +353,7 @@ class CustomDatasetFromImages(SatelliteDataset):
         # Transform the image
         img_as_tensor = self.transforms(img_as_img)
         # Get label(class) of the image based on the cropped pandas column
-        single_image_label = self.label_arr[index]
+        # single_image_label = self.label_arr[index]
         # cv2.imwrite(
         #     os.path.join("/home/filip/satmae_experiments", "object_result.png"),
         #     (255 * self.scale(self.totensor(img_as_img)))
@@ -366,7 +366,7 @@ class CustomDatasetFromImages(SatelliteDataset):
 
         return (
             img_as_tensor,
-            single_image_label,
+            0,
             # self.scale(self.totensor(img_as_img)),
         )
 

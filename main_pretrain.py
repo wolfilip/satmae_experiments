@@ -17,8 +17,13 @@ import torch
 import torch.backends.cudnn as cudnn
 import wandb
 from torch.utils.tensorboard.writer import SummaryWriter
+from torch.utils.data import DataLoader, DistributedSampler
+from torch.nn.parallel import DistributedDataParallel
+
+from torch.optim.adamw import AdamW
 
 import models_mae
+import models_mae_dinov2
 import models_mae_temporal
 import util.misc as misc
 from engine_pretrain import train_one_epoch, train_one_epoch_temporal
@@ -46,7 +51,7 @@ def get_args_parser():
     parser.add_argument(
         "--model_type",
         default=None,
-        choices=["group_c", "temporal", "vanilla"],
+        choices=["group_c", "temporal", "vanilla", "dinov2_mae"],
         help="Use channel model",
     )
     parser.add_argument(
@@ -58,7 +63,7 @@ def get_args_parser():
     )
 
     parser.add_argument("--input_size", default=224, type=int, help="images input size")
-    parser.add_argument("--patch_size", default=16, type=int, help="images input size")
+    parser.add_argument("--patch_size", default=14, type=int, help="images input size")
 
     parser.add_argument(
         "--mask_ratio",
@@ -223,63 +228,19 @@ def main(args):
 
     cudnn.benchmark = True
 
-    # with open(args.config) as f:
-    #     config = yaml.safe_load(f.read())
-
-    # transforms_train_0 = K.Resize((224, 224))
-    # transforms_train_1 = K.Resize((160, 160))
-    # transforms_train_2 = K.Resize((112, 112))
-
-    # transforms_train_0 = tv_transforms.Compose(
-    #     [
-    #         tv_transforms.RandomHorizontalFlip(),
-    #         tv_transforms.Resize((224, 224)),
-    #         tv_transforms.ToTensor(),
-    #         tv_transforms.Normalize(
-    #             mean=config["data"]["mean"], std=config["data"]["std"]
-    #         ),
-    #     ]
-    # )
-
-    # transforms_train_1 = tv_transforms.Compose(
-    #     [
-    #         tv_transforms.RandomHorizontalFlip(),
-    #         tv_transforms.Resize((160, 160)),
-    #         tv_transforms.ToTensor(),
-    #         tv_transforms.Normalize(
-    #             mean=config["data"]["mean"], std=config["data"]["std"]
-    #         ),
-    #     ]
-    # )
-
-    # transforms_train_2 = tv_transforms.Compose(
-    #     [
-    #         tv_transforms.RandomHorizontalFlip(),
-    #         tv_transforms.Resize((112, 112)),
-    #         tv_transforms.ToTensor(),
-    #         tv_transforms.Normalize(
-    #             mean=config["data"]["mean"], std=config["data"]["std"]
-    #         ),
-    #     ]
-    # )
-
-    # transforms = [transforms_train_0, transforms_train_1, transforms_train_2]
-
-    # dataset_train = build_fmow_dataset(
-    #     is_train=True, args=args, transforms=[transforms_train_1, transforms_train_2]
-    # )
-
     dataset_train = build_fmow_dataset(is_train=True, args=args)
 
-    if True:  # args.distributed:
-        num_tasks = misc.get_world_size()
-        global_rank = misc.get_rank()
-        sampler_train = torch.utils.data.DistributedSampler(
-            dataset_train, num_replicas=num_tasks, rank=global_rank, shuffle=True
-        )
-        print("Sampler_train = %s" % str(sampler_train))
-    else:
-        sampler_train = torch.utils.data.RandomSampler(dataset_train)
+    num_tasks = misc.get_world_size()
+    print(num_tasks)
+    global_rank = misc.get_rank()
+    print(global_rank)
+    sampler_train = DistributedSampler(
+        dataset_train,
+        num_replicas=num_tasks,
+        rank=global_rank,
+        shuffle=False,
+    )
+    print("Sampler_train = %s" % str(sampler_train))
 
     if global_rank == 0 and args.log_dir is not None:
         os.makedirs(args.log_dir, exist_ok=True)
@@ -287,37 +248,26 @@ def main(args):
     else:
         log_writer = None
 
-    # train_collate = TransformCollateFn(transforms, args.base_resolution)
-
-    data_loader_train = torch.utils.data.DataLoader(
+    data_loader_train = DataLoader(
         dataset_train,
         sampler=sampler_train,
         batch_size=args.batch_size,
         num_workers=args.num_workers,
         pin_memory=args.pin_mem,
         drop_last=True,
-        # collate_fn=train_collate,
     )
 
-    # define the model
-    if args.model_type == "group_c":
-        # Workaround because action append will add to default list
-        if len(args.grouped_bands) == 0:
-            args.grouped_bands = [[0, 1, 2, 6], [3, 4, 5, 7], [8, 9]]
-        print(f"Grouping bands {args.grouped_bands}")
-        model = models_mae_group_channels.__dict__[args.model](
-            img_size=args.input_size,
-            patch_size=args.patch_size,
-            in_chans=dataset_train.in_c,
-            channel_groups=args.grouped_bands,
-            spatial_mask=args.spatial_mask,
-            norm_pix_loss=args.norm_pix_loss,
-        )
-    elif args.model_type == "temporal":
+    if args.model_type == "temporal":
         model = models_mae_temporal.__dict__[args.model](
             norm_pix_loss=args.norm_pix_loss
         )
-    # non-spatial, non-temporal
+    elif args.model_type == "dinov2_mae":
+        model = models_mae_dinov2.__dict__[args.model](
+            img_size=args.input_size,
+            patch_size=args.patch_size,
+            in_chans=dataset_train.in_c,
+            norm_pix_loss=args.norm_pix_loss,
+        )
     else:
         model = models_mae.__dict__[args.model](
             img_size=args.input_size,
@@ -325,7 +275,7 @@ def main(args):
             in_chans=dataset_train.in_c,
             norm_pix_loss=args.norm_pix_loss,
         )
-    model.to(device)
+    model.to(global_rank)
 
     model_without_ddp = model
     print("Model = %s" % str(model_without_ddp))
@@ -341,17 +291,17 @@ def main(args):
     print("accumulate grad iterations: %d" % args.accum_iter)
     print("effective batch size: %d" % eff_batch_size)
 
-    if args.distributed:
-        model = torch.nn.parallel.DistributedDataParallel(
-            model, device_ids=[args.gpu], find_unused_parameters=True
-        )
-        model_without_ddp = model.module
+    # if args.distributed:
+    model = DistributedDataParallel(
+        model, device_ids=[global_rank], find_unused_parameters=True
+    )
+    model_without_ddp = model.module
 
     # following timm: set wd as 0 for bias and norm layers
     param_groups = optim_factory.param_groups_layer_decay(
         model_without_ddp, args.weight_decay
     )
-    optimizer = torch.optim.AdamW(param_groups, lr=args.lr, betas=(0.9, 0.95))
+    optimizer = AdamW(param_groups, lr=args.lr, betas=(0.9, 0.95))
     print(optimizer)
     loss_scaler = NativeScaler()
 
@@ -381,8 +331,8 @@ def main(args):
     print(f"Start training for {args.epochs} epochs")
     start_time = time.time()
     for epoch in range(args.start_epoch, args.epochs):
-        if args.distributed:
-            data_loader_train.sampler.set_epoch(epoch)
+        # if args.distributed:
+        data_loader_train.sampler.set_epoch(epoch)
 
         if args.model_type == "temporal":
             train_stats = train_one_epoch_temporal(

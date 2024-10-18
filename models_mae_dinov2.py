@@ -14,19 +14,20 @@ from timm.models.vision_transformer import Block, PatchEmbed
 from util.pos_embed import get_2d_sincos_pos_embed
 
 
-class MaskedAutoencoderViT(nn.Module):
-    """Masked Autoencoder with VisionTransformer backbone"""
+class DINOv2MAEViT(nn.Module):
+    """Masked Autoencoder with DINOv2 regularization with VisionTransformer backbone"""
 
     def __init__(
         self,
         img_size=224,
         patch_size=16,
         in_chans=3,
+        device="cuda",
         embed_dim=1024,
         depth=24,
         num_heads=16,
         decoder_embed_dim=512,
-        decoder_depth=3,
+        decoder_depth=8,
         decoder_num_heads=16,
         mlp_ratio=4.0,
         norm_layer=nn.LayerNorm,
@@ -92,6 +93,29 @@ class MaskedAutoencoderViT(nn.Module):
         )  # decoder to patch
         # --------------------------------------------------------------------------
 
+        # --------------------------------------------------------------------------
+        # DINOv2 encoder specifics
+
+        self.model_size = "large"
+        if self.model_size == "small":
+            self.feat_extr = torch.hub.load("facebookresearch/dinov2", "dinov2_vits14")
+        if self.model_size == "small_reg":
+            self.feat_extr = torch.hub.load(
+                "facebookresearch/dinov2", "dinov2_vits14_reg"
+            )
+        if self.model_size == "base":
+            self.feat_extr = torch.hub.load("facebookresearch/dinov2", "dinov2_vitb14")
+        if self.model_size == "base_reg":
+            self.feat_extr = torch.hub.load(
+                "facebookresearch/dinov2", "dinov2_vitb14_reg"
+            )
+        if self.model_size == "large":
+            self.feat_extr = torch.hub.load("facebookresearch/dinov2", "dinov2_vitl14")
+
+        self.feat_extr.eval()  # type: ignore
+        self.feat_extr.to(device)  # type: ignore
+        self.device = device
+
         self.norm_pix_loss = norm_pix_loss
 
         self.initialize_weights()
@@ -153,24 +177,7 @@ class MaskedAutoencoderViT(nn.Module):
         x = x.reshape(shape=(imgs.shape[0], h * w, p**2 * c))
         return x
 
-    def unpatchify(self, x, p, c):
-        """
-        x: (N, L, patch_size**2 *C)
-        p: Patch embed patch size
-        c: Num channels
-        imgs: (N, C, H, W)
-        """
-        # c = self.in_c
-        # p = self.patch_embed.patch_size[0]
-        h = w = int(x.shape[1] ** 0.5)
-        assert h * w == x.shape[1]
-
-        x = x.reshape(shape=(x.shape[0], h, w, p, p, c))
-        x = torch.einsum("nhwpqc->nchpwq", x)
-        imgs = x.reshape(shape=(x.shape[0], c, h * p, h * p))
-        return imgs
-
-    def random_masking(self, x, mask_ratio):
+    def random_masking(self, x, mask_ratio=0.75):
         """
         Perform per-sample random masking by per-sample shuffling.
         Per-sample shuffling is done by argsort random noise.
@@ -197,9 +204,9 @@ class MaskedAutoencoderViT(nn.Module):
         # unshuffle to get the binary mask
         mask = torch.gather(mask, dim=1, index=ids_restore)
 
-        return x_masked, mask, ids_restore
+        return x_masked, mask, ids_restore, ids_keep
 
-    def forward_encoder(self, x, mask_ratio):
+    def forward_encoder_mae(self, x):
         # embed patches
         x = self.patch_embed(x)
 
@@ -207,19 +214,19 @@ class MaskedAutoencoderViT(nn.Module):
         x = x + self.pos_embed[:, 1:, :]
 
         # masking: length -> length * mask_ratio
-        x, mask, ids_restore = self.random_masking(x, mask_ratio)
+        x_masked, mask, ids_restore, ids_keep = self.random_masking(x)
 
         # append cls token
         cls_token = self.cls_token + self.pos_embed[:, :1, :]
-        cls_tokens = cls_token.expand(x.shape[0], -1, -1)
-        x = torch.cat((cls_tokens, x), dim=1)
+        cls_tokens = cls_token.expand(x_masked.shape[0], -1, -1)
+        x_encoder = torch.cat((cls_tokens, x_masked), dim=1)
 
         # apply Transformer blocks
         for blk in self.blocks:
-            x = blk(x)
-        x = self.norm(x)
+            x_encoder = blk(x_encoder)
+        mae_features = self.norm(x_encoder)
 
-        return x, mask, ids_restore
+        return mae_features, mask, ids_restore, ids_keep
 
     def forward_decoder(self, x, ids_restore):
         # embed tokens
@@ -251,7 +258,7 @@ class MaskedAutoencoderViT(nn.Module):
 
         return x
 
-    def forward_loss(self, imgs, pred, mask):
+    def forward_loss_mae(self, imgs, pred, mask):
         """
         imgs: [N, 3, H, W]
         pred: [N, L, p*p*3]
@@ -273,15 +280,56 @@ class MaskedAutoencoderViT(nn.Module):
         loss = (loss * mask).sum() / mask.sum()  # mean loss on removed patches
         return loss
 
-    def forward(self, imgs, mask_ratio=0.75):
-        latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio)
-        pred = self.forward_decoder(latent, ids_restore)  # [N, L, p*p*3]
-        loss = self.forward_loss(imgs, pred, mask)
-        return loss, pred, mask
+    def forward_loss_features(self, features_mae, features_dino):
+
+        loss = (features_mae - features_dino) ** 2
+        loss = loss.mean(dim=-1)  # [N, L], mean loss per patch
+        loss = loss.sum() / (features_mae.shape[0] * features_mae.shape[1])
+        return loss
+
+    def get_dinov2_features(self, imgs):
+        # layer = self.layer_num[0] # TODO: make it a list
+        # layers = []
+        with torch.no_grad():
+            # if self.layer_num == "last":
+            patch = self.feat_extr.forward_features(imgs)  # type: ignore
+            # patch = self.feat_extr.get_intermediate_layers(imgs, (3, 9, 17, 23))  # type: ignore
+            # layers.append(patch)
+            # out = self.feat_extr.forward_features(imgs)  # type: ignore
+            # patch = out["x_norm_patchtokens"]
+            # layers.append(patch)
+            # cls = out["x_norm_clstoken"]
+            # elif self.layer_num == "first":
+
+        # elif self.layer_num == "avg":
+        #     pass
+        out = patch["x_norm_patchtokens"]
+        return out
+
+    def forward(self, x, mask_ratio=0.75):
+
+        # MAE encoder decoder
+        mae_features, mask, ids_restore, ids_keep = self.forward_encoder_mae(x)
+        pred = self.forward_decoder(mae_features, ids_restore)
+        loss_mae = self.forward_loss_mae(x, pred, mask)
+
+        # DINOv2 encoder decoder
+
+        dinov2_features = self.get_dinov2_features(x)
+        dinov2_features = torch.gather(
+            dinov2_features,
+            dim=1,
+            index=ids_keep.unsqueeze(-1).repeat(1, 1, dinov2_features.shape[2]),
+        )
+        loss_features = self.forward_loss_features(
+            mae_features[:, 1:, :], dinov2_features
+        )
+
+        return loss_mae, loss_features, 0
 
 
 def mae_vit_base_patch16_dec512d8b(**kwargs):
-    model = MaskedAutoencoderViT(
+    model = DINOv2MAEViT(
         embed_dim=768,
         depth=12,
         num_heads=12,
@@ -296,7 +344,7 @@ def mae_vit_base_patch16_dec512d8b(**kwargs):
 
 
 def mae_vit_large_patch16_dec512d8b(**kwargs):
-    model = MaskedAutoencoderViT(
+    model = DINOv2MAEViT(
         embed_dim=1024,
         depth=24,
         num_heads=16,
@@ -311,7 +359,7 @@ def mae_vit_large_patch16_dec512d8b(**kwargs):
 
 
 def mae_vit_huge_patch14_dec512d8b(**kwargs):
-    model = MaskedAutoencoderViT(
+    model = DINOv2MAEViT(
         embed_dim=1280,
         depth=32,
         num_heads=16,
@@ -325,7 +373,6 @@ def mae_vit_huge_patch14_dec512d8b(**kwargs):
     return model
 
 
-# set recommended archs
 mae_vit_base_patch16 = mae_vit_base_patch16_dec512d8b  # decoder: 512 dim, 8 blocks
 mae_vit_large_patch16 = mae_vit_large_patch16_dec512d8b  # decoder: 512 dim, 8 blocks
 mae_vit_huge_patch14 = mae_vit_huge_patch14_dec512d8b  # decoder: 512 dim, 8 blocks

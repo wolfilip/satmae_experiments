@@ -49,7 +49,7 @@ def train_one_epoch(
     log_writer,
     args: ArgumentParser,
     mixup_fn: Optional[Mixup] = None,
-    max_norm: float = 0,
+    max_norm: float = 1,
 ):
     model.train(True)
     metric_logger = misc.MetricLogger(delimiter="  ")
@@ -151,7 +151,7 @@ def train_one_epoch_temporal(
     log_writer,
     args: ArgumentParser,
     mixup_fn: Optional[Mixup] = None,
-    max_norm: float = 0,
+    max_norm: float = 1,
 ):
     model.train(True)
     metric_logger = misc.MetricLogger(delimiter="  ")
@@ -267,7 +267,7 @@ def train_one_epoch_segmentation(
     log_writer,
     args: ArgumentParser,
     mixup_fn: Optional[Mixup] = None,
-    max_norm: float = 0,
+    max_norm: float = 1,
 ):
     model.train(True)
     metric_logger = misc.MetricLogger(delimiter="  ")
@@ -573,14 +573,16 @@ def calc_metrics(
         mask_one_hot = F.one_hot(mask, num_classes=args.nb_classes).permute(0, 3, 1, 2)
 
         if not os.path.exists(
-            "satmae_experiments/loveda_results/images/dinov2_l_linear-3/"
-        ):
-            os.makedirs("satmae_experiments/loveda_results/images/dinov2_l_linear-3/")
-        if not os.path.exists(
-            "satmae_experiments/loveda_results/per_image/dinov2_l_linear-3/"
+            "satmae_experiments/loveda_results/images/dinov2_l_4_blocks_vit_upernet-3/"
         ):
             os.makedirs(
-                "satmae_experiments/loveda_results/per_image/dinov2_l_linear-3/"
+                "satmae_experiments/loveda_results/images/dinov2_l_4_blocks_vit_upernet-3/"
+            )
+        if not os.path.exists(
+            "satmae_experiments/loveda_results/per_image/dinov2_l_4_blocks_vit_upernet-3/"
+        ):
+            os.makedirs(
+                "satmae_experiments/loveda_results/per_image/dinov2_l_4_blocks_vit_upernet-3/"
             )
     # dice_loss = DiceLoss()
     # miou = MeanIoU(include_background=False, num_classes=1)
@@ -602,7 +604,7 @@ def calc_metrics(
                 # axarr[3].imshow(viz_1.permute(1, 2, 0))
                 # plt.savefig("images/image_1_pca.png")
                 plt.savefig(
-                    "satmae_experiments/loveda_results/images/dinov2_l_linear-3/img_"
+                    "satmae_experiments/loveda_results/images/dinov2_l_4_blocks_vit_upernet-3/img_"
                     + str(cnt + i)
                     + ".png"
                 )
@@ -612,7 +614,7 @@ def calc_metrics(
             if torch.all(mask[i] == 0) and torch.all(pred.argmax(1)[i] == 0):
                 mIoU = 1.0
             f = open(
-                "satmae_experiments/loveda_results/per_image/dinov2_l_linear-3/image_results_iou_"
+                "satmae_experiments/loveda_results/per_image/dinov2_l_4_blocks_vit_upernet-3/image_results_iou_"
                 + str(epoch)
                 + ".txt",
                 "a",
