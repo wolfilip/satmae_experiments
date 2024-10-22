@@ -197,7 +197,7 @@ def train_one_epoch_temporal(
 
         # targets = F.one_hot(targets, 62)
 
-        with torch.amp.autocast("cuda"):
+        with torch.amp.autocast("cuda"):  # type: ignore
             outputs = model(samples, timestamps)
             loss = criterion(outputs, targets)
 
@@ -305,7 +305,7 @@ def train_one_epoch_segmentation(
         samples = samples.to(device, non_blocking=True)
         targets = targets.to(device, non_blocking=True)
 
-        with torch.amp.autocast("cuda"):
+        with torch.amp.autocast("cuda"):  # type: ignore
             loss_value = calc_metrics(
                 model, (samples, targets), miou_metric, device, epoch, cnt, args, 0, 0
             )
@@ -458,7 +458,7 @@ def evaluate_temporal(data_loader, model, device):
                 maxarg = output.argmax(dim=-1)
 
                 output = F.one_hot(maxarg.reshape(-1), num_classes=1000).float()
-                output = output.reshape(sp).mean(dim=1, keepdims=False)
+                output = output.reshape(sp).mean(dim=1, keepdims=False)  # type: ignore
                 # print(output.shape)
 
                 target = target.reshape(batch_size, 9)[:, 0]
@@ -509,7 +509,7 @@ def evaluate_segmentation(data_loader, model, device, epoch, args):
 
         # print("before pass model")
         # compute output
-        with torch.amp.autocast("cuda"):
+        with torch.amp.autocast("cuda"):  # type: ignore
             loss = calc_metrics(
                 model, (images, target), miou_metric, device, epoch, cnt, args, 0, 0
             )
@@ -573,16 +573,16 @@ def calc_metrics(
         mask_one_hot = F.one_hot(mask, num_classes=args.nb_classes).permute(0, 3, 1, 2)
 
         if not os.path.exists(
-            "satmae_experiments/loveda_results/images/dinov2_l_4_blocks_vit_upernet-3/"
+            "satmae_experiments/loveda_results/images/dinov2_vit_4_blocks_vit_upernet-2/"
         ):
             os.makedirs(
-                "satmae_experiments/loveda_results/images/dinov2_l_4_blocks_vit_upernet-3/"
+                "satmae_experiments/loveda_results/images/dinov2_vit_4_blocks_vit_upernet-2/"
             )
         if not os.path.exists(
-            "satmae_experiments/loveda_results/per_image/dinov2_l_4_blocks_vit_upernet-3/"
+            "satmae_experiments/loveda_results/per_image/dinov2_vit_4_blocks_vit_upernet-2/"
         ):
             os.makedirs(
-                "satmae_experiments/loveda_results/per_image/dinov2_l_4_blocks_vit_upernet-3/"
+                "satmae_experiments/loveda_results/per_image/dinov2_vit_4_blocks_vit_upernet-2/"
             )
     # dice_loss = DiceLoss()
     # miou = MeanIoU(include_background=False, num_classes=1)
@@ -604,7 +604,7 @@ def calc_metrics(
                 # axarr[3].imshow(viz_1.permute(1, 2, 0))
                 # plt.savefig("images/image_1_pca.png")
                 plt.savefig(
-                    "satmae_experiments/loveda_results/images/dinov2_l_4_blocks_vit_upernet-3/img_"
+                    "satmae_experiments/loveda_results/images/dinov2_vit_4_blocks_vit_upernet-2/img_"
                     + str(cnt + i)
                     + ".png"
                 )
@@ -614,7 +614,7 @@ def calc_metrics(
             if torch.all(mask[i] == 0) and torch.all(pred.argmax(1)[i] == 0):
                 mIoU = 1.0
             f = open(
-                "satmae_experiments/loveda_results/per_image/dinov2_l_4_blocks_vit_upernet-3/image_results_iou_"
+                "satmae_experiments/loveda_results/per_image/dinov2_vit_4_blocks_vit_upernet-2/image_results_iou_"
                 + str(epoch)
                 + ".txt",
                 "a",

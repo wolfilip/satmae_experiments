@@ -332,7 +332,7 @@ def main(args):
     start_time = time.time()
     for epoch in range(args.start_epoch, args.epochs):
         # if args.distributed:
-        data_loader_train.sampler.set_epoch(epoch)
+        data_loader_train.sampler.set_epoch(epoch)  # type: ignore
 
         if args.model_type == "temporal":
             train_stats = train_one_epoch_temporal(

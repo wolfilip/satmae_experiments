@@ -55,9 +55,9 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
             param.requires_grad = False
 
         # feature_channels = [1024, 1024, 1024, 1024]
-        feature_channels = [2048, 2048, 2048, 2048]
+        feature_channels = [1024, 1024, 1024, 2048]
 
-        fpn_out = 2048
+        fpn_out = 1024
         self.input_size = (224, 224)
 
         self.PPN = PSPModule(feature_channels[-1])
@@ -164,8 +164,8 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         outs = []
         for i, blk in enumerate(self.blocks):
             x = blk(x)
-            # if i in [3, 13]:
-            if i in [3, 9, 17, 23]:
+            if i in [23]:
+                # if i in [3, 9, 17, 23]:
                 # if i in [3, 8, 13, 18, 23]:
                 outs.append(x)
 
@@ -245,8 +245,12 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         features_dino = self.get_features(x)
         features_mae = self.encoder_forward(x)
         features = []
-        for feature1, feature2 in zip(features_dino, features_mae):
-            features.append(torch.cat((feature1, feature2), 2))
+        features.append(features_dino[0])
+        features.append(features_dino[1])
+        features.append(features_dino[2])
+        features.append(torch.cat((features_dino[3], features_mae[0]), 2))
+        # for feature1, feature2 in zip(features_dino, features_mae):
+        #     features.append(torch.cat((feature1, feature2), 2))
         x = self.decoder_upernet(features)
         # x = self.encoder_forward(x)
         # x = self.decoder_upernet(x)
