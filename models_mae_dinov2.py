@@ -42,6 +42,7 @@ class DINOv2MAEViT(nn.Module):
         # MAE encoder specifics
         self.patch_embed = PatchEmbed(img_size, patch_size, in_chans, embed_dim)
         num_patches = self.patch_embed.num_patches
+        # self.pos_drop = nn.Dropout(p=pos_drop_rate)
 
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
         self.pos_embed = nn.Parameter(
@@ -97,7 +98,7 @@ class DINOv2MAEViT(nn.Module):
         # --------------------------------------------------------------------------
         # DINOv2 encoder specifics
 
-        self.model_size = "large"
+        self.model_size = "base"
         if self.model_size == "small":
             self.feat_extr = torch.hub.load("facebookresearch/dinov2", "dinov2_vits14")
         if self.model_size == "small_reg":
@@ -224,6 +225,21 @@ class DINOv2MAEViT(nn.Module):
 
         return x_masked, mask, ids_restore, ids_keep
 
+    def forward_vit(self, x):
+        # with torch.no_grad():
+        # embed patches
+        x = self.patch_embed(x)
+
+        # add pos embed w/o cls token
+        x = x + self.pos_embed[:, 1:, :]
+
+        # apply Transformer blocks
+        for blk in self.blocks:
+            x = blk(x)
+        x = self.norm(x)
+
+        return x
+
     def forward_encoder_mae(self, x):
         # embed patches
         x = self.patch_embed(x)
@@ -314,8 +330,8 @@ class DINOv2MAEViT(nn.Module):
         # layers = []
         with torch.no_grad():
             # if self.layer_num == "last":
-            # patch = self.feat_extr.forward_features(imgs)  # type: ignore
-            patch = self.feat_extr.get_intermediate_layers(imgs, (11))  # type: ignore
+            patch = self.feat_extr.forward_features(imgs)  # type: ignore
+            # patch = self.feat_extr.get_intermediate_layers(imgs, (11))  # type: ignore
             # layers.append(patch)
             # out = self.feat_extr.forward_features(imgs)  # type: ignore
             # patch = out["x_norm_patchtokens"]
@@ -325,8 +341,8 @@ class DINOv2MAEViT(nn.Module):
 
         # elif self.layer_num == "avg":
         #     pass
-        # out = patch["x_norm_patchtokens"]
-        out = patch[10]
+        out = patch["x_norm_patchtokens"]
+        # out = patch[10]
         return out
 
     def forward(self, x, mask_ratio=0.75):
@@ -335,6 +351,11 @@ class DINOv2MAEViT(nn.Module):
         mae_features, mask, ids_restore, ids_keep, out = self.forward_encoder_mae(x)
         pred = self.forward_decoder(mae_features, ids_restore)
         loss_mae, reconstructed_image = self.forward_loss_mae(x, pred, mask)
+
+        vit_features = self.forward_vit(x)
+        dinov2_features = self.get_dinov2_features(x)
+
+        loss_features = self.forward_loss_features(vit_features, dinov2_features)
 
         # DINOv2 encoder decoder
 
@@ -356,7 +377,7 @@ class DINOv2MAEViT(nn.Module):
         # print(loss_features)
         # print(dinov2_features_masked)
 
-        return loss_mae, torch.tensor(0), 0, out, 0, reconstructed_image
+        return loss_mae, loss_features, 0, out, 0, reconstructed_image
 
 
 def mae_vit_base_patch16_dec512d8b(**kwargs):
