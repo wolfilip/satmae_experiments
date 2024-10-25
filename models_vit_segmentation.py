@@ -31,17 +31,17 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         )
         self.pos_embed.data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
 
-        for block in self.blocks:
-            for param in block.parameters():
-                param.requires_grad = False
+        # for block in self.blocks:
+        #     for param in block.parameters():
+        #         param.requires_grad = False
 
-        for param in self.patch_embed.parameters():
-            param.requires_grad = False
+        # for param in self.patch_embed.parameters():
+        #     param.requires_grad = False
 
         # feature_channels = [1024, 1024, 1024, 1024]
-        feature_channels = [1024, 1024]
+        feature_channels = [768, 768]
 
-        fpn_out = 1024
+        fpn_out = 768
         self.input_size = (224, 224)
 
         self.PPN = PSPModule(feature_channels[-1])
@@ -148,14 +148,19 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         outs = []
         for i, blk in enumerate(self.blocks):
             x = blk(x)
-            if i in [3, 13]:
+            if i in [3, 11]:
                 # if i in [3, 9, 17, 23]:
                 # if i in [3, 8, 13, 18, 23]:
                 outs.append(x)
 
         return outs
 
-    def decoder_upernet(self, features):
+    def decoder_upernet(self, feature_list):
+
+        features = []
+
+        features.append(torch.clone(feature_list[0]))
+        features.append(torch.clone(feature_list[1]))
 
         # conv_1 = self.relu(self.bn(self.conv(conv_embeds)))
         # conv_2 = self.relu(self.bn(self.conv(conv_1)))
@@ -208,11 +213,11 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
 
     def forward(self, x):
         # conv_embeds = self.encoder_conv(x)
-        x = self.encoder_forward(x)
-        x = self.decoder_upernet(x)
+        features = self.encoder_forward(x)
+        x = self.decoder_upernet(features)
         # x = self.encoder_forward(x)
         # x = self.decoder_upernet(x)
-        return x
+        return x, features
 
 
 def vit_base_patch16(**kwargs):

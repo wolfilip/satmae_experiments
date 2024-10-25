@@ -26,6 +26,7 @@ from torchmetrics import JaccardIndex
 import util.lr_sched as lr_sched
 import util.misc as misc
 from util.misc import NativeScalerWithGradNormCount as NativeScaler
+from util.visualize_features import visualize_features
 
 
 def get_bce_loss(pred, mask):
@@ -545,8 +546,15 @@ def calc_metrics(
     epoch_loss = epoch_loss
     epoch_iou = epoch_iou
     data = data.to(device)
-    # viz_1, viz_2 = model.visualize_features(data)
-    pred = model(data)
+    pred, features = model(data)
+
+    if args.visualize_features:
+        if not os.path.exists(
+            "satmae_experiments/feature_visualizations/mae_dinov2_upernet_last/"
+        ):
+            os.makedirs(
+                "satmae_experiments/feature_visualizations/mae_dinov2_upernet_last/"
+            )
 
     if args.dataset_type == "spacenet":
         miou_temp = JaccardIndex(task="binary", zero_division=1.0)
@@ -621,6 +629,17 @@ def calc_metrics(
             )
             f.write("img_" + str(cnt + i) + ": " + str(mIoU) + "\n")
             f.close()
+            if args.visualize_features:
+                viz_1, viz_2 = visualize_features(features)
+                f, axarr = plt.subplots(2)
+                axarr[0].imshow(data.cpu()[i].permute(1, 2, 0))
+                axarr[1].imshow(viz_1.permute(1, 2, 0))
+                plt.savefig(
+                    "satmae_experiments/feature_visualizations/mae_dinov2_upernet_last/feature_"
+                    + str(cnt + i)
+                    + ".png"
+                )
+                plt.close()
         # return model.get_bce_loss(pred, mask_one_hot.float()) + dice_loss(pred, mask_one_hot.float()), miou_sum / data.shape[0]
         # if miou_sum / data.shape[0] > best_miou
 

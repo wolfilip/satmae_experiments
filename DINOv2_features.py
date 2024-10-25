@@ -2,8 +2,6 @@ from sympy import xfield
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from einops import rearrange
-from torchvision.transforms.functional import resize
 
 from UPerNet.FPN_fuse import FPN_fuse
 from UPerNet.PSPModule import PSPModule
@@ -29,7 +27,7 @@ class LinearClassifier(nn.Module):
 
 class DINOv2(nn.Module):
 
-    def __init__(self, model_args, nb_classes, device) -> None:
+    def __init__(self, model_args, args, device) -> None:
         super().__init__()
         self.model_size = model_args["model_size"]
         if self.model_size == "small":
@@ -68,7 +66,7 @@ class DINOv2(nn.Module):
 
         self.PPN = PSPModule(feature_channels[-1])
         self.FPN = FPN_fuse(feature_channels, fpn_out=fpn_out)
-        self.head = nn.Conv2d(fpn_out, nb_classes, kernel_size=3, padding=1)
+        self.head = nn.Conv2d(fpn_out, args.nb_classes, kernel_size=3, padding=1)
         self.up_1 = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
         self.up_2 = nn.Upsample(scale_factor=4, mode="bilinear", align_corners=True)
 
@@ -161,44 +159,9 @@ class DINOv2(nn.Module):
         # conv_embeds = self.encoder_conv(x)
         # x = self.encoder_forward(x)
         # x = self.decoder_upernet(x, conv_embeds)
-        x = self.get_features(x)
+        features = self.get_features(x)
         # x = self.encoder_forward(x)
-        x = self.decoder_upernet(x)
+        x = self.decoder_upernet(features)
         # x = self.decoder_upernet(x[1])
 
-        return x
-
-    def visualize_features(self, x):
-        x = self.get_features(x)["patch"].cpu()
-        E_patch_norm = rearrange(x, "B L E -> (B L) E").to(torch.float64)
-        _, _, V = torch.pca_lowrank(E_patch_norm)
-        E_pca_1 = torch.matmul(E_patch_norm, V[:, :1])
-        E_pca_1_norm = self.minmax_norm(E_pca_1)
-        M_fg = E_pca_1_norm.squeeze() > 0.5
-        _, _, V = torch.pca_lowrank(E_patch_norm[M_fg])
-        E_pca_3_fg = torch.matmul(E_patch_norm[M_fg], V[:, :3])
-        E_pca_3_fg = self.minmax_norm(E_pca_3_fg)
-        B, L, _ = x.shape
-        Z = B * L
-        I_draw = torch.zeros(Z, 3).to(torch.float64)
-        I_draw[M_fg] = E_pca_3_fg
-        I_draw = rearrange(I_draw, "(B L) C -> B L C", B=B)
-        I_draw = rearrange(
-            I_draw,
-            "B (h w) C -> B h w C",
-            h=self.img_size // 14,
-            w=self.img_size // 14,
-        )
-        image_1_pca = I_draw[0]
-        image_2_pca = I_draw[1]
-        image_1_pca = rearrange(image_1_pca, "H W C -> C H W")
-        image_2_pca = rearrange(image_2_pca, "H W C -> C H W")
-        image_1_pca = resize(image_1_pca, self.img_size)
-        image_2_pca = resize(image_2_pca, self.img_size)
-        return image_1_pca, image_2_pca
-        # save_image(image_1_pca, "images/image_1_pca.png")
-        # save_image(image_2_pca, "images/image_2_pca.png")
-
-    def minmax_norm(self, x):
-        """Min-max normalization"""
-        return (x - x.min(0).values) / (x.max(0).values - x.min(0).values)
+        return x, features

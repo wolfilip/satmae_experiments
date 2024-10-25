@@ -58,7 +58,12 @@ def get_args_parser():
         type=int,
         help="Accumulate gradient iterations (for increasing the effective batch size under memory constraints)",
     )
-
+    parser.add_argument(
+        "--visualize_features",
+        action="store_true",
+        default=False,
+        help="Visualize first three PCA components",
+    )
     # Model parameters
     parser.add_argument(
         "--model_type",
@@ -477,7 +482,7 @@ def main(args):
             global_pool=args.global_pool,
         )
 
-    if args.finetune and not args.eval:
+    if args.finetune:
         checkpoint = torch.load(args.finetune, map_location="cpu")
 
         print("Load pre-trained checkpoint from: %s" % args.finetune)
@@ -553,7 +558,7 @@ def main(args):
 
     # build optimizer with layer-wise lr decay (lrd)
     if args.model_type is not None and (
-        args.model_type.startswith("resnet") or args.model == "dinov2"
+        args.model_type.startswith("resnet") or args.model_type == "dinov2"
     ):
         param_groups = model_without_ddp.parameters()
     else:
@@ -592,12 +597,20 @@ def main(args):
     if args.eval:
         if args.model_type == "temporal":
             test_stats = evaluate_temporal(data_loader_val, model, device)
-        elif args.model_type == "segmentation":
+        elif (
+            args.model_type == "segmentation"
+            or args.model_type == "dinov2"
+            or args.model_type == "dinov2_vit"
+        ):
             test_stats = evaluate_segmentation(data_loader_val, model, device, 0, args)
         else:
             test_stats = evaluate(data_loader_val, model, device)
 
-        if args.model_type == "segmentation":
+        if (
+            args.model_type == "segmentation"
+            or args.model_type == "dinov2"
+            or args.model_type == "dinov2_vit"
+        ):
             print(
                 f"mIoU of the network on the {len(dataset_val)} test images: {test_stats['IoU']:.4f}"  # type: ignore
             )

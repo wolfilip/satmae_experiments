@@ -3,14 +3,17 @@
 # MAE: https://github.com/facebookresearch/mae
 # --------------------------------------------------------
 import math
+import os
 import sys
 from typing import Iterable
 
+from matplotlib import pyplot as plt
 import torch
 import wandb
 
 import util.lr_sched as lr_sched
 import util.misc as misc
+from util.visualize_features import visualize_features
 
 
 def train_one_epoch(
@@ -49,7 +52,56 @@ def train_one_epoch(
         samples = samples.to(device, non_blocking=True)
 
         with torch.amp.autocast("cuda"):  # type: ignore
-            loss_mae, loss_dino, _ = model(samples, mask_ratio=args.mask_ratio)  # type: ignore
+            loss_mae, loss_dino, _, mae_features, dinov2_features, reconstructed_image = model(samples, mask_ratio=args.mask_ratio)  # type: ignore
+
+        # if args.visualize_features:  # type: ignore
+        #     if not os.path.exists(
+        #         "satmae_experiments/feature_visualizations/dinov2_mae_pretrain/"
+        #     ):
+        #         os.makedirs(
+        #             "satmae_experiments/feature_visualizations/dinov2_mae_pretrain/"
+        #         )
+        #     for i in range(samples.shape[0]):
+        #         viz_mae, _ = visualize_features(
+        #             torch.unsqueeze(mae_features[i, :, :], 0)
+        #         )
+        #         viz_dino, _ = visualize_features(
+        #             torch.unsqueeze(dinov2_features[i, :, :], 0)
+        #         )
+        #         _, axarr = plt.subplots(3)
+        #         axarr[0].imshow(samples.cpu()[i].permute(1, 2, 0))
+        #         axarr[1].imshow(viz_mae.detach().permute(1, 2, 0))
+        #         axarr[2].imshow(viz_dino.detach().permute(1, 2, 0))
+        #         plt.savefig(
+        #             "satmae_experiments/feature_visualizations/dinov2_mae_pretrain/feature_"
+        #             + str(epoch + i)
+        #             + ".png"
+        #         )
+        #         plt.close()
+
+        # if data_iter_step == 0:
+        #     if not os.path.exists(
+        #         "satmae_experiments/feature_visualizations/dinov2_mae_pretrain_reconstruction/epoch_"
+        #         + str(epoch)
+        #     ):
+        #         os.makedirs(
+        #             "satmae_experiments/feature_visualizations/dinov2_mae_pretrain_reconstruction/epoch_"
+        #             + str(epoch)
+        #         )
+        #     for i in range(samples.shape[0]):
+        #         _, axarr = plt.subplots(2)
+        #         axarr[0].imshow(samples.cpu()[i].permute(1, 2, 0))
+        #         axarr[1].imshow(
+        #             reconstructed_image.cpu().detach()[i].permute(1, 2, 0).double()
+        #         )
+        #         plt.savefig(
+        #             "satmae_experiments/feature_visualizations/dinov2_mae_pretrain_reconstruction/epoch_"
+        #             + str(epoch)
+        #             + "/feature_"
+        #             + str(i)
+        #             + ".png"
+        #         )
+        #         plt.close()
 
         loss_mae_value, loss_dino_value = loss_mae.item(), loss_dino.item()
 
@@ -79,7 +131,7 @@ def train_one_epoch(
         metric_logger.update(lr=lr)
 
         loss_mae_value_reduce = misc.all_reduce_mean(loss_mae_value)
-        loss_dino_value_reduce = misc.all_reduce_mean(loss_dino_value)
+        # loss_dino_value_reduce = misc.all_reduce_mean(loss_dino_value)
         loss_value_reduce = misc.all_reduce_mean(loss_value)
 
         if log_writer is not None and (data_iter_step + 1) % accum_iter == 0:
@@ -88,9 +140,9 @@ def train_one_epoch(
             """
             epoch_1000x = int((data_iter_step / len(data_loader) + epoch) * 1000)  # type: ignore
             log_writer.add_scalar("train_loss_mae", loss_mae_value_reduce, epoch_1000x)
-            log_writer.add_scalar(
-                "train_loss_dino", loss_dino_value_reduce, epoch_1000x
-            )
+            # log_writer.add_scalar(
+            #     "train_loss_dino", loss_dino_value_reduce, epoch_1000x
+            # )
             log_writer.add_scalar("train_loss_total", loss_value_reduce, epoch_1000x)
             log_writer.add_scalar("lr", lr, epoch_1000x)
 
@@ -110,7 +162,12 @@ def train_one_epoch(
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)
-    return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
+    return (
+        {k: meter.global_avg for k, meter in metric_logger.meters.items()},
+        mae_features,
+        dinov2_features,
+        samples,
+    )
 
 
 def train_one_epoch_temporal(

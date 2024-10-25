@@ -11,6 +11,7 @@ import os
 import time
 from pathlib import Path
 
+from matplotlib import pyplot as plt
 import numpy as np
 import timm.optim.optim_factory as optim_factory
 import torch
@@ -29,6 +30,7 @@ import util.misc as misc
 from engine_pretrain import train_one_epoch, train_one_epoch_temporal
 from util.datasets import build_fmow_dataset
 from util.misc import NativeScalerWithGradNormCount as NativeScaler
+from util.visualize_features import visualize_features
 
 
 def get_args_parser():
@@ -61,7 +63,12 @@ def get_args_parser():
         metavar="MODEL",
         help="Name of model to train",
     )
-
+    parser.add_argument(
+        "--visualize_features",
+        action="store_true",
+        default=False,
+        help="Visualize first three PCA components",
+    )
     parser.add_argument("--input_size", default=224, type=int, help="images input size")
     parser.add_argument("--patch_size", default=14, type=int, help="images input size")
 
@@ -346,7 +353,7 @@ def main(args):
                 args=args,
             )
         else:
-            train_stats = train_one_epoch(
+            train_stats, mae_features, dinov2_features, samples = train_one_epoch(
                 model,
                 data_loader_train,
                 optimizer,
@@ -356,6 +363,31 @@ def main(args):
                 log_writer=log_writer,
                 args=args,
             )
+
+        if args.visualize_features:  # type: ignore
+            if not os.path.exists(
+                "satmae_experiments/feature_visualizations/dinov2_mae_pretrain/"
+            ):
+                os.makedirs(
+                    "satmae_experiments/feature_visualizations/dinov2_mae_pretrain/"
+                )
+            for i in range(samples.shape[0]):
+                viz_mae, _ = visualize_features(
+                    torch.unsqueeze(mae_features[i, :, :], 0)
+                )
+                viz_dino, _ = visualize_features(
+                    torch.unsqueeze(dinov2_features[i, :, :], 0)
+                )
+                _, axarr = plt.subplots(3)
+                axarr[0].imshow(samples.cpu()[i].permute(1, 2, 0))
+                axarr[1].imshow(viz_mae.detach().permute(1, 2, 0))
+                axarr[2].imshow(viz_dino.detach().permute(1, 2, 0))
+                plt.savefig(
+                    "satmae_experiments/feature_visualizations/dinov2_mae_pretrain/feature_"
+                    + str(epoch + i)
+                    + ".png"
+                )
+                plt.close()
 
         if args.output_dir and (epoch % 50 == 0 or epoch + 1 == args.epochs):
             misc.save_model(

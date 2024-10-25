@@ -7,6 +7,7 @@
 
 from functools import partial
 
+from matplotlib import pyplot as plt
 import torch
 import torch.nn as nn
 from timm.models.vision_transformer import Block, PatchEmbed
@@ -177,6 +178,23 @@ class DINOv2MAEViT(nn.Module):
         x = x.reshape(shape=(imgs.shape[0], h * w, p**2 * c))
         return x
 
+    def unpatchify(self, x, p, c):
+        """
+        x: (N, L, patch_size**2 *C)
+        p: Patch embed patch size
+        c: Num channels
+        imgs: (N, C, H, W)
+        """
+        # c = self.in_c
+        # p = self.patch_embed.patch_size[0]
+        h = w = int(x.shape[1] ** 0.5)
+        assert h * w == x.shape[1]
+
+        x = x.reshape(shape=(x.shape[0], h, w, p, p, c))
+        x = torch.einsum("nhwpqc->nchpwq", x)
+        imgs = x.reshape(shape=(x.shape[0], c, h * p, h * p))
+        return imgs
+
     def random_masking(self, x, mask_ratio=0.75):
         """
         Perform per-sample random masking by per-sample shuffling.
@@ -222,11 +240,13 @@ class DINOv2MAEViT(nn.Module):
         x_encoder = torch.cat((cls_tokens, x_masked), dim=1)
 
         # apply Transformer blocks
-        for blk in self.blocks:
+        for i, blk in enumerate(self.blocks):
             x_encoder = blk(x_encoder)
+            if i == 11:
+                out = blk(x)
         mae_features = self.norm(x_encoder)
 
-        return mae_features, mask, ids_restore, ids_keep
+        return mae_features, mask, ids_restore, ids_keep, out
 
     def forward_decoder(self, x, ids_restore):
         # embed tokens
@@ -265,7 +285,9 @@ class DINOv2MAEViT(nn.Module):
         mask: [N, L], 0 is keep, 1 is remove,
         """
         # target = imgs[:, :3, :, :]
-        # pred = self.unpatchify(pred, self.patch_embed.patch_size[0], self.in_c)
+        reconstructed_image = self.unpatchify(
+            pred, self.patch_embed.patch_size[0], self.in_c
+        )
         # pred = self.patchify(pred[:, :3, :, :], self.patch_embed.patch_size[0], 3)
         # target = self.patchify(target, self.patch_embed.patch_size[0], 3)
         target = self.patchify(imgs, self.patch_embed.patch_size[0], self.in_c)
@@ -278,7 +300,7 @@ class DINOv2MAEViT(nn.Module):
         loss = loss.mean(dim=-1)  # [N, L], mean loss per patch
 
         loss = (loss * mask).sum() / mask.sum()  # mean loss on removed patches
-        return loss
+        return loss, reconstructed_image
 
     def forward_loss_features(self, features_mae, features_dino):
 
@@ -292,8 +314,8 @@ class DINOv2MAEViT(nn.Module):
         # layers = []
         with torch.no_grad():
             # if self.layer_num == "last":
-            patch = self.feat_extr.forward_features(imgs)  # type: ignore
-            # patch = self.feat_extr.get_intermediate_layers(imgs, (3, 9, 17, 23))  # type: ignore
+            # patch = self.feat_extr.forward_features(imgs)  # type: ignore
+            patch = self.feat_extr.get_intermediate_layers(imgs, (11))  # type: ignore
             # layers.append(patch)
             # out = self.feat_extr.forward_features(imgs)  # type: ignore
             # patch = out["x_norm_patchtokens"]
@@ -303,29 +325,38 @@ class DINOv2MAEViT(nn.Module):
 
         # elif self.layer_num == "avg":
         #     pass
-        out = patch["x_norm_patchtokens"]
+        # out = patch["x_norm_patchtokens"]
+        out = patch[10]
         return out
 
     def forward(self, x, mask_ratio=0.75):
 
         # MAE encoder decoder
-        mae_features, mask, ids_restore, ids_keep = self.forward_encoder_mae(x)
+        mae_features, mask, ids_restore, ids_keep, out = self.forward_encoder_mae(x)
         pred = self.forward_decoder(mae_features, ids_restore)
-        loss_mae = self.forward_loss_mae(x, pred, mask)
+        loss_mae, reconstructed_image = self.forward_loss_mae(x, pred, mask)
 
         # DINOv2 encoder decoder
 
-        dinov2_features = self.get_dinov2_features(x)
-        dinov2_features = torch.gather(
-            dinov2_features,
-            dim=1,
-            index=ids_keep.unsqueeze(-1).repeat(1, 1, dinov2_features.shape[2]),
-        )
-        loss_features = self.forward_loss_features(
-            mae_features[:, 1:, :], dinov2_features
-        )
+        # dinov2_features = self.get_dinov2_features(x)
+        # # dinov2_features_masked = dinov2_features * mask.unsqueeze(-1).repeat(
+        # #     1, 1, dinov2_features.shape[2]
+        # # )
+        # dinov2_features_masked = torch.gather(
+        #     dinov2_features,
+        #     dim=1,
+        #     index=ids_keep.unsqueeze(-1).repeat(1, 1, dinov2_features.shape[2]),
+        # )
+        # # print(mae_features[:, 1:, :])
+        # # print(dinov2_features)
+        # loss_features = self.forward_loss_features(
+        #     mae_features[:, 1:, :], dinov2_features_masked
+        # )
+        # print(mae_features[:, 1:, :])
+        # print(loss_features)
+        # print(dinov2_features_masked)
 
-        return loss_mae, loss_features, 0
+        return loss_mae, torch.tensor(0), 0, out, 0, reconstructed_image
 
 
 def mae_vit_base_patch16_dec512d8b(**kwargs):
