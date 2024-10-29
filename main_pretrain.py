@@ -353,7 +353,7 @@ def main(args):
                 args=args,
             )
         else:
-            train_stats, mae_features, dinov2_features, samples = train_one_epoch(
+            train_stats, samples = train_one_epoch(
                 model,
                 data_loader_train,
                 optimizer,
@@ -364,30 +364,30 @@ def main(args):
                 args=args,
             )
 
-        if args.visualize_features:  # type: ignore
-            if not os.path.exists(
-                "satmae_experiments/feature_visualizations/dinov2_mae_pretrain/"
-            ):
-                os.makedirs(
-                    "satmae_experiments/feature_visualizations/dinov2_mae_pretrain/"
-                )
-            for i in range(samples.shape[0]):
-                viz_mae, _ = visualize_features(
-                    torch.unsqueeze(mae_features[i, :, :], 0)
-                )
-                viz_dino, _ = visualize_features(
-                    torch.unsqueeze(dinov2_features[i, :, :], 0)
-                )
-                _, axarr = plt.subplots(3)
-                axarr[0].imshow(samples.cpu()[i].permute(1, 2, 0))
-                axarr[1].imshow(viz_mae.detach().permute(1, 2, 0))
-                axarr[2].imshow(viz_dino.detach().permute(1, 2, 0))
-                plt.savefig(
-                    "satmae_experiments/feature_visualizations/dinov2_mae_pretrain/feature_"
-                    + str(epoch + i)
-                    + ".png"
-                )
-                plt.close()
+        # if args.visualize_features:  # type: ignore
+        #     if not os.path.exists(
+        #         "satmae_experiments/feature_visualizations/dinov2_mae_pretrain/"
+        #     ):
+        #         os.makedirs(
+        #             "satmae_experiments/feature_visualizations/dinov2_mae_pretrain/"
+        #         )
+        #     for i in range(samples.shape[0]):
+        #         viz_mae, _ = visualize_features(
+        #             torch.unsqueeze(mae_features[i, :, :], 0)
+        #         )
+        #         viz_dino, _ = visualize_features(
+        #             torch.unsqueeze(dinov2_features[i, :, :], 0)
+        #         )
+        #         _, axarr = plt.subplots(3)
+        #         axarr[0].imshow(samples.cpu()[i].permute(1, 2, 0))
+        #         axarr[1].imshow(viz_mae.detach().permute(1, 2, 0))
+        #         axarr[2].imshow(viz_dino.detach().permute(1, 2, 0))
+        #         plt.savefig(
+        #             "satmae_experiments/feature_visualizations/dinov2_mae_pretrain/feature_"
+        #             + str(epoch + i)
+        #             + ".png"
+        #         )
+        #         plt.close()
 
         if args.output_dir and (epoch % 50 == 0 or epoch + 1 == args.epochs):
             misc.save_model(

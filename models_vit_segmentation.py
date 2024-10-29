@@ -166,8 +166,8 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         # conv_2 = self.relu(self.bn(self.conv(conv_1)))
         # conv_3 = self.relu(self.bn(self.conv(conv_2)))
 
-        features[0] = torch.unflatten(features[0], dim=1, sizes=(14, 14))
-        features[1] = torch.unflatten(features[1], dim=1, sizes=(14, 14))
+        features[0] = torch.unflatten(features[0], dim=1, sizes=(16, 16))
+        features[1] = torch.unflatten(features[1], dim=1, sizes=(16, 16))
         # features[2] = torch.unflatten(features[2], dim=1, sizes=(14, 14))
         # features[3] = torch.unflatten(features[3], dim=1, sizes=(14, 14))
         # features[4] = torch.unflatten(features[4], dim=1, sizes=(14, 14))

@@ -346,6 +346,7 @@ class CustomDatasetFromImages(SatelliteDataset):
         # self.scale = transforms.Resize((224, 224))
 
     def __getitem__(self, index):
+        torch.set_num_threads(1)
         # Get image name from the pandas df
         single_image_name = self.image_arr[index]
         # Open image

@@ -52,7 +52,7 @@ def train_one_epoch(
         samples = samples.to(device, non_blocking=True)
 
         with torch.amp.autocast("cuda"):  # type: ignore
-            loss_mae, loss_dino, _, mae_features, dinov2_features, reconstructed_image = model(samples, mask_ratio=args.mask_ratio)  # type: ignore
+            loss_mae, loss_dino, _, _, _ = model(samples, mask_ratio=args.mask_ratio)  # type: ignore
 
         # if args.visualize_features:  # type: ignore
         #     if not os.path.exists(
@@ -164,8 +164,6 @@ def train_one_epoch(
     print("Averaged stats:", metric_logger)
     return (
         {k: meter.global_avg for k, meter in metric_logger.meters.items()},
-        mae_features,
-        dinov2_features,
         samples,
     )
 

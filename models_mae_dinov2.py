@@ -15,6 +15,19 @@ from timm.models.vision_transformer import Block, PatchEmbed
 from util.pos_embed import get_2d_sincos_pos_embed
 
 
+class LinearProjectionLayer(nn.Module):
+    def __init__(self, input_dim, output_dim=256):
+        super(LinearProjectionLayer, self).__init__()
+        self.projection = nn.Linear(input_dim, output_dim)
+
+    def forward(self, x):
+        # x has shape [B, 65, dim]
+        x = x.transpose(1, 2)  # transpose to [B, dim, 65] for Linear layer
+        x = self.projection(x)  # apply linear layer to project to [B, dim, 256]
+        x = x.transpose(1, 2)  # transpose back to [B, 256, dim]
+        return x
+
+
 class DINOv2MAEViT(nn.Module):
     """Masked Autoencoder with DINOv2 regularization with VisionTransformer backbone"""
 
@@ -117,6 +130,8 @@ class DINOv2MAEViT(nn.Module):
         self.feat_extr.eval()  # type: ignore
         self.feat_extr.to(device)  # type: ignore
         self.device = device
+
+        self.project = LinearProjectionLayer(65, 256)
 
         self.norm_pix_loss = norm_pix_loss
 
@@ -234,11 +249,11 @@ class DINOv2MAEViT(nn.Module):
         x = x + self.pos_embed[:, 1:, :]
 
         # apply Transformer blocks
-        for blk in self.blocks:
+        for i, blk in enumerate(self.blocks):
             x = blk(x)
-        x = self.norm(x)
-
-        return x
+            if i == 3:
+                x = self.norm(x)
+                return x
 
     def forward_encoder_mae(self, x):
         # embed patches
@@ -258,8 +273,8 @@ class DINOv2MAEViT(nn.Module):
         # apply Transformer blocks
         for i, blk in enumerate(self.blocks):
             x_encoder = blk(x_encoder)
-            if i == 11:
-                out = blk(x)
+            if i == 3:
+                out = x_encoder
         mae_features = self.norm(x_encoder)
 
         return mae_features, mask, ids_restore, ids_keep, out
@@ -301,9 +316,9 @@ class DINOv2MAEViT(nn.Module):
         mask: [N, L], 0 is keep, 1 is remove,
         """
         # target = imgs[:, :3, :, :]
-        reconstructed_image = self.unpatchify(
-            pred, self.patch_embed.patch_size[0], self.in_c
-        )
+        # reconstructed_image = self.unpatchify(
+        #     pred, self.patch_embed.patch_size[0], self.in_c
+        # )
         # pred = self.patchify(pred[:, :3, :, :], self.patch_embed.patch_size[0], 3)
         # target = self.patchify(target, self.patch_embed.patch_size[0], 3)
         target = self.patchify(imgs, self.patch_embed.patch_size[0], self.in_c)
@@ -316,7 +331,7 @@ class DINOv2MAEViT(nn.Module):
         loss = loss.mean(dim=-1)  # [N, L], mean loss per patch
 
         loss = (loss * mask).sum() / mask.sum()  # mean loss on removed patches
-        return loss, reconstructed_image
+        return loss, 0
 
     def forward_loss_features(self, features_mae, features_dino):
 
@@ -348,14 +363,18 @@ class DINOv2MAEViT(nn.Module):
     def forward(self, x, mask_ratio=0.75):
 
         # MAE encoder decoder
-        mae_features, mask, ids_restore, ids_keep, out = self.forward_encoder_mae(x)
+        mae_features, mask, ids_restore, _, out = self.forward_encoder_mae(x)
         pred = self.forward_decoder(mae_features, ids_restore)
-        loss_mae, reconstructed_image = self.forward_loss_mae(x, pred, mask)
+        loss_mae, _ = self.forward_loss_mae(x, pred, mask)
 
-        vit_features = self.forward_vit(x)
+        # vit_features = self.forward_vit(x)
         dinov2_features = self.get_dinov2_features(x)
 
-        loss_features = self.forward_loss_features(vit_features, dinov2_features)
+        mae_features_projected = self.project(out)
+
+        loss_features = self.forward_loss_features(
+            mae_features_projected, dinov2_features
+        )
 
         # DINOv2 encoder decoder
 
@@ -377,7 +396,7 @@ class DINOv2MAEViT(nn.Module):
         # print(loss_features)
         # print(dinov2_features_masked)
 
-        return loss_mae, loss_features, 0, out, 0, reconstructed_image
+        return loss_mae, loss_features, 0, 0, _
 
 
 def mae_vit_base_patch16_dec512d8b(**kwargs):
