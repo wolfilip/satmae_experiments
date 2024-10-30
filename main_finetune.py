@@ -21,15 +21,15 @@ from torch.optim.adamw import AdamW
 from torch.utils.data import DataLoader, DistributedSampler, SequentialSampler
 from torch.utils.tensorboard.writer import SummaryWriter
 
-import models_resnet
-import models_vit
-import models_vit_dinov2_segmentation
-import models_vit_group_channels
-import models_vit_segmentation
-import models_vit_temporal
+import models.models_resnet as models_resnet
+import models.models_vit as models_vit
+import models.models_vit_dinov2_segmentation as models_vit_dinov2_segmentation
+import models.models_vit_group_channels as models_vit_group_channels
+import models.models_vit_segmentation as models_vit_segmentation
+import models.models_vit_temporal as models_vit_temporal
 import util.lr_decay as lrd
 import util.misc as misc
-from DINOv2_features import DINOv2
+from models.DINOv2_features import DINOv2
 from engine_finetune import (
     evaluate,
     evaluate_segmentation,

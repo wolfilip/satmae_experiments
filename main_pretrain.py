@@ -20,17 +20,34 @@ import wandb
 from torch.utils.tensorboard.writer import SummaryWriter
 from torch.utils.data import DataLoader, DistributedSampler
 from torch.nn.parallel import DistributedDataParallel
+from torchvision import transforms
 
 from torch.optim.adamw import AdamW
 
-import models_mae
-import models_mae_dinov2
-import models_mae_temporal
+from models import (
+    models_mae,
+    models_scalemae_dinov2,
+    models_mae_dinov2,
+    models_mae_temporal,
+)
+
+from util.collate_fn import TransformCollateFn
 import util.misc as misc
-from engine_pretrain import train_one_epoch, train_one_epoch_temporal
+from engine_pretrain import (
+    train_one_epoch,
+    train_one_epoch_scale,
+    train_one_epoch_temporal,
+)
 from util.datasets import build_fmow_dataset
 from util.misc import NativeScalerWithGradNormCount as NativeScaler
+from util.resolution_sched import (
+    get_output_size_scheduler,
+    get_source_size_scheduler,
+    get_target_size_scheduler,
+)
 from util.visualize_features import visualize_features
+import kornia.augmentation as K
+from kornia.constants import Resample
 
 
 def get_args_parser():
@@ -48,12 +65,10 @@ def get_args_parser():
         type=int,
         help="Accumulate gradient iterations (for increasing the effective batch size under memory constraints)",
     )
-
-    # Model parameters
     parser.add_argument(
         "--model_type",
         default=None,
-        choices=["group_c", "temporal", "vanilla", "dinov2_mae"],
+        choices=["group_c", "temporal", "vanilla", "dinov2_mae", "dinov2_scalemae"],
         help="Use channel model",
     )
     parser.add_argument(
@@ -62,6 +77,36 @@ def get_args_parser():
         type=str,
         metavar="MODEL",
         help="Name of model to train",
+    )
+    parser.add_argument(
+        "--eval_base_resolution",
+        default=2.5,
+        type=float,
+        help="Global Multiplication factor of Positional Embedding Resolution in KNN",
+    )
+    parser.add_argument(
+        "--fixed_output_size_min",
+        default=224,
+        type=int,
+        help="if not 0, fix output dimension",
+    )
+    parser.add_argument(
+        "--fixed_output_size_max",
+        default=336,
+        type=int,
+        help="if not 0, fix output dimension",
+    )
+    parser.add_argument(
+        "--target_size_scheduler",
+        default="constant",
+        type=str,
+        help="Which target size to have at a certain step",
+    )
+    parser.add_argument(
+        "--source_size_scheduler",
+        default="constant",
+        type=str,
+        help="Which target size to have at a certain step",
     )
     parser.add_argument(
         "--visualize_features",
@@ -84,7 +129,6 @@ def get_args_parser():
         default=False,
         help="Whether to mask all channels of a spatial location. Only for indp c model",
     )
-
     parser.add_argument(
         "--norm_pix_loss",
         action="store_true",
@@ -99,12 +143,27 @@ def get_args_parser():
     )
     parser.add_argument("--scale_min", default=0.2, type=float, help="Min RRC scale")
     parser.add_argument("--scale_max", default=1.0, type=float, help="Max RRC scale")
-
+    parser.add_argument(
+        "--decoder_aux_loss_layers",
+        default=1,
+        type=int,
+        help="number of decoder layers used in loss, 0 to use all layers",
+    )
+    parser.add_argument(
+        "--decoder_depth",
+        default=3,
+        type=int,
+        help="number of decoder layers used in loss, 0 to use all layers",
+    )
+    parser.add_argument(
+        "--use_mask_token",
+        action="store_true",
+        help="If true, encoder receive tokens after standard demasking, if not, encoded patches are directly passed to decoder",
+    )
     # Optimizer parameters
     parser.add_argument(
         "--weight_decay", type=float, default=0.05, help="weight decay (default: 0.05)"
     )
-
     parser.add_argument(
         "--lr",
         type=float,
@@ -132,12 +191,9 @@ def get_args_parser():
         metavar="LR",
         help="lower lr bound for cyclic schedulers that hit 0",
     )
-
     parser.add_argument(
         "--warmup_epochs", type=int, default=40, metavar="N", help="epochs to warmup LR"
     )
-
-    # Dataset parameters
     parser.add_argument(
         "--train_path",
         default="/home/train_62classes.csv",
@@ -147,7 +203,7 @@ def get_args_parser():
     parser.add_argument(
         "--dataset_type",
         default="rgb",
-        choices=["rgb", "temporal", "sentinel", "euro_sat", "naip"],
+        choices=["rgb", "temporal", "sentinel", "euro_sat", "naip", "rgb_scale"],
         help="Whether to use fmow rgb, sentinel, or other dataset.",
     )
     parser.add_argument(
@@ -172,13 +228,11 @@ def get_args_parser():
         default=[],
         help="Bands to group for GroupC mae",
     )
-
     parser.add_argument(
         "--output_dir",
         default="./output_dir",
         help="path where to save, empty for no saving",
     )
-
     parser.add_argument("--config", default="config.yaml", type=str, help="Config file")
     parser.add_argument(
         "--log_dir", default="./output_dir", help="path where to tensorboard log"
@@ -194,7 +248,6 @@ def get_args_parser():
         default=None,
         help="Wandb project name, eg: sentinel_pretrain",
     )
-
     parser.add_argument(
         "--start_epoch", default=1, type=int, metavar="N", help="start epoch"
     )
@@ -206,8 +259,6 @@ def get_args_parser():
     )
     parser.add_argument("--no_pin_mem", action="store_false", dest="pin_mem")
     parser.set_defaults(pin_mem=True)
-
-    # distributed training parameters
     parser.add_argument(
         "--world_size", default=1, type=int, help="number of distributed processes"
     )
@@ -216,7 +267,58 @@ def get_args_parser():
     parser.add_argument(
         "--dist_url", default="env://", help="url used to set up distributed training"
     )
-
+    parser.add_argument(
+        "--project_pos_emb",
+        action="store_true",
+        help="If true, adding a linear projection layer before the pos_emb is passed to decoder",
+    )
+    parser.add_argument(
+        "--no_loss_masking",
+        action="store_false",
+        dest="loss_masking",
+        help="If true, do not mask the loss for pixels that are not masked on input",
+    )
+    parser.add_argument(
+        "--self_attention", action="store_true", help="fake self attention"
+    )
+    parser.add_argument(
+        "--absolute_scale",
+        action="store_true",
+        help="Positional embedding is the same for each image (based on resolution)",
+    )
+    parser.add_argument(
+        "--fcn_dim", default=512, type=int, help="FCN Hidden Dimension "
+    )
+    parser.add_argument(
+        "--fcn_layers", default=2, type=int, help="FCN Hidden Dimension "
+    )
+    parser.add_argument(
+        "--share_fcn_head",
+        action="store_false",
+        dest="independent_fcn_head",
+        help="Whether to use different decoder for two bands",
+    )
+    parser.add_argument(
+        "--use_l1_loss",
+        action="store_true",
+        help="Whether to use different L1 loss for high frequency (encoder-gtp-fpn specific)",
+    )
+    parser.add_argument(
+        "--band_config",
+        nargs="*",
+        type=int,
+        default=[7, 56],
+        help="list like [dim1, dim2]; Target High Freq = img - upsample(downsample(img,dim1)),Target Low Freq = upsample(downsample(img,dim2))",
+    )
+    parser.add_argument(
+        "--l1_loss_weight",
+        default=1.0,
+        type=float,
+        help="w,Weight of l1 loss, final loss is w * L_1_loss (high) + L_2_loss (low)",
+    )
+    parser.add_argument(
+        "--progressive", action="store_true", help="Progressive upsample"
+    )
     return parser
 
 
@@ -236,6 +338,21 @@ def main(args):
     cudnn.benchmark = True
 
     dataset_train = build_fmow_dataset(is_train=True, args=args)
+
+    if args.model_type == "dinov2_scalemae":
+        transforms_train = transforms.Compose(
+            [
+                K.RandomResizedCrop(
+                    (448, 448),
+                    # (args.input_size, args.input_size),
+                    ratio=(1.0, 1.0),
+                    scale=(args.scale_min, args.scale_max),
+                    resample=Resample.BICUBIC.name,
+                ),
+                K.Resize((args.input_size, args.input_size)),
+            ]
+        )
+        train_collate = TransformCollateFn(transforms_train, args.base_resolution)
 
     num_tasks = misc.get_world_size()
     print(num_tasks)
@@ -262,7 +379,12 @@ def main(args):
         num_workers=args.num_workers,
         pin_memory=args.pin_mem,
         drop_last=True,
+        collate_fn=train_collate,
     )
+
+    output_size_scheduler = get_output_size_scheduler(args)
+    target_size_scheduler = get_target_size_scheduler(args)
+    source_size_scheduler = get_source_size_scheduler(args)
 
     if args.model_type == "temporal":
         model = models_mae_temporal.__dict__[args.model](
@@ -274,6 +396,27 @@ def main(args):
             patch_size=args.patch_size,
             in_chans=dataset_train.in_c,
             norm_pix_loss=args.norm_pix_loss,
+        )
+    elif args.model_type == "dinov2_scalemae":
+        model = models_scalemae_dinov2.__dict__[args.model](
+            img_size=args.input_size,
+            norm_pix_loss=args.norm_pix_loss,
+            decoder_aux_loss_layers=args.decoder_aux_loss_layers,
+            decoder_depth=args.decoder_depth,
+            use_mask_token=args.use_mask_token,
+            project_pos_emb=args.project_pos_emb,
+            loss_masking=args.loss_masking,
+            self_attention=args.self_attention,
+            absolute_scale=args.absolute_scale,
+            target_size=args.target_size,
+            fixed_output_size=0,  # will be set dynamically online
+            fcn_dim=args.fcn_dim,
+            fcn_layers=args.fcn_layers,
+            independent_fcn_head=args.independent_fcn_head,
+            use_l1_loss=args.use_l1_loss,
+            band_config=args.band_config,
+            l1_loss_weight=args.l1_loss_weight,
+            progressive=args.progressive,
         )
     else:
         model = models_mae.__dict__[args.model](
@@ -351,6 +494,20 @@ def main(args):
                 loss_scaler,
                 log_writer=log_writer,
                 args=args,
+            )
+        elif args.model_type == "dinov2_scalemae":
+            train_stats = train_one_epoch_scale(
+                model,
+                data_loader_train,
+                optimizer,
+                device,
+                epoch,
+                loss_scaler,
+                log_writer=log_writer,
+                args=args,
+                scheduler=target_size_scheduler,
+                source_size_scheduler=source_size_scheduler,
+                fix_resolution_scheduler=output_size_scheduler,
             )
         else:
             train_stats, samples = train_one_epoch(

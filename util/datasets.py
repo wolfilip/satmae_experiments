@@ -10,12 +10,16 @@ import pandas as pd
 import rasterio
 import rasterio as rio
 import torch
+from torchvision.datasets import ImageFolder
 import torchvision.transforms.v2 as transforms
 from PIL import Image
 from rasterio import logging
 from rasterio.enums import Resampling
 from torch.utils.data import Dataset
 from torch.utils.data.dataset import Dataset
+
+# from lib.transforms import CustomCompose
+from kornia.constants import Resample
 
 log = logging.getLogger()
 log.setLevel(logging.ERROR)
@@ -115,7 +119,14 @@ class SatelliteDataset(Dataset):
 
         t = []
         if is_train:
-            t.append(transforms.ToTensor())
+            t.append(
+                transforms.Compose(
+                    [
+                        transforms.ToImage(),
+                        transforms.ToDtype(torch.float32, scale=True),
+                    ]
+                )
+            )
             t.append(transforms.Normalize(mean, std))
             t.append(
                 transforms.RandomResizedCrop(
@@ -132,7 +143,11 @@ class SatelliteDataset(Dataset):
             crop_pct = 1.0
         size = int(input_size / crop_pct)
 
-        t.append(transforms.ToTensor())
+        t.append(
+            transforms.Compose(
+                [transforms.ToImage(), transforms.ToDtype(torch.float32, scale=True)]
+            )
+        )
         t.append(transforms.Normalize(mean, std))
         t.append(
             transforms.Resize(
@@ -514,7 +529,9 @@ class CustomDatasetFromImagesTemporal(SatelliteDataset):
         self.min_res = 200
         self.max_res = 16300
         self.normalization = transforms.Normalize(mean, std)
-        self.totensor = transforms.ToTensor()
+        self.totensor = transforms.Compose(
+            [transforms.ToImage(), transforms.ToDtype(torch.float32, scale=True)]
+        )
         self.scale = transforms.Resize((224, 224))
         self.scale_1 = transforms.Resize((64, 64))
         self.scale_2 = transforms.Resize((224, 224))
@@ -873,7 +890,14 @@ class SentinelIndividualImageDataset(SatelliteDataset):
             t.append(
                 SentinelNormalize(mean, std)
             )  # use specific Sentinel normalization to avoid NaN
-            t.append(transforms.ToTensor())
+            t.append(
+                transforms.Compose(
+                    [
+                        transforms.ToImage(),
+                        transforms.ToDtype(torch.float32, scale=True),
+                    ]
+                )
+            )
             t.append(
                 transforms.RandomResizedCrop(
                     input_size, scale=(0.2, 1.0), interpolation=interpol_mode
@@ -890,7 +914,11 @@ class SentinelIndividualImageDataset(SatelliteDataset):
         size = int(input_size / crop_pct)
 
         t.append(SentinelNormalize(mean, std))
-        t.append(transforms.ToTensor())
+        t.append(
+            transforms.Compose(
+                [transforms.ToImage(), transforms.ToDtype(torch.float32, scale=True)]
+            )
+        )
         t.append(
             transforms.Resize(
                 size, interpolation=interpol_mode
@@ -995,6 +1023,23 @@ def build_fmow_dataset(is_train: bool, args) -> SatelliteDataset:
             is_train, args.input_size, mean, std
         )
         dataset = CustomDatasetFromImages(csv_path, transform)
+    elif args.dataset_type == "rgb_scale":
+        mean = CustomDatasetFromImages.mean
+        std = CustomDatasetFromImages.std
+        transforms_init = transforms.Compose(
+            [
+                transforms.RandomCrop(args.input_size * 2, pad_if_needed=True),
+                transforms.RandomHorizontalFlip(),
+                transforms.Compose(
+                    [
+                        transforms.ToImage(),
+                        transforms.ToDtype(torch.float32, scale=True),
+                    ]
+                ),
+                transforms.Normalize(mean, std),
+            ]
+        )
+        dataset = CustomDatasetFromImages(csv_path, transforms_init)
     elif args.dataset_type == "temporal":
         dataset = CustomDatasetFromImagesTemporal(csv_path, args.base_resolution)
     elif args.dataset_type == "sentinel":
