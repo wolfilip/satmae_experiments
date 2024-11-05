@@ -75,7 +75,7 @@ def get_args_parser():
             "temporal",
             "vanilla",
             "segmentation",
-            "dinov2",
+            "dinov2_segmentation",
             "dinov2_vit",
         ],
         help="Use channel model",
@@ -461,7 +461,7 @@ def main(args):
             num_classes=args.nb_classes,
             drop_path_rate=args.drop_path,
         )
-    elif args.model_type == "dinov2":
+    elif args.model_type == "dinov2_segmentation":
         model_args = {"model_size": "base", "layer": "last"}
         model = DINOv2(model_args, args, "cuda")
     elif args.model_type == "dinov2_vit":
@@ -558,7 +558,7 @@ def main(args):
 
     # build optimizer with layer-wise lr decay (lrd)
     if args.model_type is not None and (
-        args.model_type.startswith("resnet") or args.model_type == "dinov2"
+        args.model_type.startswith("resnet") or args.model_type == "dinov2_segmentation"
     ):
         param_groups = model_without_ddp.parameters()
     else:
@@ -599,7 +599,7 @@ def main(args):
             test_stats = evaluate_temporal(data_loader_val, model, device)
         elif (
             args.model_type == "segmentation"
-            or args.model_type == "dinov2"
+            or args.model_type == "dinov2_segmentation"
             or args.model_type == "dinov2_vit"
         ):
             test_stats = evaluate_segmentation(data_loader_val, model, device, 0, args)
@@ -608,7 +608,7 @@ def main(args):
 
         if (
             args.model_type == "segmentation"
-            or args.model_type == "dinov2"
+            or args.model_type == "dinov2_segmentation"
             or args.model_type == "dinov2_vit"
         ):
             print(
@@ -646,7 +646,7 @@ def main(args):
                 )
             elif (
                 args.model_type == "segmentation"
-                or args.model_type == "dinov2"
+                or args.model_type == "dinov2_segmentation"
                 or args.model_type == "dinov2_vit"
             ):
                 # test_stats = evaluate_segmentation(data_loader_val, model, device)
@@ -702,7 +702,7 @@ def main(args):
             test_stats = evaluate_temporal(data_loader_val, model, device)
         elif (
             args.model_type == "segmentation"
-            or args.model_type == "dinov2"
+            or args.model_type == "dinov2_segmentation"
             or args.model_type == "dinov2_vit"
         ):
             test_stats = evaluate_segmentation(
@@ -713,7 +713,7 @@ def main(args):
 
         if (
             args.model_type == "segmentation"
-            or args.model_type == "dinov2"
+            or args.model_type == "dinov2_segmentation"
             or args.model_type == "dinov2_vit"
         ):
             print(
