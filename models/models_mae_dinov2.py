@@ -111,7 +111,7 @@ class DINOv2MAEViT(nn.Module):
         # --------------------------------------------------------------------------
         # DINOv2 encoder specifics
 
-        self.model_size = "base"
+        self.model_size = "large"
         if self.model_size == "small":
             self.feat_extr = torch.hub.load("facebookresearch/dinov2", "dinov2_vits14")
         if self.model_size == "small_reg":
@@ -251,9 +251,9 @@ class DINOv2MAEViT(nn.Module):
         # apply Transformer blocks
         for i, blk in enumerate(self.blocks):
             x = blk(x)
-            if i == 3:
-                x = self.norm(x)
-                return x
+            # if i == 3:
+            #     x = self.norm(x)
+        return x
 
     def forward_encoder_mae(self, x):
         # embed patches
@@ -273,11 +273,11 @@ class DINOv2MAEViT(nn.Module):
         # apply Transformer blocks
         for i, blk in enumerate(self.blocks):
             x_encoder = blk(x_encoder)
-            if i == 3:
-                out = x_encoder
+            # if i == 3:
+            #     out = x_encoder
         mae_features = self.norm(x_encoder)
 
-        return mae_features, mask, ids_restore, ids_keep, out
+        return mae_features, mask, ids_restore, ids_keep
 
     def forward_decoder(self, x, ids_restore):
         # embed tokens
@@ -363,14 +363,14 @@ class DINOv2MAEViT(nn.Module):
     def forward(self, x, mask_ratio=0.75):
 
         # MAE encoder decoder
-        mae_features, mask, ids_restore, _, out = self.forward_encoder_mae(x)
+        mae_features, mask, ids_restore, _ = self.forward_encoder_mae(x)
         pred = self.forward_decoder(mae_features, ids_restore)
         loss_mae, _ = self.forward_loss_mae(x, pred, mask)
 
         # vit_features = self.forward_vit(x)
         dinov2_features = self.get_dinov2_features(x)
 
-        mae_features_projected = self.project(out)
+        mae_features_projected = self.project(mae_features)
 
         loss_features = self.forward_loss_features(
             mae_features_projected, dinov2_features

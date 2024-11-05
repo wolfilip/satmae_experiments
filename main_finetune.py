@@ -462,7 +462,7 @@ def main(args):
             drop_path_rate=args.drop_path,
         )
     elif args.model_type == "dinov2":
-        model_args = {"model_size": "large", "layer": "last"}
+        model_args = {"model_size": "base", "layer": "last"}
         model = DINOv2(model_args, args, "cuda")
     elif args.model_type == "dinov2_vit":
         model = models_vit_dinov2_segmentation.__dict__[args.model](

@@ -561,17 +561,13 @@ def calc_metrics(
         mask_one_hot = F.one_hot(mask, num_classes=args.nb_classes).permute(0, 3, 1, 2)
 
         if not os.path.exists(
-            "satmae_experiments/spacenet_10pc_results/images/2_blocks_frozen_8/"
+            "satmae_experiments/spacenet_10pc_results/images/dinov2_mae_b/"
         ):
-            os.makedirs(
-                "satmae_experiments/spacenet_10pc_results/images/2_blocks_frozen_8/"
-            )
+            os.makedirs("satmae_experiments/spacenet_10pc_results/images/dinov2_mae_b/")
         if not os.path.exists(
-            "satmae_experiments/spacenet_10pc_results/per_image/2_blocks_frozen_8/"
+            "satmae_experiments/spacenet_10pc_results/per_image/dinov2_mae_b/"
         ):
-            os.makedirs(
-                "satmae_experiments/spacenet_10pc_results/per_image/2_blocks_frozen_8/"
-            )
+            os.makedirs("satmae_experiments/spacenet_10pc_results/per_image/dinov2_mae_b/")
     elif args.dataset_type == "loveda":
         miou_temp = JaccardIndex(
             task="multiclass", num_classes=args.nb_classes, zero_division=1.0
@@ -612,7 +608,7 @@ def calc_metrics(
                 # axarr[3].imshow(viz_1.permute(1, 2, 0))
                 # plt.savefig("images/image_1_pca.png")
                 plt.savefig(
-                    "satmae_experiments/loveda_results/images/dinov2_vit_4_blocks_vit_upernet-2/img_"
+                    "satmae_experiments/spacenet_10pc_results/images/dinov2_mae_b/img_"
                     + str(cnt + i)
                     + ".png"
                 )
@@ -622,7 +618,7 @@ def calc_metrics(
             if torch.all(mask[i] == 0) and torch.all(pred.argmax(1)[i] == 0):
                 mIoU = 1.0
             f = open(
-                "satmae_experiments/loveda_results/per_image/dinov2_vit_4_blocks_vit_upernet-2/image_results_iou_"
+                "satmae_experiments/spacenet_10pc_results/per_image/dinov2_mae_b/image_results_iou_"
                 + str(epoch)
                 + ".txt",
                 "a",
@@ -650,7 +646,7 @@ def calc_metrics(
     # loss = model.get_bce_loss(pred["pred_logits"], mask)
     # pred_bool = model.sigmoid(pred) >= 0.5
     # pred_bool = pred_bool[:, 0:1, :, :]
-    miou_metric.update(pred, mask)
+    miou_metric.update(pred, mask_one_hot)
     # if torch.all(mask == 0) and torch.all(pred.argmax(1) == 0):
     #     mIoU = 1.0
     # IoU = model.get_iou(pred, mask, nclass)

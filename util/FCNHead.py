@@ -32,6 +32,7 @@ class FCNHead(nn.Module):
         out = []
         for x in xp:
             x = self.proj(x)
-            out.append(self.pred(self.conv_blocks(x)))
+            x = self.conv_blocks(x)
+            out.append(self.pred(x))
 
         return out

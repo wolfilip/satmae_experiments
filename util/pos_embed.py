@@ -49,7 +49,7 @@ def get_2d_sincos_pos_embed_with_resolution(
             ],
             dim=1,
         )
-    return pos_embed
+    return pos_embed.to(torch.float)
 
 
 def get_2d_sincos_pos_embed(embed_dim, grid_size, cls_token=False):

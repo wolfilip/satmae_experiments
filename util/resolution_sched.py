@@ -13,7 +13,9 @@ def get_output_size_scheduler(args):
         )
         output_size_scheduler = RandomResolutionScheduler(
             target_size=np.arange(
-                args.fixed_output_size_min, args.fixed_output_size_max + 1, 16
+                args.fixed_output_size_min,
+                args.fixed_output_size_max + 1,
+                args.patch_size,
             )
         )
     else:

@@ -148,8 +148,8 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         outs = []
         for i, blk in enumerate(self.blocks):
             x = blk(x)
-            if i in [3, 11]:
-                # if i in [3, 9, 17, 23]:
+            # if i in [3, 23]:
+            if i in [3, 9, 17, 23]:
                 # if i in [3, 8, 13, 18, 23]:
                 outs.append(x)
 
@@ -161,6 +161,8 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
 
         features.append(torch.clone(feature_list[0]))
         features.append(torch.clone(feature_list[1]))
+        # features.append(torch.clone(feature_list[2]))
+        # features.append(torch.clone(feature_list[3]))
 
         # conv_1 = self.relu(self.bn(self.conv(conv_embeds)))
         # conv_2 = self.relu(self.bn(self.conv(conv_1)))

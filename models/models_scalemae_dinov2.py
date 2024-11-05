@@ -24,6 +24,19 @@ from util.pos_embed import (
 )
 
 
+class LinearProjectionLayer(nn.Module):
+    def __init__(self, input_dim, output_dim=256):
+        super(LinearProjectionLayer, self).__init__()
+        self.projection = nn.Linear(input_dim, output_dim)
+
+    def forward(self, x):
+        # x has shape [B, 65, dim]
+        x = x.transpose(1, 2)  # transpose to [B, dim, 65] for Linear layer
+        x = self.projection(x)  # apply linear layer to project to [B, dim, 256]
+        x = x.transpose(1, 2)  # transpose back to [B, 256, dim]
+        return x
+
+
 class PatchEmbedUnSafe(PatchEmbed):
     """Image to Patch Embedding"""
 
@@ -68,6 +81,7 @@ class DINOv2ScaleMAEViT(nn.Module):
         l1_loss_weight=1.0,
         band_config=[14, 224],
         progressive=False,
+        device="cuda",
     ):
         super().__init__()
 
@@ -145,6 +159,30 @@ class DINOv2ScaleMAEViT(nn.Module):
         )
 
         self.decoder_norm = norm_layer(decoder_embed_dim)
+
+        # --------------------------------------------------------------------------
+        # DINOv2 encoder specifics
+
+        self.model_size = "base"
+        if self.model_size == "small":
+            self.feat_extr = torch.hub.load("facebookresearch/dinov2", "dinov2_vits14")
+        if self.model_size == "small_reg":
+            self.feat_extr = torch.hub.load(
+                "facebookresearch/dinov2", "dinov2_vits14_reg"
+            )
+        if self.model_size == "base":
+            self.feat_extr = torch.hub.load("facebookresearch/dinov2", "dinov2_vitb14")
+        if self.model_size == "base_reg":
+            self.feat_extr = torch.hub.load(
+                "facebookresearch/dinov2", "dinov2_vitb14_reg"
+            )
+        if self.model_size == "large":
+            self.feat_extr = torch.hub.load("facebookresearch/dinov2", "dinov2_vitl14")
+
+        self.feat_extr.eval()  # type: ignore
+        self.feat_extr.to(device)  # type: ignore
+
+        self.project = LinearProjectionLayer(65, 256)
 
         self.norm_pix_loss = norm_pix_loss
         self.loss_masking = loss_masking
@@ -285,6 +323,26 @@ class DINOv2ScaleMAEViT(nn.Module):
         mask = torch.gather(mask, dim=1, index=ids_restore)
 
         return x_masked, mask, ids_restore
+
+    def get_dinov2_features(self, imgs):
+        # layer = self.layer_num[0] # TODO: make it a list
+        # layers = []
+        with torch.no_grad():
+            # if self.layer_num == "last":
+            patch = self.feat_extr.forward_features(imgs)  # type: ignore
+            # patch = self.feat_extr.get_intermediate_layers(imgs, (11))  # type: ignore
+            # layers.append(patch)
+            # out = self.feat_extr.forward_features(imgs)  # type: ignore
+            # patch = out["x_norm_patchtokens"]
+            # layers.append(patch)
+            # cls = out["x_norm_clstoken"]
+            # elif self.layer_num == "first":
+
+        # elif self.layer_num == "avg":
+        #     pass
+        out = patch["x_norm_patchtokens"]
+        # out = patch[10]
+        return out
 
     def forward_encoder(self, x, mask_ratio=0.0, input_res=None):
         # embed patches
@@ -567,6 +625,13 @@ class DINOv2ScaleMAEViT(nn.Module):
         loss_l1 = loss_l1.sum() / (mask_high.sum() + 1e-9)
         return loss_l1 + loss_l2, 0, 1
 
+    def forward_loss_features(self, features_mae, features_dino):
+
+        loss = (features_mae - features_dino) ** 2
+        loss = loss.mean(dim=-1)  # [N, L], mean loss per patch
+        loss = loss.sum() / (features_mae.shape[0] * features_mae.shape[1])
+        return loss
+
     def set_target_size(self, target_size):
         self.target_size = target_size
         self.multiscale = len(target_size) > 1
@@ -625,9 +690,28 @@ class DINOv2ScaleMAEViT(nn.Module):
             pos_embed_encoder=pos_embed_encoder,
             mask=mask,
         )  # [N_layers_decoder, L,N, p*p*3]
-        loss, mean, var = self.forward_loss(targets, pred, mask, target_dim, ids)
-        pred = self.split_pred(target_dim, pred, mean, var)
-        return (loss, pred, mask, mean, var, pos_embed_encoder, pos_embed_decoder, imgs)
+        loss_mae, mean, var = self.forward_loss(targets, pred, mask, target_dim, ids)
+        # pred = self.split_pred(target_dim, pred, mean, var)
+
+        dinov2_features = self.get_dinov2_features(imgs)
+
+        mae_features_projected = self.project(latent)
+
+        loss_features = self.forward_loss_features(
+            mae_features_projected, dinov2_features
+        )
+
+        return (
+            loss_mae,
+            loss_features,
+            pred,
+            mask,
+            mean,
+            var,
+            pos_embed_encoder,
+            pos_embed_decoder,
+            imgs,
+        )
 
 
 def mae_vit_base_patch16_dec512d8b(**kwargs):

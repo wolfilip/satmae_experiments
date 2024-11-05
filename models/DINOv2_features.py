@@ -50,27 +50,20 @@ class DINOv2(nn.Module):
         self.device = device
         self.patch_size = 14
 
-        # for block in self.blocks:
-        #     for param in block.parameters():
-        #         param.requires_grad = False
-
-        # for param in self.patch_embed.parameters():
-        #     param.requires_grad = False
-
         # upernet stuff
 
-        feature_channels = [1024, 1024, 1024, 1024]
+        feature_channels = [768, 768]
 
-        fpn_out = 1024
+        fpn_out = 768
         self.input_size = (224, 224)
 
         self.PPN = PSPModule(feature_channels[-1])
         self.FPN = FPN_fuse(feature_channels, fpn_out=fpn_out)
-        self.head = nn.Conv2d(fpn_out, args.nb_classes, kernel_size=3, padding=1)
-        self.up_1 = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
-        self.up_2 = nn.Upsample(scale_factor=4, mode="bilinear", align_corners=True)
+        # self.head = nn.Conv2d(fpn_out, args.nb_classes, kernel_size=3, padding=1)
+        # self.up_1 = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
+        # self.up_2 = nn.Upsample(scale_factor=4, mode="bilinear", align_corners=True)
 
-        # self.classifier = LinearClassifier(1024, 16, 16, args.nb_classes)
+        self.classifier = LinearClassifier(768, 16, 16, args.nb_classes)
 
         # self.conv_layers_small = nn.Sequential(
         #     # Conv1: Input [B, 3, 224, 224] -> Output [B, 64, 112, 112]
@@ -92,10 +85,10 @@ class DINOv2(nn.Module):
         # layers = []
         with torch.no_grad():
             # if self.layer_num == "last":
-            patch = self.feat_extr.get_intermediate_layers(imgs, (3, 9, 17, 23))  # type: ignore
+            # patch = self.feat_extr.get_intermediate_layers(imgs, (3, 11))  # type: ignore
             # layers.append(patch)
-            # out = self.feat_extr.forward_features(imgs)  # type: ignore
-            # patch = out["x_norm_patchtokens"]
+            out = self.feat_extr.forward_features(imgs)  # type: ignore
+            patch = out["x_norm_patchtokens"]
             # layers.append(patch)
             # cls = out["x_norm_clstoken"]
             # elif self.layer_num == "first":
@@ -118,20 +111,20 @@ class DINOv2(nn.Module):
         # conv_3 = self.relu(self.bn(self.conv(conv_2)))
         new_features = []
 
-        new_features.append(features[0].reshape(-1, 16, 16, 1024))
-        new_features.append(features[1].reshape(-1, 16, 16, 1024))
-        new_features.append(features[2].reshape(-1, 16, 16, 1024))
-        new_features.append(features[3].reshape(-1, 16, 16, 1024))
+        new_features.append(features[0].reshape(-1, 16, 16, 768))
+        new_features.append(features[1].reshape(-1, 16, 16, 768))
+        # new_features.append(features[2].reshape(-1, 16, 16, 1024))
+        # new_features.append(features[3].reshape(-1, 16, 16, 1024))
 
         new_features[0] = torch.permute(new_features[0], (0, 3, 1, 2))
         new_features[1] = torch.permute(new_features[1], (0, 3, 1, 2))
-        new_features[2] = torch.permute(new_features[2], (0, 3, 1, 2))
-        new_features[3] = torch.permute(new_features[3], (0, 3, 1, 2))
+        # new_features[2] = torch.permute(new_features[2], (0, 3, 1, 2))
+        # new_features[3] = torch.permute(new_features[3], (0, 3, 1, 2))
         # features[4] = torch.permute(features[4], (0, 3, 1, 2))
 
-        new_features[-1] = F.interpolate(
-            new_features[-1], scale_factor=0.5, mode="bilinear", align_corners=True
-        )
+        # new_features[-1] = F.interpolate(
+        #     new_features[-1], scale_factor=0.5, mode="bilinear", align_corners=True
+        # )
         # features[2] = self.up_1(features[2])
         new_features[1] = self.up_1(new_features[1])
         new_features[0] = self.up_2(new_features[0])
@@ -161,7 +154,7 @@ class DINOv2(nn.Module):
         # x = self.decoder_upernet(x, conv_embeds)
         features = self.get_features(x)
         # x = self.encoder_forward(x)
-        x = self.decoder_upernet(features)
+        x = self.decoder_linear(features)
         # x = self.decoder_upernet(x[1])
 
         return x, features

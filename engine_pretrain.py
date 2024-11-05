@@ -321,7 +321,8 @@ def train_one_epoch_scale(
             fix_decoding_size = fix_resolution_scheduler.get_target_size(epoch)
             model.module.set_target_size(target_size)
             model.module.set_fix_decoding_size(fix_decoding_size)
-            loss, y, mask, mean, var, pos_emb, pos_emb_decoder, samples = model(
+
+            loss_mae, loss_dino, _, _, _, _, _, _, _ = model(
                 samples,
                 input_res=res,
                 targets=targets,
@@ -345,13 +346,17 @@ def train_one_epoch_scale(
         #     if metadata:
         #         wandb_log_metadata(metadata)
 
-        loss_value = loss.item()
+        loss_mae_value, loss_dino_value = loss_mae.item(), loss_dino.item()
 
-        if not math.isfinite(loss_value):
-            print(f"Loss is {loss_value}, stopping training")
-            sys.exit(1)
+        if not math.isfinite(loss_mae_value) or not math.isfinite(loss_dino_value):
+            print("Loss is {}, stopping training".format(loss_mae_value))
+            raise ValueError(f"Loss is {loss_mae_value}, stopping training")
+            # sys.exit(1)
 
-        loss = loss / accum_iter
+        loss = loss_mae + loss_dino
+        loss_value = loss_mae_value + loss_dino_value
+
+        loss /= accum_iter
         loss_scaler(
             loss,
             optimizer,
@@ -363,18 +368,25 @@ def train_one_epoch_scale(
 
         torch.cuda.synchronize()
 
-        metric_logger.update(loss=loss_value)
+        metric_logger.update(loss_mae=loss_mae_value, loss_dino=loss_dino_value)
 
         lr = optimizer.param_groups[0]["lr"]
         metric_logger.update(lr=lr)
 
+        loss_mae_value_reduce = misc.all_reduce_mean(loss_mae_value)
+        loss_dino_value_reduce = misc.all_reduce_mean(loss_dino_value)
         loss_value_reduce = misc.all_reduce_mean(loss_value)
+
         if log_writer is not None and (data_iter_step + 1) % accum_iter == 0:
             """We use epoch_1000x as the x-axis in tensorboard.
             This calibrates different curves when batch size changes.
             """
-            epoch_1000x = int((data_iter_step / len(data_loader) + epoch) * 1000)
-            log_writer.add_scalar("train_loss", loss_value_reduce, epoch_1000x)
+            epoch_1000x = int((data_iter_step / len(data_loader) + epoch) * 1000)  # type: ignore
+            log_writer.add_scalar("train_loss_mae", loss_mae_value_reduce, epoch_1000x)
+            log_writer.add_scalar(
+                "train_loss_dino", loss_dino_value_reduce, epoch_1000x
+            )
+            log_writer.add_scalar("train_loss_total", loss_value_reduce, epoch_1000x)
             log_writer.add_scalar("lr", lr, epoch_1000x)
 
             # Wandb logging
@@ -393,4 +405,7 @@ def train_one_epoch_scale(
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)
-    return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
+    return (
+        {k: meter.global_avg for k, meter in metric_logger.meters.items()},
+        samples,
+    )

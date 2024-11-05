@@ -31,6 +31,7 @@ from models import (
     models_mae_temporal,
 )
 
+from util.CustomCompose import CustomCompose
 from util.collate_fn import TransformCollateFn
 import util.misc as misc
 from engine_pretrain import (
@@ -136,7 +137,7 @@ def get_args_parser():
     )
     parser.set_defaults(norm_pix_loss=False)
     parser.add_argument(
-        "--target_size", nargs="*", type=int, help="images input size", default=[224]
+        "--target_size", nargs="*", type=int, help="images input size", default=[512]
     )
     parser.add_argument(
         "--source_size", nargs="*", type=int, help="images source size", default=[224]
@@ -160,6 +161,13 @@ def get_args_parser():
         action="store_true",
         help="If true, encoder receive tokens after standard demasking, if not, encoded patches are directly passed to decoder",
     )
+    parser.add_argument(
+        "--no_mask_token",
+        action="store_false",
+        dest="use_mask_token",
+        help="Contrary to use_mask_token",
+    )
+    parser.set_defaults(use_mask_token=True)
     # Optimizer parameters
     parser.add_argument(
         "--weight_decay", type=float, default=0.05, help="weight decay (default: 0.05)"
@@ -340,17 +348,16 @@ def main(args):
     dataset_train = build_fmow_dataset(is_train=True, args=args)
 
     if args.model_type == "dinov2_scalemae":
-        transforms_train = transforms.Compose(
-            [
-                K.RandomResizedCrop(
-                    (448, 448),
-                    # (args.input_size, args.input_size),
-                    ratio=(1.0, 1.0),
-                    scale=(args.scale_min, args.scale_max),
-                    resample=Resample.BICUBIC.name,
-                ),
-                K.Resize((args.input_size, args.input_size)),
-            ]
+        target_size = max(args.target_size)
+        transforms_train = CustomCompose(
+            rescale_transform=K.RandomResizedCrop(
+                (target_size, target_size),
+                # (args.input_size, args.input_size),
+                ratio=(1.0, 1.0),
+                scale=(args.scale_min, args.scale_max),
+                resample=Resample.BICUBIC.name,
+            ),
+            src_transform=K.Resize((args.input_size, args.input_size)),
         )
         train_collate = TransformCollateFn(transforms_train, args.base_resolution)
 
@@ -372,19 +379,28 @@ def main(args):
     else:
         log_writer = None
 
-    data_loader_train = DataLoader(
-        dataset_train,
-        sampler=sampler_train,
-        batch_size=args.batch_size,
-        num_workers=args.num_workers,
-        pin_memory=args.pin_mem,
-        drop_last=True,
-        collate_fn=train_collate,
-    )
-
-    output_size_scheduler = get_output_size_scheduler(args)
-    target_size_scheduler = get_target_size_scheduler(args)
-    source_size_scheduler = get_source_size_scheduler(args)
+    if args.model_type == "dinov2_scalemae":
+        data_loader_train = DataLoader(
+            dataset_train,
+            sampler=sampler_train,
+            batch_size=args.batch_size,
+            num_workers=args.num_workers,
+            pin_memory=args.pin_mem,
+            drop_last=True,
+            collate_fn=train_collate,
+        )
+        output_size_scheduler = get_output_size_scheduler(args)
+        target_size_scheduler = get_target_size_scheduler(args)
+        source_size_scheduler = get_source_size_scheduler(args)
+    else:
+        data_loader_train = DataLoader(
+            dataset_train,
+            sampler=sampler_train,
+            batch_size=args.batch_size,
+            num_workers=args.num_workers,
+            pin_memory=args.pin_mem,
+            drop_last=True,
+        )
 
     if args.model_type == "temporal":
         model = models_mae_temporal.__dict__[args.model](
@@ -406,6 +422,7 @@ def main(args):
             use_mask_token=args.use_mask_token,
             project_pos_emb=args.project_pos_emb,
             loss_masking=args.loss_masking,
+            patch_size=args.patch_size,
             self_attention=args.self_attention,
             absolute_scale=args.absolute_scale,
             target_size=args.target_size,
@@ -418,6 +435,7 @@ def main(args):
             l1_loss_weight=args.l1_loss_weight,
             progressive=args.progressive,
         )
+        model = model.to(torch.float)
     else:
         model = models_mae.__dict__[args.model](
             img_size=args.input_size,
@@ -496,7 +514,7 @@ def main(args):
                 args=args,
             )
         elif args.model_type == "dinov2_scalemae":
-            train_stats = train_one_epoch_scale(
+            train_stats, samples = train_one_epoch_scale(
                 model,
                 data_loader_train,
                 optimizer,
