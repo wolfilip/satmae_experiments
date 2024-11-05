@@ -11,8 +11,7 @@ import torch
 import torch.nn as nn
 from timm.models.vision_transformer import PatchEmbed
 
-from util.pos_embed import (get_1d_sincos_pos_embed_from_grid,
-                            get_2d_sincos_pos_embed)
+from util.pos_embed import get_1d_sincos_pos_embed_from_grid, get_2d_sincos_pos_embed
 
 
 class GroupChannelsVisionTransformer(timm.models.vision_transformer.VisionTransformer):

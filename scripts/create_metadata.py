@@ -24,7 +24,7 @@ df_new = pd.DataFrame(columns=["category", "image_path", "timestamp"])
 for index, row in df.iterrows():
     prefix = row["image_path"][:-8].rsplit("_", 1)
     if prefix[0] in new_arr_set:
-        df_new = df_new.append(row)
+        df_new = df_new.append(row)  # type: ignore
 
 print(len(df_new))
 

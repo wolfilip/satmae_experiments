@@ -11,34 +11,33 @@ import os
 import time
 from pathlib import Path
 
-from matplotlib import pyplot as plt
+import kornia.augmentation as K
 import numpy as np
 import timm.optim.optim_factory as optim_factory
 import torch
 import torch.backends.cudnn as cudnn
 import wandb
-from torch.utils.tensorboard.writer import SummaryWriter
-from torch.utils.data import DataLoader, DistributedSampler
+from kornia.constants import Resample
+from matplotlib import pyplot as plt
 from torch.nn.parallel import DistributedDataParallel
-from torchvision import transforms
-
 from torch.optim.adamw import AdamW
+from torch.utils.data import DataLoader, DistributedSampler
+from torch.utils.tensorboard.writer import SummaryWriter
 
-from models import (
-    models_mae,
-    models_scalemae_dinov2,
-    models_mae_dinov2,
-    models_mae_temporal,
-)
-
-from util.CustomCompose import CustomCompose
-from util.collate_fn import TransformCollateFn
 import util.misc as misc
 from engine_pretrain import (
     train_one_epoch,
     train_one_epoch_scale,
     train_one_epoch_temporal,
 )
+from models import (
+    models_mae,
+    models_mae_dinov2,
+    models_mae_temporal,
+    models_scalemae_dinov2,
+)
+from util.collate_fn import TransformCollateFn
+from util.CustomCompose import CustomCompose
 from util.datasets import build_fmow_dataset
 from util.misc import NativeScalerWithGradNormCount as NativeScaler
 from util.resolution_sched import (
@@ -47,8 +46,6 @@ from util.resolution_sched import (
     get_target_size_scheduler,
 )
 from util.visualize_features import visualize_features
-import kornia.augmentation as K
-from kornia.constants import Resample
 
 
 def get_args_parser():

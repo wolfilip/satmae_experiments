@@ -1,5 +1,4 @@
 import os
-from traceback import print_tb
 
 from PIL import Image
 

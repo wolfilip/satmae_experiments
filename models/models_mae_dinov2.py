@@ -7,7 +7,6 @@
 
 from functools import partial
 
-from matplotlib import pyplot as plt
 import torch
 import torch.nn as nn
 from timm.models.vision_transformer import Block, PatchEmbed

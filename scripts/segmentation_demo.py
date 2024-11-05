@@ -194,7 +194,7 @@ def train(
 ):
     model.train()
     log = {"train_loss": [], "train_iou": [], "val_loss": [], "val_iou": []}
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)  # type: ignore
     scheduler = ReduceLROnPlateau(optimizer, "max")
     val_dataset = SpaceNetDataset(val_raster_list, val_mask_list)
     val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False)

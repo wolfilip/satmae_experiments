@@ -7,9 +7,9 @@ import os
 import sys
 from typing import Iterable
 
-from matplotlib import pyplot as plt
 import torch
 import wandb
+from matplotlib import pyplot as plt
 
 import util.lr_sched as lr_sched
 import util.misc as misc
@@ -171,7 +171,7 @@ def train_one_epoch(
 def train_one_epoch_temporal(
     model: torch.nn.Module,
     data_loader: Iterable,
-    optimizer: torch.optim.Optimizer,
+    optimizer: torch.optim.Optimizer,  # type: ignore
     device: torch.device,
     epoch: int,
     loss_scaler,
@@ -184,7 +184,7 @@ def train_one_epoch_temporal(
     header = "Epoch: [{}]".format(epoch)
     print_freq = 20
 
-    accum_iter = args.accum_iter
+    accum_iter = args.accum_iter  # type: ignore
 
     optimizer.zero_grad()
 
@@ -201,7 +201,7 @@ def train_one_epoch_temporal(
         # we use a per iteration (instead of per epoch) lr scheduler
         if data_iter_step % accum_iter == 0:
             lr_sched.adjust_learning_rate(
-                optimizer, data_iter_step / len(data_loader) + epoch, args
+                optimizer, data_iter_step / len(data_loader) + epoch, args  # type: ignore
             )
 
         samples = [
@@ -255,12 +255,12 @@ def train_one_epoch_temporal(
             """We use epoch_1000x as the x-axis in tensorboard.
             This calibrates different curves when batch size changes.
             """
-            epoch_1000x = int((data_iter_step / len(data_loader) + epoch) * 1000)
+            epoch_1000x = int((data_iter_step / len(data_loader) + epoch) * 1000)  # type: ignore
             log_writer.add_scalar("train_loss", loss_value_reduce, epoch_1000x)
             log_writer.add_scalar("lr", lr, epoch_1000x)
 
             # Use wandb
-            if args.local_rank == 0 and args.wandb is not None:
+            if args.local_rank == 0 and args.wandb is not None:  # type: ignore
                 try:
                     wandb.log(
                         {
@@ -281,7 +281,7 @@ def train_one_epoch_temporal(
 def train_one_epoch_scale(
     model: torch.nn.Module,
     data_loader: Iterable,
-    optimizer: torch.optim.Optimizer,
+    optimizer: torch.optim.Optimizer,  # type: ignore
     device: torch.device,
     epoch: int,
     loss_scaler,
@@ -297,7 +297,7 @@ def train_one_epoch_scale(
     header = f"Epoch: [{epoch}]"
     print_freq = 100
 
-    accum_iter = args.accum_iter
+    accum_iter = args.accum_iter  # type: ignore
 
     optimizer.zero_grad()
 
@@ -310,15 +310,15 @@ def train_one_epoch_scale(
         # we use a per iteration (instead of per epoch) lr scheduler
         if data_iter_step % accum_iter == 0:
             lr_sched.adjust_learning_rate(
-                optimizer, data_iter_step / len(data_loader) + epoch, args
+                optimizer, data_iter_step / len(data_loader) + epoch, args  # type: ignore
             )
         samples = samples.to(device, non_blocking=True)
         targets = targets.to(device, non_blocking=True)
 
         with torch.amp.autocast("cuda"):  # type: ignore
-            target_size = scheduler.get_target_size(epoch)
-            source_size = source_size_scheduler.get_target_size(epoch)[0]
-            fix_decoding_size = fix_resolution_scheduler.get_target_size(epoch)
+            target_size = scheduler.get_target_size(epoch)  # type: ignore
+            source_size = source_size_scheduler.get_target_size(epoch)[0]  # type: ignore
+            fix_decoding_size = fix_resolution_scheduler.get_target_size(epoch)  # type: ignore
             model.module.set_target_size(target_size)
             model.module.set_fix_decoding_size(fix_decoding_size)
 

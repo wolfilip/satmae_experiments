@@ -1,7 +1,6 @@
 import ast
 
 import matplotlib
-import pandas as pd
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt

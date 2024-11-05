@@ -567,7 +567,9 @@ def calc_metrics(
         if not os.path.exists(
             "satmae_experiments/spacenet_10pc_results/per_image/dinov2_mae_b/"
         ):
-            os.makedirs("satmae_experiments/spacenet_10pc_results/per_image/dinov2_mae_b/")
+            os.makedirs(
+                "satmae_experiments/spacenet_10pc_results/per_image/dinov2_mae_b/"
+            )
     elif args.dataset_type == "loveda":
         miou_temp = JaccardIndex(
             task="multiclass", num_classes=args.nb_classes, zero_division=1.0

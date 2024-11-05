@@ -9,13 +9,12 @@
 # DeiT: https://github.com/facebookresearch/deit
 # --------------------------------------------------------
 
-import imp
 from functools import partial
 
 import torch
 import torch.nn as nn
-
 from timm.models.vision_transformer import Block, PatchEmbed
+
 from util.FCNHead import FCNHead
 from util.FPNHead import FPNHead
 from util.pos_embed import (
@@ -73,7 +72,7 @@ class DINOv2ScaleMAEViT(nn.Module):
         self_attention=False,
         absolute_scale=False,
         target_size=[],
-        fixed_output_size=None,
+        fixed_output_size=224,
         fcn_dim=256,
         fcn_layers=3,
         independent_fcn_head=False,
@@ -103,7 +102,7 @@ class DINOv2ScaleMAEViT(nn.Module):
         self.independent_fcn_head = independent_fcn_head
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
         self.pos_embed = nn.Parameter(
-            torch.zeros(1, num_patches + 1, embed_dim), requires_grad=False
+            torch.zeros(1, num_patches + 1, embed_dim), requires_grad=False  # type: ignore
         )  # fixed sin-cos embedding
         self.blocks = nn.ModuleList(
             [
@@ -130,7 +129,7 @@ class DINOv2ScaleMAEViT(nn.Module):
         self.mask_token_decoder = nn.Parameter(torch.zeros(1, 1, decoder_embed_dim))
         self.use_mask_token = use_mask_token
         self.decoder_pos_embed = nn.Parameter(
-            torch.zeros(1, num_patches + 1, decoder_embed_dim), requires_grad=False
+            torch.zeros(1, num_patches + 1, decoder_embed_dim), requires_grad=False  # type: ignore
         )  # fixed sin-cos embedding
         self.project_pos_emb = project_pos_emb
         if project_pos_emb:
@@ -194,7 +193,7 @@ class DINOv2ScaleMAEViT(nn.Module):
         # initialize (and freeze) pos_embed by sin-cos embedding
         pos_embed = get_2d_sincos_pos_embed(
             self.pos_embed.shape[-1],
-            int(self.patch_embed.num_patches**0.5),
+            int(self.patch_embed.num_patches**0.5),  # type: ignore
             cls_token=True,
         )
         self.pos_embed.data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
@@ -232,7 +231,7 @@ class DINOv2ScaleMAEViT(nn.Module):
         h = w = imgs.shape[2] // p
         x = imgs.reshape(shape=(imgs.shape[0], 3, h, p, w, p))
         x = torch.einsum("nchpwq->nhwpqc", x)
-        x = x.reshape(shape=(imgs.shape[0], h * w, p**2 * 3))
+        x = x.reshape(shape=(imgs.shape[0], h * w, p**2 * 3))  # type: ignore
         return x
 
     def unpatchify(self, x):
@@ -246,7 +245,7 @@ class DINOv2ScaleMAEViT(nn.Module):
 
         x = x.reshape(shape=(x.shape[0], h, w, p, p, 3))
         x = torch.einsum("nhwpqc->nchpwq", x)
-        imgs = x.reshape(shape=(x.shape[0], 3, h * p, h * p))
+        imgs = x.reshape(shape=(x.shape[0], 3, h * p, h * p))  # type: ignore
         return imgs
 
     def upsample_decoder(self, x, target_dim):
@@ -267,7 +266,7 @@ class DINOv2ScaleMAEViT(nn.Module):
         return padded
 
     def find_closest_multiple(self, target_resolution):
-        n = target_resolution + self.patch_embed.patch_size[0] / 2
+        n = target_resolution + self.patch_embed.patch_size[0] / 2  # type: ignore
         n = n - (n % self.patch_embed.patch_size[0])
         return int(n)
 
@@ -344,14 +343,14 @@ class DINOv2ScaleMAEViT(nn.Module):
         # out = patch[10]
         return out
 
-    def forward_encoder(self, x, mask_ratio=0.0, input_res=None):
+    def forward_encoder(self, x, mask_ratio=0.0, input_res=torch.tensor):
         # embed patches
         _, _, h, w = x.shape
         x = self.patch_embed(x)
         input_res = input_res.cpu()
 
         num_patches = int(
-            (h * w) / (self.patch_embed.patch_size[0] * self.patch_embed.patch_size[1])
+            (h * w) / (self.patch_embed.patch_size[0] * self.patch_embed.patch_size[1])  # type: ignore
         )
         pos_embed = get_2d_sincos_pos_embed_with_resolution(
             x.shape[-1],
@@ -396,7 +395,7 @@ class DINOv2ScaleMAEViT(nn.Module):
         ids_restore=[],
         target_res=[],
         target_dim=None,
-        pos_embed_encoder=None,
+        pos_embed_encoder=torch.tensor,
         mask=None,
     ):
         # embed tokens
@@ -424,14 +423,14 @@ class DINOv2ScaleMAEViT(nn.Module):
 
         if not self.use_mask_token:  # drop mask token from encoder
             num_masked = (mask == 0).sum(-1).min().item()
-            mask_idx = torch.argsort(mask, dim=-1, descending=True)[:, :num_masked]
+            mask_idx = torch.argsort(mask, dim=-1, descending=True)[:, :num_masked]  # type: ignore
             mask_idx_n = torch.arange(n).reshape(-1, 1).repeat(1, num_masked)
             x = x[mask_idx_n, mask_idx]
 
         # pos_emb = torch.from_numpy(pos_emb).float().to(x.device) # n X ( L_t + 1) X d_emb
         pos_embed_raw = pos_embed
         if self.project_pos_emb:
-            pos_emb = self.pos_emb_projection(pos_emb)
+            pos_emb = self.pos_emb_projection(pos_emb)  # type: ignore
         # TODO: Consider adding a projection layer?
         ids = None
         x = x[:, 1:, :]
@@ -639,10 +638,10 @@ class DINOv2ScaleMAEViT(nn.Module):
     def forward(
         self,
         imgs,
-        targets=None,
+        targets=torch.tensor,
         mask_ratio=0.75,
         knn_feats=False,
-        input_res=None,
+        input_res=torch.tensor,
         target_res=None,
         source_size=None,
     ):
@@ -723,7 +722,7 @@ def mae_vit_base_patch16_dec512d8b(**kwargs):
         # decoder_depth=8,
         decoder_num_heads=16,
         mlp_ratio=4,
-        norm_layer=partial(nn.LayerNorm, eps=1e-6),
+        norm_layer=partial(nn.LayerNorm, eps=1e-6),  # type: ignore
         **kwargs,
     )
     return model
@@ -738,7 +737,7 @@ def mae_vit_large_patch16_dec512d8b(**kwargs):
         # decoder_depth=8,
         decoder_num_heads=16,
         mlp_ratio=4,
-        norm_layer=partial(nn.LayerNorm, eps=1e-6),
+        norm_layer=partial(nn.LayerNorm, eps=1e-6),  # type: ignore
         **kwargs,
     )
     return model
@@ -753,7 +752,7 @@ def mae_vit_huge_patch14_dec512d8b(**kwargs):
         # decoder_depth=8,
         decoder_num_heads=16,
         mlp_ratio=4,
-        norm_layer=partial(nn.LayerNorm, eps=1e-6),
+        norm_layer=partial(nn.LayerNorm, eps=1e-6),  # type: ignore
         **kwargs,
     )
     return model

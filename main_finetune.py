@@ -29,7 +29,6 @@ import models.models_vit_segmentation as models_vit_segmentation
 import models.models_vit_temporal as models_vit_temporal
 import util.lr_decay as lrd
 import util.misc as misc
-from models.DINOv2_features import DINOv2
 from engine_finetune import (
     evaluate,
     evaluate_segmentation,
@@ -38,6 +37,7 @@ from engine_finetune import (
     train_one_epoch_segmentation,
     train_one_epoch_temporal,
 )
+from models.DINOv2_features import DINOv2
 from util.datasets import build_fmow_dataset
 from util.misc import NativeScalerWithGradNormCount as NativeScaler
 from util.pos_embed import interpolate_pos_embed

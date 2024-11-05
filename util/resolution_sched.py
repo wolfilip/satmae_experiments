@@ -1,5 +1,6 @@
-import numpy as np
 import re
+
+import numpy as np
 
 from util.scheduler import ConstantResolutionScheduler, RandomResolutionScheduler
 

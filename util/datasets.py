@@ -10,16 +10,12 @@ import pandas as pd
 import rasterio
 import rasterio as rio
 import torch
-from torchvision.datasets import ImageFolder
 import torchvision.transforms.v2 as transforms
 from PIL import Image
 from rasterio import logging
 from rasterio.enums import Resampling
 from torch.utils.data import Dataset
 from torch.utils.data.dataset import Dataset
-
-# from lib.transforms import CustomCompose
-from kornia.constants import Resample
 
 log = logging.getLogger()
 log.setLevel(logging.ERROR)
@@ -289,7 +285,7 @@ class LoveDADataset(SatelliteDataset):
                 [
                     transforms.RandomHorizontalFlip(),
                     transforms.RandomVerticalFlip(),
-                    transforms.RandomRotation(15),
+                    transforms.RandomRotation(15),  # type: ignore
                     transforms.Resize((224, 224)),
                     transforms.Compose(
                         [
