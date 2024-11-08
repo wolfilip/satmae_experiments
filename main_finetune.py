@@ -268,6 +268,17 @@ def get_args_parser():
         help="Whether to use fmow rgb, sentinel, or other dataset.",
     )
     parser.add_argument(
+        "--dataset_split",
+        default="100",
+        choices=["100", "10"],
+        help="What percentage split of the data to use.",
+    )
+    parser.add_argument(
+        "--method_name",
+        default="dinov2_b-2_blocks_conv_32",
+        help="Method name used for saving preocedures.",
+    )
+    parser.add_argument(
         "--masked_bands",
         default=None,
         nargs="+",
@@ -706,8 +717,8 @@ def main(args):
             or args.model_type == "dinov2_segmentation"
             or args.model_type == "dinov2_vit"
         ):
-            test_stats = evaluate_segmentation(
-                data_loader_val, model, device, epoch, args
+            test_stats, max_iou = evaluate_segmentation(
+                data_loader_val, model, device, epoch, max_iou, args
             )
         else:
             test_stats = evaluate(data_loader_val, model, device)
@@ -720,8 +731,6 @@ def main(args):
             print(
                 f"mIoU of the network on the {len(dataset_val)} test images: {test_stats['IoU']:.4f}"  # type: ignore
             )
-            max_iou = max(max_iou, test_stats["IoU"])
-            print(f"Max IoU: {max_iou:.4f}")
 
             if log_writer is not None:
                 log_writer.add_scalar("perf/test_iou", test_stats["IoU"], epoch)

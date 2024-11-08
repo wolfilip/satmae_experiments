@@ -281,22 +281,50 @@ def train_one_epoch_segmentation(
 
     optimizer.zero_grad()
 
-    cnt = 0
-
     if log_writer is not None:
         print("log_dir: {}".format(log_writer.log_dir))
 
     # if args.dataset_type == "spacenet":  # type: ignore
-    miou_metric = JaccardIndex(task="multiclass", num_classes=args.nb_classes)
-    # elif args.dataset_type == "loveda":  # type: ignore
-    #     miou_metric = JaccardIndex(
-    #         task="multiclass", num_classes=args.nb_classes  # type: ignore
-    #     )
+    miou_metric = JaccardIndex(task="multiclass", num_classes=args.nb_classes)  # type: ignore
+
     miou_metric = miou_metric.to(device)
 
-    miou_test = 0
+    if epoch == 0:
 
-    for data_iter_step, (samples, targets) in enumerate(
+        if not os.path.exists(
+            "satmae_experiments/"
+            + args.dataset_type
+            + "_"
+            + args.dataset_split
+            + "pc_results/images/"
+            + args.method_name
+        ):
+            os.makedirs(
+                "satmae_experiments/"
+                + args.dataset_type
+                + "_"
+                + args.dataset_split
+                + "pc_results/images/"
+                + args.method_name
+            )
+        if not os.path.exists(
+            "satmae_experiments/"
+            + args.dataset_type
+            + "_"
+            + args.dataset_split
+            + "pc_results/per_image/"
+            + args.method_name
+        ):
+            os.makedirs(
+                "satmae_experiments/"
+                + args.dataset_type
+                + "_"
+                + args.dataset_split
+                + "pc_results/per_image/"
+                + args.method_name
+            )
+
+    for data_iter_step, (data, mask) in enumerate(
         metric_logger.log_every(data_loader, print_freq, header)
     ):
 
@@ -306,25 +334,24 @@ def train_one_epoch_segmentation(
                 optimizer, data_iter_step / len(data_loader) + epoch, args  # type: ignore
             )
 
-        samples = samples.to(device, non_blocking=True)
-        targets = targets.to(device, non_blocking=True)
+        data = data.to(device, non_blocking=True)
+        mask = mask.to(device, non_blocking=True)
 
         with torch.amp.autocast("cuda"):  # type: ignore
-            loss_value, miou_test = calc_metrics(
-                model,
-                (samples, targets),
-                miou_metric,
-                miou_test,
-                device,
-                epoch,
-                cnt,
-                args,
-                0,
-                0,
+            data = data.to(device)
+            pred, _ = model(data)
+
+            if args.dataset_type == "loveda":  # type: ignore
+                mask = mask.squeeze(1)
+
+            mask_one_hot = F.one_hot(mask, num_classes=args.nb_classes).permute(  # type: ignore
+                0, 3, 1, 2
             )
 
-        # loss_value = loss_value.item()
-        # print(miou)
+            loss_value = get_bce_loss(pred, mask_one_hot.float())
+            # dice_loss = DiceLoss()
+            # loss_2 = dice_loss(pred, mask_one_hot.float())
+            miou_metric.update(pred.argmax(1), mask)
 
         if not math.isfinite(loss_value):
             print("Loss is {}, stopping training".format(loss_value))
@@ -496,7 +523,7 @@ def evaluate_temporal(data_loader, model, device):
 
 
 @torch.no_grad()
-def evaluate_segmentation(data_loader, model, device, epoch, args):
+def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
 
     metric_logger = misc.MetricLogger(delimiter="  ")
     header = "Test:"
@@ -505,42 +532,42 @@ def evaluate_segmentation(data_loader, model, device, epoch, args):
     model.eval()
 
     cnt = 0
-    # if args.dataset_type == "spacenet":
-    #     miou_metric = JaccardIndex(task="multiclass")
-    # elif args.dataset_type == "loveda":
+
     miou_metric = JaccardIndex(task="multiclass", num_classes=args.nb_classes)
     miou_metric = miou_metric.to(device)
 
     miou_test = 0
 
     for batch in metric_logger.log_every(data_loader, 10, header):
-        images = batch[0]
-        target = batch[-1]
+        data = batch[0]
+        mask = batch[-1]
         # print('images and targets')
-        images = images.to(device, non_blocking=True)
-        target = target.to(device, non_blocking=True)
+        data = data.to(device, non_blocking=True)
+        mask = mask.to(device, non_blocking=True)
 
         # print("before pass model")
         # compute output
         with torch.amp.autocast("cuda"):  # type: ignore
-            loss, miou_test = calc_metrics(
-                model,
-                (images, target),
-                miou_metric,
-                miou_test,
-                device,
-                epoch,
-                cnt,
-                args,
-                0,
-                0,
-            )
-            # target = target.to(torch.float32)
-            # pred = model(images)
-            # loss = model.get_bce_loss(pred, target)
-            # IoU = model.get_iou(pred, target, 2)
+            data = data.to(device)
+            pred, features = model(data)
 
-        cnt += images.shape[0]
+            if args.dataset_type == "loveda":
+                mask = mask.squeeze(1)
+
+            mask_one_hot = F.one_hot(mask, num_classes=args.nb_classes).permute(
+                0, 3, 1, 2
+            )
+
+            loss = get_bce_loss(pred, mask_one_hot.float())
+            # dice_loss = DiceLoss()
+            # loss_2 = dice_loss(pred, mask_one_hot.float())
+            miou_metric.update(pred.argmax(1), mask)
+
+            miou_test = save_results(
+                data, mask, pred, device, epoch, cnt, miou_test, args
+            )
+
+        cnt += data.shape[0]
 
         # batch_size = images.shape[0]
         metric_logger.update(loss=loss)
@@ -549,9 +576,37 @@ def evaluate_segmentation(data_loader, model, device, epoch, args):
     print("miou test: " + str(miou_test * args.world_size / 1940))
 
     # gather the stats from all processes
+    miou = miou_metric.compute().item()
+
+    cnt = 0
+
+    if miou > max_iou and epoch > 4:
+        for batch in data_loader:
+            data = batch[0]
+            mask = batch[-1]
+            # print('images and targets')
+            data = data.to(device, non_blocking=True)
+            mask = mask.to(device, non_blocking=True)
+
+            # print("before pass model")
+            # compute output
+            with torch.amp.autocast("cuda"):  # type: ignore
+                data = data.to(device)
+                pred, features = model(data)
+
+                if args.dataset_type == "loveda":
+                    mask = mask.squeeze(1)
+
+                save_images(data, mask, pred, features, cnt, args)
+
+            cnt += data.shape[0]
+
+    max_iou = max(max_iou, miou)
+    print(f"Max IoU: {max_iou:.4f}")
+
     metric_logger.synchronize_between_processes()
 
-    metric_logger.update(IoU=miou_metric.compute().item())
+    metric_logger.update(IoU=miou)
 
     print(
         "* IoU {iou.global_avg:.4f} loss {losses.global_avg:.4f}".format(
@@ -559,127 +614,73 @@ def evaluate_segmentation(data_loader, model, device, epoch, args):
         )
     )
 
-    return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
+    return {k: meter.global_avg for k, meter in metric_logger.meters.items()}, max_iou
 
 
-def calc_metrics(
-    model, data, miou_metric, miou_test, device, epoch, cnt, args, epoch_loss, epoch_iou
-):
-    (data, mask) = data
-    epoch_loss = epoch_loss
-    epoch_iou = epoch_iou
-    data = data.to(device)
-    pred, features = model(data)
+def save_results(data, mask, pred, device, epoch, cnt, miou_test, args):
 
-    if args.visualize_features:
-        if not os.path.exists(
-            "satmae_experiments/feature_visualizations/mae_dinov2_upernet_last/"
-        ):
-            os.makedirs(
-                "satmae_experiments/feature_visualizations/mae_dinov2_upernet_last/"
-            )
-
-    if args.dataset_type == "spacenet":
-        # miou_temp = JaccardIndex(task="binary")
-        # mask_one_hot = F.one_hot(mask, num_classes=args.nb_classes).permute(0, 3, 1, 2)
-
-        if not os.path.exists(
-            "satmae_experiments/spacenet_results/images/dinov2-2_blocks_conv_32-long/"
-        ):
-            os.makedirs(
-                "satmae_experiments/spacenet_results/images/dinov2-2_blocks_conv_32-long/"
-            )
-        if not os.path.exists(
-            "satmae_experiments/spacenet_results/per_image/dinov2-2_blocks_conv_32-long/"
-        ):
-            os.makedirs(
-                "satmae_experiments/spacenet_results/per_image/dinov2-2_blocks_conv_32-long/"
-            )
-    elif args.dataset_type == "loveda":
-        # miou_temp = JaccardIndex(task="multiclass", num_classes=args.nb_classes)
-        mask = mask.squeeze(1)
-        # print(mask.shape)
-        # print(mask.unique())
-        # mask_one_hot = F.one_hot(mask, num_classes=args.nb_classes).permute(0, 3, 1, 2)
-        # print(mask_one_hot.shape)
-        # print(mask_one_hot.unique())
-        if not os.path.exists(
-            "satmae_experiments/loveda_results/images/satmae-4_blocks/"
-        ):
-            os.makedirs("satmae_experiments/loveda_results/images/satmae-4_blocks/")
-        if not os.path.exists(
-            "satmae_experiments/loveda_results/per_image/satmae-4_blocks/"
-        ):
-            os.makedirs("satmae_experiments/loveda_results/per_image/satmae-4_blocks/")
-    # dice_loss = DiceLoss()
-    # miou = MeanIoU(include_background=False, num_classes=1)
     miou_temp = JaccardIndex(task="multiclass", num_classes=args.nb_classes)
     miou_temp = miou_temp.to(device)
-    mask_one_hot = F.one_hot(mask, num_classes=args.nb_classes).permute(0, 3, 1, 2)
-    # plt.imshow(mask_one_hot.argmax(1).cpu()[0])
-    # plt.savefig("satmae_experiments/loveda_results/images/vit_upernet_conv_small/img_" + str(cnt + 0) + ".png")
-    # plt.close()
-    # pred_bool = model.sigmoid(pred) >= 0.5
-    # bla = pred['pred_masks'].argmax(1)
-    # cv2.imwrite(os.path.join("/home/filip/satmae_experiments", "object_result.png"), 255*ppppred["pred"].cpu().detach().numpy().transpose(),)
 
-    if not model.training:
-        for i in range(data.shape[0]):
-            if epoch == args.epochs - 1:
-                f, axarr = plt.subplots(4)
-                cmap = matplotlib.colors.ListedColormap(
-                    ["white", "red", "yellow", "blue", "violet", "green", "brown"]
-                )
-                axarr[0].imshow(data.cpu()[i].permute(1, 2, 0))
-                axarr[1].imshow(mask_one_hot.argmax(1).cpu()[i])
-                axarr[2].imshow(pred.argmax(1).cpu()[i])
-                # axarr[1].imshow(mask_one_hot.argmax(1).cpu()[i], cmap=cmap)
-                # axarr[2].imshow(pred.argmax(1).cpu()[i], cmap=cmap)
-                # axarr[3].imshow(viz_1.permute(1, 2, 0))
-                # plt.savefig("images/image_1_pca.png")
-                plt.savefig(
-                    "satmae_experiments/spacenet_results/images/dinov2-2_blocks_conv_32-long/img_"
-                    + str(cnt + i)
-                    + ".png"
-                )
-                plt.close()
-            # pred_bool = model.sigmoid(pred[i]) >= 0.5
-            mIoU = miou_temp(pred.argmax(1)[i], mask[i]).item()
-            if torch.all(mask[i] == 0) and torch.all(pred.argmax(1)[i] == 0):
-                mIoU = 1.0
-            miou_test += mIoU
-            f = open(
-                "satmae_experiments/spacenet_results/per_image/dinov2-2_blocks_conv_32-long/image_results_iou_"
-                + str(epoch)
-                + ".txt",
-                "a",
+    f = open(
+        "satmae_experiments/"
+        + args.dataset_type
+        + "_"
+        + args.dataset_split
+        + "pc_results/per_image/"
+        + args.method_name
+        + "/image_results_iou_"
+        + str(epoch)
+        + ".txt",
+        "a",
+    )
+
+    for i in range(data.shape[0]):
+        mIoU = miou_temp(pred.argmax(1)[i], mask[i]).item()
+        if torch.all(mask[i] == 0) and torch.all(pred.argmax(1)[i] == 0):
+            mIoU = 1.0
+        miou_test += mIoU
+        f.write("img_" + str(cnt + i) + ": " + str(mIoU) + "\n")
+
+    f.close()
+
+    return miou_test
+
+
+def save_images(data, mask, pred, features, cnt, args):
+
+    for i in range(data.shape[0]):
+        if args.visualize_features:
+            _, axarr = plt.subplots(4)
+            viz_1, _ = visualize_features(features)
+        else:
+            _, axarr = plt.subplots(3)
+
+        axarr[0].imshow(data.cpu()[i].permute(1, 2, 0))
+
+        if args.dataset_type == "spacenet":
+            axarr[1].imshow(mask[i].cpu())
+            axarr[2].imshow(pred.argmax(1).cpu()[i])
+
+        elif args.dataset_type == "loveda":
+            cmap = matplotlib.colors.ListedColormap(
+                ["white", "red", "yellow", "blue", "violet", "green", "brown"]
             )
-            f.write("img_" + str(cnt + i) + ": " + str(mIoU) + "\n")
-            f.close()
-            if args.visualize_features:
-                viz_1, viz_2 = visualize_features(features)
-                f, axarr = plt.subplots(2)
-                axarr[0].imshow(data.cpu()[i].permute(1, 2, 0))
-                axarr[1].imshow(viz_1.permute(1, 2, 0))
-                plt.savefig(
-                    "satmae_experiments/feature_visualizations/mae_dinov2_upernet_last/feature_"
-                    + str(cnt + i)
-                    + ".png"
-                )
-                plt.close()
+            axarr[1].imshow(mask[i].cpu(), cmap=cmap)
+            axarr[2].imshow(pred.argmax(1).cpu()[i], cmap=cmap)
 
-        # return model.get_bce_loss(pred, mask_one_hot.float()) + dice_loss(pred, mask_one_hot.float()), miou_sum / data.shape[0]
-        # if miou_sum / data.shape[0] > best_miou
-    # loss_1 = model.get_bce_loss(pred, mask.float())
-    loss_1 = get_bce_loss(pred, mask_one_hot.float())
-    # loss_2 = dice_loss(pred, mask_one_hot.float())
-    # loss = sum(loss.values())
-    # loss = model.get_bce_loss(pred["pred_logits"], mask)
-    # pred_bool = model.sigmoid(pred) >= 0.5
-    # pred_bool = pred_bool[:, 0:1, :, :]
-    # m = nn.Sigmoid()
-    miou_metric.update(pred.argmax(1), mask)
-    # if torch.all(mask == 0) and torch.all(pred.argmax(1) == 0):
-    #     mIoU = 1.0
-    # IoU = model.get_iou(pred, mask, nclass)
-    return loss_1, miou_test
+        if args.visualize_features:
+            axarr[3].imshow(viz_1.permute(1, 2, 0))
+
+        plt.savefig(
+            "satmae_experiments/"
+            + args.dataset_type
+            + "_"
+            + args.dataset_split
+            + "pc_results/images/"
+            + args.method_name
+            + "/img_"
+            + str(cnt + i)
+            + ".png"
+        )
+        plt.close()

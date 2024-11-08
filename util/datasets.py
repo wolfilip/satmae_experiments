@@ -1201,11 +1201,18 @@ def build_fmow_dataset(is_train: bool, args) -> SatelliteDataset:
             # train_mask_list = mask_list[: int(0.1 * len(mask_list))]
             # train_raster_list = raster_list[: int(r * len(raster_list))]
             # train_mask_list = mask_list[: int(r * len(mask_list))]
-            train_raster_list = raster_list[:4999]
-            train_mask_list = mask_list[:4999]
-            dataset = SpaceNetDataset(
-                raster, mask, train_raster_list, train_mask_list, is_train
-            )
+            if args.dataset_split == "100":
+                train_raster_list = raster_list[:4999]
+                train_mask_list = mask_list[:4999]
+                dataset = SpaceNetDataset(
+                    raster, mask, train_raster_list, train_mask_list, is_train
+                )
+            elif args.dataset_split == "10":
+                train_raster_list = raster_list[:499]
+                train_mask_list = mask_list[:499]
+                dataset = SpaceNetDataset(
+                    raster, mask, train_raster_list, train_mask_list, is_train
+                )
         else:
             val_raster_list = raster_list[4999:]
             val_mask_list = mask_list[4999:]
