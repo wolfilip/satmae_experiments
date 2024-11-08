@@ -51,43 +51,44 @@ class DINOv2(nn.Module):
 
         # upernet stuff
 
-        feature_channels = [768, 768]
+        feature_channels = [768 + 32, 768]
 
-        fpn_out = 768
+        fpn_out = 768 + 32
         self.input_size = (224, 224)
 
         self.PPN = PSPModule(feature_channels[-1])
         self.FPN = FPN_fuse(feature_channels, fpn_out=fpn_out)
-        # self.head = nn.Conv2d(fpn_out, args.nb_classes, kernel_size=3, padding=1)
-        # self.up_1 = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
-        # self.up_2 = nn.Upsample(scale_factor=4, mode="bilinear", align_corners=True)
+        self.head = nn.Conv2d(fpn_out, args.nb_classes, kernel_size=3, padding=1)
+        self.up_1 = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
+        self.up_2 = nn.Upsample(scale_factor=4, mode="bilinear", align_corners=True)
 
         self.classifier = LinearClassifier(768, 16, 16, args.nb_classes)
 
-        # self.conv_layers_small = nn.Sequential(
-        #     # Conv1: Input [B, 3, 224, 224] -> Output [B, 64, 112, 112]
-        #     nn.Conv2d(
-        #         in_channels=3, out_channels=16, kernel_size=7, stride=2, padding=3
-        #     ),  # Kernel size 7x7, stride 2, padding 3
-        #     nn.BatchNorm2d(16),
-        #     nn.ReLU(),
-        #     # Conv2: Input [B, 64, 112, 112] -> Output [B, 128, 56, 56]
-        #     nn.Conv2d(
-        #         in_channels=16, out_channels=32, kernel_size=3, stride=2, padding=1
-        #     ),  # Kernel size 3x3, stride 2, padding 1
-        #     nn.BatchNorm2d(32),
-        #     nn.ReLU(),
-        # )
+        self.conv_layers_small = nn.Sequential(
+            # Conv1: Input [B, 3, 224, 224] -> Output [B, 64, 112, 112]
+            nn.Conv2d(
+                in_channels=3, out_channels=16, kernel_size=7, stride=2, padding=3
+            ),  # Kernel size 7x7, stride 2, padding 3
+            nn.BatchNorm2d(16),
+            nn.ReLU(),
+            # Conv2: Input [B, 64, 112, 112] -> Output [B, 128, 56, 56]
+            nn.Conv2d(
+                in_channels=16, out_channels=32, kernel_size=3, stride=2, padding=1
+            ),  # Kernel size 3x3, stride 2, padding 1
+            nn.BatchNorm2d(32),
+            nn.ReLU(),
+            nn.Upsample(size=(64, 64), mode="bilinear", align_corners=False),
+        )
 
     def get_features(self, imgs):
         # layer = self.layer_num[0] # TODO: make it a list
         # layers = []
         with torch.no_grad():
             # if self.layer_num == "last":
-            # patch = self.feat_extr.get_intermediate_layers(imgs, (3, 11))  # type: ignore
+            patch = self.feat_extr.get_intermediate_layers(imgs, (3, 11))  # type: ignore
             # layers.append(patch)
-            out = self.feat_extr.forward_features(imgs)  # type: ignore
-            patch = out["x_norm_patchtokens"]
+            # out = self.feat_extr.forward_features(imgs)  # type: ignore
+            # patch = out["x_norm_patchtokens"]
             # layers.append(patch)
             # cls = out["x_norm_clstoken"]
             # elif self.layer_num == "first":
@@ -103,7 +104,7 @@ class DINOv2(nn.Module):
 
         return conv_embeds
 
-    def decoder_upernet(self, features):
+    def decoder_upernet(self, features, conv_embeds):
 
         # conv_1 = self.relu(self.bn(self.conv(conv_embeds)))
         # conv_2 = self.relu(self.bn(self.conv(conv_1)))
@@ -128,7 +129,7 @@ class DINOv2(nn.Module):
         new_features[1] = self.up_1(new_features[1])
         new_features[0] = self.up_2(new_features[0])
 
-        # features[0] = torch.cat((features[0], conv_embeds), 1)
+        new_features[0] = torch.cat((new_features[0], conv_embeds), 1)
         # features[1] = torch.cat((features[1], conv_1), 1)
         # features[2] = torch.cat((features[2], conv_2), 1)
         # features[3] = torch.cat((features[3], conv_3), 1)
@@ -148,12 +149,12 @@ class DINOv2(nn.Module):
         return logits
 
     def forward(self, x):
-        # conv_embeds = self.encoder_conv(x)
+        conv_embeds = self.encoder_conv(x)
         # x = self.encoder_forward(x)
         # x = self.decoder_upernet(x, conv_embeds)
         features = self.get_features(x)
         # x = self.encoder_forward(x)
-        x = self.decoder_linear(features)
+        x = self.decoder_upernet(features, conv_embeds)
         # x = self.decoder_upernet(x[1])
 
         return x, features

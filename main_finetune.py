@@ -263,6 +263,7 @@ def get_args_parser():
             "naip",
             "spacenet",
             "loveda",
+            "vaihingen",
         ],
         help="Whether to use fmow rgb, sentinel, or other dataset.",
     )

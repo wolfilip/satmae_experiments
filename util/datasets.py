@@ -5,6 +5,8 @@ from glob import glob
 from typing import Any, List, Optional
 
 import kornia.augmentation as K
+from matplotlib import pyplot as plt
+import matplotlib
 import numpy as np
 import pandas as pd
 import rasterio
@@ -221,6 +223,106 @@ class SpaceNetDataset(SatelliteDataset):
         return img, mask
 
 
+class VaihingenDataset(SatelliteDataset):
+    def __init__(self, img_path, mask_path, is_train):
+        super().__init__(in_c=3)
+
+        self.img_path = img_path
+        self.mask_path = mask_path
+        self.s = 512
+        self.is_train = is_train
+
+        self.image_filenames = []  # List to store image file names
+        self.mask_filenames = []  # List to store mask file names
+
+        self.image_filenames_temp = sorted(os.listdir(self.img_path))
+        self.mask_filenames_temp = sorted(os.listdir(self.mask_path))
+
+        self.image_filenames = [
+            os.path.join(self.img_path, file_name)
+            for file_name in self.image_filenames_temp
+        ]
+        self.mask_filenames = [
+            os.path.join(self.mask_path, file_name)
+            for file_name in self.mask_filenames_temp
+        ]
+
+        self.transforms_train = transforms.Compose(
+            [
+                transforms.RandomResizedCrop(self.s, scale=(0.5, 1.0)),
+                transforms.RandomHorizontalFlip(),
+                transforms.Compose(
+                    [
+                        transforms.ToImage(),
+                        transforms.ToDtype(torch.float32, scale=True),
+                    ]
+                ),
+                # transforms.RandomPhotometricDistort(),
+            ]
+        )
+
+        self.transforms_test = transforms.Compose(
+            [
+                transforms.Compose(
+                    [
+                        transforms.ToImage(),
+                        transforms.ToDtype(torch.float32, scale=True),
+                    ]
+                ),
+                # transforms.RandomPhotometricDistort(),
+            ]
+        )
+
+        self.transforms_distort = transforms.Compose(
+            [
+                transforms.RandomPhotometricDistort(),
+            ]
+        )
+
+        self.transforms_val = transforms.Compose(
+            [
+                transforms.Resize(self.s),
+                transforms.Compose(
+                    [
+                        transforms.ToImage(),
+                        transforms.ToDtype(torch.float32, scale=True),
+                    ]
+                ),
+            ]
+        )
+
+    def __len__(self):
+        return len(self.image_filenames)
+
+    def __getitem__(self, index):
+        image_path = self.image_filenames[index]
+        mask_path = self.mask_filenames[index]
+        # Load image and mask
+        image = Image.open(image_path).convert("RGB")
+        mask = Image.open(mask_path)
+        mask_array = np.array(mask)
+        print(np.unique(mask_array))
+        cmap = matplotlib.colors.ListedColormap(
+            ["white", "red", "yellow", "blue", "violet", "green"]
+        )
+        f, axarr = plt.subplots(2)
+        axarr[0].imshow(mask)
+        axarr[1].imshow(image)
+        # mask = self.transforms_test(mask)
+        print(mask.getpalette())
+
+        plt.savefig("satmae_experiments/loveda_results/images/dinov2_b_linear/img.png")
+        plt.close()
+
+        if self.is_train:
+            image, mask = self.transforms_train(image, mask)
+            image = self.transforms_distort(image)
+        else:
+            image, mask = self.transforms_val(image, mask)
+        print(mask.unique())
+        return image, mask
+
+
 class LoveDADataset(SatelliteDataset):
     def __init__(self, data_paths, is_train):
         super().__init__(in_c=3)
@@ -236,40 +338,45 @@ class LoveDADataset(SatelliteDataset):
             0.0275: 6,
         }
         self.image_filenames = []  # List to store image file names
-        self.mask_filenames = []  # List to store mask file names
+        if self.is_train:
+            self.mask_filenames = []  # List to store mask file names
 
         # Load image and mask file names
         self.images_dir_1 = os.path.join(self.data_paths[0], "images_png")
-        self.masks_dir_1 = os.path.join(self.data_paths[0], "masks_png")
+        if self.is_train:
+            self.masks_dir_1 = os.path.join(self.data_paths[0], "masks_png")
 
         self.image_filenames_temp = sorted(os.listdir(self.images_dir_1))
-        self.mask_filenames_temp = sorted(os.listdir(self.masks_dir_1))
+        if self.is_train:
+            self.mask_filenames_temp = sorted(os.listdir(self.masks_dir_1))
 
         self.image_filenames = [
             os.path.join(self.images_dir_1, file_name)
             for file_name in self.image_filenames_temp
         ]
-
-        self.mask_filenames = [
-            os.path.join(self.masks_dir_1, file_name)
-            for file_name in self.mask_filenames_temp
-        ]
+        if self.is_train:
+            self.mask_filenames = [
+                os.path.join(self.masks_dir_1, file_name)
+                for file_name in self.mask_filenames_temp
+            ]
 
         self.images_dir_2 = os.path.join(self.data_paths[1], "images_png")
-        self.masks_dir_2 = os.path.join(self.data_paths[1], "masks_png")
+        if self.is_train:
+            self.masks_dir_2 = os.path.join(self.data_paths[1], "masks_png")
 
         self.image_filenames_temp = sorted(os.listdir(self.images_dir_2))
-        self.mask_filenames_temp = sorted(os.listdir(self.masks_dir_2))
+        if self.is_train:
+            self.mask_filenames_temp = sorted(os.listdir(self.masks_dir_2))
 
         self.image_filenames += [
             os.path.join(self.images_dir_2, file_name)
             for file_name in self.image_filenames_temp
         ]
-
-        self.mask_filenames += [
-            os.path.join(self.masks_dir_2, file_name)
-            for file_name in self.mask_filenames_temp
-        ]
+        if self.is_train:
+            self.mask_filenames += [
+                os.path.join(self.masks_dir_2, file_name)
+                for file_name in self.mask_filenames_temp
+            ]
 
     def __len__(self):
         return len(self.image_filenames)
@@ -283,9 +390,9 @@ class LoveDADataset(SatelliteDataset):
         if self.is_train:
             self.data_transforms_all = transforms.Compose(
                 [
-                    transforms.RandomHorizontalFlip(),
-                    transforms.RandomVerticalFlip(),
-                    transforms.RandomRotation(15),  # type: ignore
+                    # transforms.RandomHorizontalFlip(),
+                    # transforms.RandomVerticalFlip(),
+                    # transforms.RandomRotation(15),  # type: ignore
                     transforms.Resize((224, 224)),
                     transforms.Compose(
                         [
@@ -302,9 +409,19 @@ class LoveDADataset(SatelliteDataset):
                     ),
                 ]
             )
-
+            # f, axarr = plt.subplots(3)
+            # axarr[0].imshow(mask)
+            # axarr[1].imshow(image)
             image, mask = self.data_transforms_all(image, mask)
-            mask = (mask * 256).to(torch.int64)
+            # axarr[2].imshow(mask.squeeze(0))
+            # print(mask.unique())
+            # plt.savefig(
+            #     "satmae_experiments/loveda_results/images/dinov2_b_linear/img.png"
+            # )
+            # plt.close()
+            mask = (mask * 256).to(torch.int64) - 1
+            mask[mask == -1] = 0
+            # print(mask.unique())
             image = self.data_transforms_img(image)
         else:
             self.data_transforms = transforms.Compose(
@@ -319,7 +436,8 @@ class LoveDADataset(SatelliteDataset):
                 ]
             )
             image, mask = self.data_transforms(image, mask)
-            mask = (mask * 256).to(torch.int64)
+            mask = (mask * 256).to(torch.int64) - 1
+            mask[mask == -1] = 0
         # print(mask.unique())
         # image = np.array(image)
         # mask = torch.from_numpy(mask.astype("int64"))
@@ -1067,7 +1185,8 @@ def build_fmow_dataset(is_train: bool, args) -> SatelliteDataset:
             dropped_bands=args.dropped_bands,
         )
     elif args.dataset_type == "spacenet":
-        DataFolder = "/storage/local/ssd/filipwolf-workspace/SpaceNetV1/"
+        # DataFolder = "/storage/local/ssd/filipwolf-workspace/SpaceNetV1/"
+        DataFolder = "/home/filip/SpaceNetV1/"
         raster = DataFolder + "3band/"
         mask = DataFolder + "mask/"
 
@@ -1078,16 +1197,18 @@ def build_fmow_dataset(is_train: bool, args) -> SatelliteDataset:
         r = 0.7
 
         if is_train:
-            train_raster_list = raster_list[: int(0.1 * len(raster_list))]
-            train_mask_list = mask_list[: int(0.1 * len(mask_list))]
+            # train_raster_list = raster_list[: int(0.1 * len(raster_list))]
+            # train_mask_list = mask_list[: int(0.1 * len(mask_list))]
             # train_raster_list = raster_list[: int(r * len(raster_list))]
             # train_mask_list = mask_list[: int(r * len(mask_list))]
+            train_raster_list = raster_list[:4999]
+            train_mask_list = mask_list[:4999]
             dataset = SpaceNetDataset(
                 raster, mask, train_raster_list, train_mask_list, is_train
             )
         else:
-            val_raster_list = raster_list[int(r * len(raster_list)) :]
-            val_mask_list = mask_list[int(r * len(mask_list)) :]
+            val_raster_list = raster_list[4999:]
+            val_mask_list = mask_list[4999:]
             dataset = SpaceNetDataset(
                 raster, mask, val_raster_list, val_mask_list, is_train
             )
@@ -1097,9 +1218,22 @@ def build_fmow_dataset(is_train: bool, args) -> SatelliteDataset:
             data_paths_urban = "/home/filip/LoveDA/Train/Train/Urban"
             dataset = LoveDADataset((data_paths_rural, data_paths_urban), is_train)
         else:
-            data_paths_rural = "/home/filip/LoveDA/Val/Val/Rural"
-            data_paths_urban = "/home/filip/LoveDA/Val/Val/Urban"
+            data_paths_rural = "/home/filip/LoveDA/Test/Test/Rural"
+            data_paths_urban = "/home/filip/LoveDA/Test/Test/Urban"
             dataset = LoveDADataset((data_paths_rural, data_paths_urban), is_train)
+    elif args.dataset_type == "vaihingen":
+        if is_train:
+            data_paths_imgs_train = "/home/filip/vaihingen_dataset/img_dir/train"
+            data_paths_ann_train = "/home/filip/vaihingen_dataset/ann_dir/train"
+            dataset = VaihingenDataset(
+                data_paths_imgs_train, data_paths_ann_train, is_train
+            )
+        else:
+            data_paths_imgs_train = "/home/filip/vaihingen_dataset/img_dir/val"
+            data_paths_ann_train = "/home/filip/vaihingen_dataset/ann_dir/val"
+            dataset = VaihingenDataset(
+                data_paths_imgs_train, data_paths_ann_train, is_train
+            )
     else:
         raise ValueError(f"Invalid dataset type: {args.dataset_type}")
 

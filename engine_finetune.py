@@ -11,6 +11,7 @@ import sys
 from argparse import ArgumentParser
 from typing import Iterable, Optional
 
+import matplotlib
 import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
@@ -285,13 +286,15 @@ def train_one_epoch_segmentation(
     if log_writer is not None:
         print("log_dir: {}".format(log_writer.log_dir))
 
-    if args.dataset_type == "spacenet":  # type: ignore
-        miou_metric = JaccardIndex(task="binary", zero_division=1.0)
-    elif args.dataset_type == "loveda":  # type: ignore
-        miou_metric = JaccardIndex(
-            task="multiclass", num_classes=args.nb_classes, zero_division=1.0  # type: ignore
-        )
+    # if args.dataset_type == "spacenet":  # type: ignore
+    miou_metric = JaccardIndex(task="multiclass", num_classes=args.nb_classes)
+    # elif args.dataset_type == "loveda":  # type: ignore
+    #     miou_metric = JaccardIndex(
+    #         task="multiclass", num_classes=args.nb_classes  # type: ignore
+    #     )
     miou_metric = miou_metric.to(device)
+
+    miou_test = 0
 
     for data_iter_step, (samples, targets) in enumerate(
         metric_logger.log_every(data_loader, print_freq, header)
@@ -307,8 +310,17 @@ def train_one_epoch_segmentation(
         targets = targets.to(device, non_blocking=True)
 
         with torch.amp.autocast("cuda"):  # type: ignore
-            loss_value = calc_metrics(
-                model, (samples, targets), miou_metric, device, epoch, cnt, args, 0, 0
+            loss_value, miou_test = calc_metrics(
+                model,
+                (samples, targets),
+                miou_metric,
+                miou_test,
+                device,
+                epoch,
+                cnt,
+                args,
+                0,
+                0,
             )
 
         # loss_value = loss_value.item()
@@ -493,13 +505,13 @@ def evaluate_segmentation(data_loader, model, device, epoch, args):
     model.eval()
 
     cnt = 0
-    if args.dataset_type == "spacenet":
-        miou_metric = JaccardIndex(task="binary", zero_division=1.0)
-    elif args.dataset_type == "loveda":
-        miou_metric = JaccardIndex(
-            task="multiclass", num_classes=args.nb_classes, zero_division=1.0
-        )
+    # if args.dataset_type == "spacenet":
+    #     miou_metric = JaccardIndex(task="multiclass")
+    # elif args.dataset_type == "loveda":
+    miou_metric = JaccardIndex(task="multiclass", num_classes=args.nb_classes)
     miou_metric = miou_metric.to(device)
+
+    miou_test = 0
 
     for batch in metric_logger.log_every(data_loader, 10, header):
         images = batch[0]
@@ -511,8 +523,17 @@ def evaluate_segmentation(data_loader, model, device, epoch, args):
         # print("before pass model")
         # compute output
         with torch.amp.autocast("cuda"):  # type: ignore
-            loss = calc_metrics(
-                model, (images, target), miou_metric, device, epoch, cnt, args, 0, 0
+            loss, miou_test = calc_metrics(
+                model,
+                (images, target),
+                miou_metric,
+                miou_test,
+                device,
+                epoch,
+                cnt,
+                args,
+                0,
+                0,
             )
             # target = target.to(torch.float32)
             # pred = model(images)
@@ -524,6 +545,8 @@ def evaluate_segmentation(data_loader, model, device, epoch, args):
         # batch_size = images.shape[0]
         metric_logger.update(loss=loss)
         # metric_logger.meters['IoU'].update(IoU, n=batch_size)
+
+    print("miou test: " + str(miou_test * args.world_size / 1940))
 
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
@@ -540,7 +563,7 @@ def evaluate_segmentation(data_loader, model, device, epoch, args):
 
 
 def calc_metrics(
-    model, data, miou_metric, device, epoch, cnt, args, epoch_loss, epoch_iou
+    model, data, miou_metric, miou_test, device, epoch, cnt, args, epoch_loss, epoch_iou
 ):
     (data, mask) = data
     epoch_loss = epoch_loss
@@ -557,42 +580,42 @@ def calc_metrics(
             )
 
     if args.dataset_type == "spacenet":
-        miou_temp = JaccardIndex(task="binary", zero_division=1.0)
-        mask_one_hot = F.one_hot(mask, num_classes=args.nb_classes).permute(0, 3, 1, 2)
+        # miou_temp = JaccardIndex(task="binary")
+        # mask_one_hot = F.one_hot(mask, num_classes=args.nb_classes).permute(0, 3, 1, 2)
 
         if not os.path.exists(
-            "satmae_experiments/spacenet_10pc_results/images/dinov2_mae_b/"
-        ):
-            os.makedirs("satmae_experiments/spacenet_10pc_results/images/dinov2_mae_b/")
-        if not os.path.exists(
-            "satmae_experiments/spacenet_10pc_results/per_image/dinov2_mae_b/"
+            "satmae_experiments/spacenet_results/images/dinov2-2_blocks_conv_32-long/"
         ):
             os.makedirs(
-                "satmae_experiments/spacenet_10pc_results/per_image/dinov2_mae_b/"
+                "satmae_experiments/spacenet_results/images/dinov2-2_blocks_conv_32-long/"
+            )
+        if not os.path.exists(
+            "satmae_experiments/spacenet_results/per_image/dinov2-2_blocks_conv_32-long/"
+        ):
+            os.makedirs(
+                "satmae_experiments/spacenet_results/per_image/dinov2-2_blocks_conv_32-long/"
             )
     elif args.dataset_type == "loveda":
-        miou_temp = JaccardIndex(
-            task="multiclass", num_classes=args.nb_classes, zero_division=1.0
-        )
+        # miou_temp = JaccardIndex(task="multiclass", num_classes=args.nb_classes)
         mask = mask.squeeze(1)
+        # print(mask.shape)
         # print(mask.unique())
-        mask_one_hot = F.one_hot(mask, num_classes=args.nb_classes).permute(0, 3, 1, 2)
-
+        # mask_one_hot = F.one_hot(mask, num_classes=args.nb_classes).permute(0, 3, 1, 2)
+        # print(mask_one_hot.shape)
+        # print(mask_one_hot.unique())
         if not os.path.exists(
-            "satmae_experiments/loveda_results/images/dinov2_vit_4_blocks_vit_upernet-2/"
+            "satmae_experiments/loveda_results/images/satmae-4_blocks/"
         ):
-            os.makedirs(
-                "satmae_experiments/loveda_results/images/dinov2_vit_4_blocks_vit_upernet-2/"
-            )
+            os.makedirs("satmae_experiments/loveda_results/images/satmae-4_blocks/")
         if not os.path.exists(
-            "satmae_experiments/loveda_results/per_image/dinov2_vit_4_blocks_vit_upernet-2/"
+            "satmae_experiments/loveda_results/per_image/satmae-4_blocks/"
         ):
-            os.makedirs(
-                "satmae_experiments/loveda_results/per_image/dinov2_vit_4_blocks_vit_upernet-2/"
-            )
+            os.makedirs("satmae_experiments/loveda_results/per_image/satmae-4_blocks/")
     # dice_loss = DiceLoss()
     # miou = MeanIoU(include_background=False, num_classes=1)
+    miou_temp = JaccardIndex(task="multiclass", num_classes=args.nb_classes)
     miou_temp = miou_temp.to(device)
+    mask_one_hot = F.one_hot(mask, num_classes=args.nb_classes).permute(0, 3, 1, 2)
     # plt.imshow(mask_one_hot.argmax(1).cpu()[0])
     # plt.savefig("satmae_experiments/loveda_results/images/vit_upernet_conv_small/img_" + str(cnt + 0) + ".png")
     # plt.close()
@@ -602,15 +625,20 @@ def calc_metrics(
 
     if not model.training:
         for i in range(data.shape[0]):
-            if epoch == 400:
+            if epoch == args.epochs - 1:
                 f, axarr = plt.subplots(4)
+                cmap = matplotlib.colors.ListedColormap(
+                    ["white", "red", "yellow", "blue", "violet", "green", "brown"]
+                )
                 axarr[0].imshow(data.cpu()[i].permute(1, 2, 0))
                 axarr[1].imshow(mask_one_hot.argmax(1).cpu()[i])
                 axarr[2].imshow(pred.argmax(1).cpu()[i])
+                # axarr[1].imshow(mask_one_hot.argmax(1).cpu()[i], cmap=cmap)
+                # axarr[2].imshow(pred.argmax(1).cpu()[i], cmap=cmap)
                 # axarr[3].imshow(viz_1.permute(1, 2, 0))
                 # plt.savefig("images/image_1_pca.png")
                 plt.savefig(
-                    "satmae_experiments/spacenet_10pc_results/images/dinov2_mae_b/img_"
+                    "satmae_experiments/spacenet_results/images/dinov2-2_blocks_conv_32-long/img_"
                     + str(cnt + i)
                     + ".png"
                 )
@@ -619,8 +647,9 @@ def calc_metrics(
             mIoU = miou_temp(pred.argmax(1)[i], mask[i]).item()
             if torch.all(mask[i] == 0) and torch.all(pred.argmax(1)[i] == 0):
                 mIoU = 1.0
+            miou_test += mIoU
             f = open(
-                "satmae_experiments/spacenet_10pc_results/per_image/dinov2_mae_b/image_results_iou_"
+                "satmae_experiments/spacenet_results/per_image/dinov2-2_blocks_conv_32-long/image_results_iou_"
                 + str(epoch)
                 + ".txt",
                 "a",
@@ -638,9 +667,9 @@ def calc_metrics(
                     + ".png"
                 )
                 plt.close()
+
         # return model.get_bce_loss(pred, mask_one_hot.float()) + dice_loss(pred, mask_one_hot.float()), miou_sum / data.shape[0]
         # if miou_sum / data.shape[0] > best_miou
-
     # loss_1 = model.get_bce_loss(pred, mask.float())
     loss_1 = get_bce_loss(pred, mask_one_hot.float())
     # loss_2 = dice_loss(pred, mask_one_hot.float())
@@ -648,8 +677,9 @@ def calc_metrics(
     # loss = model.get_bce_loss(pred["pred_logits"], mask)
     # pred_bool = model.sigmoid(pred) >= 0.5
     # pred_bool = pred_bool[:, 0:1, :, :]
-    miou_metric.update(pred, mask_one_hot)
+    # m = nn.Sigmoid()
+    miou_metric.update(pred.argmax(1), mask)
     # if torch.all(mask == 0) and torch.all(pred.argmax(1) == 0):
     #     mIoU = 1.0
     # IoU = model.get_iou(pred, mask, nclass)
-    return loss_1
+    return loss_1, miou_test
