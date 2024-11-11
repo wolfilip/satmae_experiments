@@ -290,7 +290,6 @@ def train_one_epoch_segmentation(
     miou_metric = miou_metric.to(device)
 
     if epoch == 0:
-
         if not os.path.exists(
             "satmae_experiments/"
             + args.dataset_type
@@ -341,7 +340,7 @@ def train_one_epoch_segmentation(
             data = data.to(device)
             pred, _ = model(data)
 
-            if args.dataset_type == "loveda":  # type: ignore
+            if args.dataset_type == "loveda" or args.dataset_type == "vaihingen":  # type: ignore
                 mask = mask.squeeze(1)
 
             mask_one_hot = F.one_hot(mask, num_classes=args.nb_classes).permute(  # type: ignore
@@ -551,7 +550,7 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
             data = data.to(device)
             pred, features = model(data)
 
-            if args.dataset_type == "loveda":
+            if args.dataset_type == "loveda" or args.dataset_type == "vaihingen":
                 mask = mask.squeeze(1)
 
             mask_one_hot = F.one_hot(mask, num_classes=args.nb_classes).permute(
@@ -573,14 +572,41 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
         metric_logger.update(loss=loss)
         # metric_logger.meters['IoU'].update(IoU, n=batch_size)
 
-    print("miou test: " + str(miou_test * args.world_size / 1940))
+    if args.dataset_type == "spacenet":
+        print("miou test: " + str(miou_test * args.world_size / 1940))
+    elif args.dataset_type == "vaihingen":
+        print("miou test: " + str(miou_test * args.world_size / 398))
 
     # gather the stats from all processes
     miou = miou_metric.compute().item()
 
     cnt = 0
 
-    if miou > max_iou and epoch > 4:
+    if args.best_epoch:
+        if miou > max_iou and epoch > 4:
+            for batch in data_loader:
+                data = batch[0]
+                mask = batch[-1]
+                # print('images and targets')
+                data = data.to(device, non_blocking=True)
+                mask = mask.to(device, non_blocking=True)
+
+                # print("before pass model")
+                # compute output
+                with torch.amp.autocast("cuda"):  # type: ignore
+                    data = data.to(device)
+                    pred, features = model(data)
+
+                    if (
+                        args.dataset_type == "loveda"
+                        or args.dataset_type == "vaihingen"
+                    ):
+                        mask = mask.squeeze(1)
+
+                    save_images(data, mask, pred, features, cnt, args)
+
+                cnt += data.shape[0]
+    elif args.epochs == epoch - 1:
         for batch in data_loader:
             data = batch[0]
             mask = batch[-1]
@@ -594,7 +620,7 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
                 data = data.to(device)
                 pred, features = model(data)
 
-                if args.dataset_type == "loveda":
+                if args.dataset_type == "loveda" or args.dataset_type == "vaihingen":
                     mask = mask.squeeze(1)
 
                 save_images(data, mask, pred, features, cnt, args)
@@ -662,9 +688,9 @@ def save_images(data, mask, pred, features, cnt, args):
             axarr[1].imshow(mask[i].cpu())
             axarr[2].imshow(pred.argmax(1).cpu()[i])
 
-        elif args.dataset_type == "loveda":
+        elif args.dataset_type == "loveda" or args.dataset_type == "vaihingen":
             cmap = matplotlib.colors.ListedColormap(
-                ["white", "red", "yellow", "blue", "violet", "green", "brown"]
+                ["white", "red", "yellow", "blue", "violet", "green"]
             )
             axarr[1].imshow(mask[i].cpu(), cmap=cmap)
             axarr[2].imshow(pred.argmax(1).cpu()[i], cmap=cmap)

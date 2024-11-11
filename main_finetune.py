@@ -279,6 +279,12 @@ def get_args_parser():
         help="Method name used for saving preocedures.",
     )
     parser.add_argument(
+        "--best_epoch",
+        action="store_true",
+        default=False,
+        help="Save images after every new best epoch.",
+    )
+    parser.add_argument(
         "--masked_bands",
         default=None,
         nargs="+",

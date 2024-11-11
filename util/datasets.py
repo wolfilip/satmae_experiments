@@ -300,26 +300,30 @@ class VaihingenDataset(SatelliteDataset):
         # Load image and mask
         image = Image.open(image_path).convert("RGB")
         mask = Image.open(mask_path)
-        mask_array = np.array(mask)
-        print(np.unique(mask_array))
-        cmap = matplotlib.colors.ListedColormap(
-            ["white", "red", "yellow", "blue", "violet", "green"]
-        )
-        f, axarr = plt.subplots(2)
-        axarr[0].imshow(mask)
-        axarr[1].imshow(image)
-        # mask = self.transforms_test(mask)
-        print(mask.getpalette())
+        # mask_array = np.array(mask)
+        # print(np.unique(mask_array, return_counts=True))
+        # color_list = ["white", "red", "yellow", "blue", "violet", "green"]
+        # print([color_list[i] for i in np.unique(mask_array)])
+        # cmap = matplotlib.colors.ListedColormap(
+        #     [color_list[i] for i in np.unique(mask_array)]
+        # )
+        # f, axarr = plt.subplots(2)
+        # axarr[0].imshow(mask_array, cmap=cmap)
+        # axarr[1].imshow(image)
+        # # mask = self.transforms_test(mask)
 
-        plt.savefig("satmae_experiments/loveda_results/images/dinov2_b_linear/img.png")
-        plt.close()
+        # plt.savefig("img.png")
+        # plt.close()
 
         if self.is_train:
             image, mask = self.transforms_train(image, mask)
             image = self.transforms_distort(image)
         else:
             image, mask = self.transforms_val(image, mask)
-        print(mask.unique())
+
+        mask = (mask * 256).to(torch.int64) - 1
+
+        # print(mask.unique())
         return image, mask
 
 

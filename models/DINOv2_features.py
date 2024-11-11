@@ -77,13 +77,23 @@ class DINOv2(nn.Module):
             ),  # Kernel size 3x3, stride 2, padding 1
             nn.BatchNorm2d(32),
             nn.ReLU(),
-            nn.Upsample(size=(64, 64), mode="bilinear", align_corners=False),
+            # nn.Conv2d(
+            #     in_channels=32, out_channels=64, kernel_size=3, stride=2, padding=1
+            # ),  # Kernel size 3x3, stride 2, padding 1
+            # nn.BatchNorm2d(64),
+            # nn.ReLU(),
+            nn.Upsample(size=(144, 144), mode="bilinear", align_corners=False),
         )
 
     def get_features(self, imgs):
         # layer = self.layer_num[0] # TODO: make it a list
         # layers = []
         with torch.no_grad():
+            if imgs.shape[-1] % 14 != 0:
+                if imgs.shape[-1] == 512:
+                    imgs = F.interpolate(
+                        imgs, size=504, mode="bilinear", align_corners=True
+                    )
             # if self.layer_num == "last":
             patch = self.feat_extr.get_intermediate_layers(imgs, (3, 11))  # type: ignore
             # layers.append(patch)
@@ -111,8 +121,8 @@ class DINOv2(nn.Module):
         # conv_3 = self.relu(self.bn(self.conv(conv_2)))
         new_features = []
 
-        new_features.append(features[0].reshape(-1, 16, 16, 768))
-        new_features.append(features[1].reshape(-1, 16, 16, 768))
+        new_features.append(features[0].reshape(-1, 36, 36, 768))
+        new_features.append(features[1].reshape(-1, 36, 36, 768))
         # new_features.append(features[2].reshape(-1, 16, 16, 1024))
         # new_features.append(features[3].reshape(-1, 16, 16, 1024))
 
@@ -140,12 +150,12 @@ class DINOv2(nn.Module):
         # x = self.head(features[-1])
         x = self.head(self.FPN(new_features))
 
-        x = F.interpolate(x, size=224, mode="bilinear", align_corners=False)
+        x = F.interpolate(x, size=512, mode="bilinear", align_corners=False)
         return x
 
     def decoder_linear(self, x):
         logits = self.classifier(x)
-        logits = F.interpolate(logits, size=224, mode="bilinear", align_corners=False)
+        logits = F.interpolate(logits, size=512, mode="bilinear", align_corners=False)
         return logits
 
     def forward(self, x):
