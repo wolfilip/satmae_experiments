@@ -38,10 +38,10 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         # for param in self.patch_embed.parameters():
         #     param.requires_grad = False
 
-        feature_channels = [1024 + 32, 1024, 1024, 1024]
+        feature_channels = [1024 + 256, 1024, 1024, 1024]
         # feature_channels = [768, 768]
 
-        fpn_out = 1024 + 32
+        fpn_out = 1024 + 256
         # fpn_out = 768
         self.input_size = (224, 224)
 
@@ -61,63 +61,30 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         # self.relu = nn.ReLU()
 
         # Convolutional layers to transform from [B, 3, 224, 224] to [B, 1024, 56, 56]
-        # self.conv_layers = nn.Sequential(
-        #     # Conv1: Input [B, 3, 224, 224] -> Output [B, 64, 112, 112]
-        #     nn.Conv2d(
-        #         in_channels=3, out_channels=64, kernel_size=7, stride=2, padding=3
-        #     ),  # Kernel size 7x7, stride 2, padding 3
-        #     nn.BatchNorm2d(64),
-        #     nn.ReLU(),
-        #     # Conv2: Input [B, 64, 112, 112] -> Output [B, 128, 56, 56]
-        #     nn.Conv2d(
-        #         in_channels=64, out_channels=128, kernel_size=3, stride=2, padding=1
-        #     ),  # Kernel size 3x3, stride 2, padding 1
-        #     nn.BatchNorm2d(128),
-        #     nn.ReLU(),
-        #     # Conv3: Input [B, 128, 56, 56] -> Output [B, 256, 56, 56]
-        #     nn.Conv2d(
-        #         in_channels=128, out_channels=256, kernel_size=3, stride=1, padding=1
-        #     ),  # Kernel size 3x3, stride 1, padding 1
-        #     nn.BatchNorm2d(256),
-        #     nn.ReLU(),
-        #     # Conv4: Input [B, 256, 56, 56] -> Output [B, 512, 56, 56]
-        #     # nn.Conv2d(
-        #     #     in_channels=256, out_channels=512, kernel_size=3, stride=1, padding=1
-        #     # ),  # Kernel size 3x3, stride 1, padding 1
-        #     # nn.BatchNorm2d(512),
-        #     # nn.ReLU(),
-        #     # Conv5: Input [B, 512, 56, 56] -> Output [B, 1024, 56, 56]
-        #     # nn.Conv2d(
-        #     #     in_channels=512, out_channels=1024, kernel_size=3, stride=1, padding=1
-        #     # ),  # Kernel size 3x3, stride 1, padding 1
-        #     # nn.BatchNorm2d(1024),
-        #     # nn.ReLU(),
-        # )
-
-        self.conv_layers_small = nn.Sequential(
+        self.conv_layers = nn.Sequential(
             # Conv1: Input [B, 3, 224, 224] -> Output [B, 64, 112, 112]
             nn.Conv2d(
-                in_channels=3, out_channels=16, kernel_size=7, stride=2, padding=3
+                in_channels=3, out_channels=64, kernel_size=7, stride=2, padding=3
             ),  # Kernel size 7x7, stride 2, padding 3
-            nn.BatchNorm2d(16),
+            nn.BatchNorm2d(64),
             nn.ReLU(),
             # Conv2: Input [B, 64, 112, 112] -> Output [B, 128, 56, 56]
             nn.Conv2d(
-                in_channels=16, out_channels=32, kernel_size=3, stride=2, padding=1
+                in_channels=64, out_channels=128, kernel_size=3, stride=2, padding=1
             ),  # Kernel size 3x3, stride 2, padding 1
-            nn.BatchNorm2d(32),
+            nn.BatchNorm2d(128),
             nn.ReLU(),
             # Conv3: Input [B, 128, 56, 56] -> Output [B, 256, 56, 56]
-            # nn.Conv2d(
-            #     in_channels=32, out_channels=64, kernel_size=3, stride=1, padding=1
-            # ),  # Kernel size 3x3, stride 1, padding 1
-            # nn.BatchNorm2d(64),
-            # nn.ReLU(),
+            nn.Conv2d(
+                in_channels=128, out_channels=256, kernel_size=3, stride=1, padding=1
+            ),  # Kernel size 3x3, stride 1, padding 1
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
             # Conv4: Input [B, 256, 56, 56] -> Output [B, 512, 56, 56]
             # nn.Conv2d(
-            #     in_channels=64, out_channels=128, kernel_size=3, stride=1, padding=1
+            #     in_channels=256, out_channels=512, kernel_size=3, stride=1, padding=1
             # ),  # Kernel size 3x3, stride 1, padding 1
-            # nn.BatchNorm2d(128),
+            # nn.BatchNorm2d(512),
             # nn.ReLU(),
             # Conv5: Input [B, 512, 56, 56] -> Output [B, 1024, 56, 56]
             # nn.Conv2d(
@@ -127,9 +94,42 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
             # nn.ReLU(),
         )
 
+        # self.conv_layers_small = nn.Sequential(
+        #     # Conv1: Input [B, 3, 224, 224] -> Output [B, 64, 112, 112]
+        #     nn.Conv2d(
+        #         in_channels=3, out_channels=16, kernel_size=7, stride=2, padding=3
+        #     ),  # Kernel size 7x7, stride 2, padding 3
+        #     nn.BatchNorm2d(16),
+        #     nn.ReLU(),
+        #     # Conv2: Input [B, 64, 112, 112] -> Output [B, 128, 56, 56]
+        #     nn.Conv2d(
+        #         in_channels=16, out_channels=32, kernel_size=3, stride=2, padding=1
+        #     ),  # Kernel size 3x3, stride 2, padding 1
+        #     nn.BatchNorm2d(32),
+        #     nn.ReLU(),
+        #     # Conv3: Input [B, 128, 56, 56] -> Output [B, 256, 56, 56]
+        #     # nn.Conv2d(
+        #     #     in_channels=32, out_channels=64, kernel_size=3, stride=1, padding=1
+        #     # ),  # Kernel size 3x3, stride 1, padding 1
+        #     # nn.BatchNorm2d(64),
+        #     # nn.ReLU(),
+        #     # Conv4: Input [B, 256, 56, 56] -> Output [B, 512, 56, 56]
+        #     # nn.Conv2d(
+        #     #     in_channels=64, out_channels=128, kernel_size=3, stride=1, padding=1
+        #     # ),  # Kernel size 3x3, stride 1, padding 1
+        #     # nn.BatchNorm2d(128),
+        #     # nn.ReLU(),
+        #     # Conv5: Input [B, 512, 56, 56] -> Output [B, 1024, 56, 56]
+        #     # nn.Conv2d(
+        #     #     in_channels=512, out_channels=1024, kernel_size=3, stride=1, padding=1
+        #     # ),  # Kernel size 3x3, stride 1, padding 1
+        #     # nn.BatchNorm2d(1024),
+        #     # nn.ReLU(),
+        # )
+
     def encoder_conv(self, x):
 
-        conv_embeds = self.conv_layers_small(x)
+        conv_embeds = self.conv_layers(x)
 
         return conv_embeds
 

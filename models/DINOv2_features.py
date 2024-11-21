@@ -28,7 +28,8 @@ class DINOv2(nn.Module):
 
     def __init__(self, model_args, args, device) -> None:
         super().__init__()
-        self.model_size = model_args["model_size"]
+        # self.model_size = model_args["model_size"]
+        self.model_size = args.model
         if self.model_size == "small":
             self.feat_extr = torch.hub.load("facebookresearch/dinov2", "dinov2_vits14")
         if self.model_size == "small_reg":
@@ -51,38 +52,80 @@ class DINOv2(nn.Module):
 
         # upernet stuff
 
-        feature_channels = [768 + 32, 768]
+        feature_channels = [1024 + 256, 1024, 1024, 1024]
+        # feature_channels = [768 + 256, 768]
 
-        fpn_out = 768 + 32
-        self.input_size = (224, 224)
+        fpn_out = 1024 + 256
+        self.input_size = (args.input_size, args.input_size)
 
         self.PPN = PSPModule(feature_channels[-1])
         self.FPN = FPN_fuse(feature_channels, fpn_out=fpn_out)
         self.head = nn.Conv2d(fpn_out, args.nb_classes, kernel_size=3, padding=1)
         self.up_1 = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
         self.up_2 = nn.Upsample(scale_factor=4, mode="bilinear", align_corners=True)
+        # self.up_144 = nn.Upsample(size=(144, 144), mode="bilinear", align_corners=True)
+        self.up_64 = nn.Upsample(size=(64, 64), mode="bilinear", align_corners=True)
 
-        self.classifier = LinearClassifier(768, 16, 16, args.nb_classes)
+        # self.conv = nn.Conv2d(
+        #     in_channels=128, out_channels=256, kernel_size=3, stride=2, padding=1
+        # )  # 3x3 kernel, stride 2, padding 1
+        # self.bn = nn.BatchNorm2d(256)
+        # self.relu = nn.ReLU()
 
-        self.conv_layers_small = nn.Sequential(
+        # self.classifier = LinearClassifier(768, 16, 16, args.nb_classes)
+
+        # self.conv_layers_small = nn.Sequential(
+        #     # Conv1: Input [B, 3, 224, 224] -> Output [B, 64, 112, 112]
+        #     nn.Conv2d(
+        #         in_channels=3, out_channels=16, kernel_size=7, stride=2, padding=3
+        #     ),  # Kernel size 7x7, stride 2, padding 3
+        #     nn.BatchNorm2d(16),
+        #     nn.ReLU(),
+        #     # Conv2: Input [B, 64, 112, 112] -> Output [B, 128, 56, 56]
+        #     nn.Conv2d(
+        #         in_channels=16, out_channels=32, kernel_size=3, stride=2, padding=1
+        #     ),  # Kernel size 3x3, stride 2, padding 1
+        #     nn.BatchNorm2d(32),
+        #     nn.ReLU(),
+        #     # nn.Conv2d(
+        #     #     in_channels=32, out_channels=64, kernel_size=3, stride=2, padding=1
+        #     # ),  # Kernel size 3x3, stride 2, padding 1
+        #     # nn.BatchNorm2d(64),
+        #     # nn.ReLU(),
+        #     nn.Upsample(size=(144, 144), mode="bilinear", align_corners=False),
+        # )
+
+        self.conv_layers = nn.Sequential(
             # Conv1: Input [B, 3, 224, 224] -> Output [B, 64, 112, 112]
             nn.Conv2d(
-                in_channels=3, out_channels=16, kernel_size=7, stride=2, padding=3
+                in_channels=3, out_channels=64, kernel_size=7, stride=2, padding=3
             ),  # Kernel size 7x7, stride 2, padding 3
-            nn.BatchNorm2d(16),
+            nn.BatchNorm2d(64),
             nn.ReLU(),
             # Conv2: Input [B, 64, 112, 112] -> Output [B, 128, 56, 56]
             nn.Conv2d(
-                in_channels=16, out_channels=32, kernel_size=3, stride=2, padding=1
+                in_channels=64, out_channels=128, kernel_size=3, stride=2, padding=1
             ),  # Kernel size 3x3, stride 2, padding 1
-            nn.BatchNorm2d(32),
+            nn.BatchNorm2d(128),
             nn.ReLU(),
+            # Conv3: Input [B, 128, 56, 56] -> Output [B, 256, 56, 56]
+            nn.Conv2d(
+                in_channels=128, out_channels=256, kernel_size=3, stride=1, padding=1
+            ),  # Kernel size 3x3, stride 1, padding 1
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
+            # Conv4: Input [B, 256, 56, 56] -> Output [B, 512, 56, 56]
             # nn.Conv2d(
-            #     in_channels=32, out_channels=64, kernel_size=3, stride=2, padding=1
-            # ),  # Kernel size 3x3, stride 2, padding 1
-            # nn.BatchNorm2d(64),
+            #     in_channels=256, out_channels=512, kernel_size=3, stride=1, padding=1
+            # ),  # Kernel size 3x3, stride 1, padding 1
+            # nn.BatchNorm2d(512),
             # nn.ReLU(),
-            nn.Upsample(size=(144, 144), mode="bilinear", align_corners=False),
+            # Conv5: Input [B, 512, 56, 56] -> Output [B, 1024, 56, 56]
+            # nn.Conv2d(
+            #     in_channels=512, out_channels=1024, kernel_size=3, stride=1, padding=1
+            # ),  # Kernel size 3x3, stride 1, padding 1
+            # nn.BatchNorm2d(1024),
+            # nn.ReLU(),
         )
 
     def get_features(self, imgs):
@@ -95,7 +138,8 @@ class DINOv2(nn.Module):
                         imgs, size=504, mode="bilinear", align_corners=True
                     )
             # if self.layer_num == "last":
-            patch = self.feat_extr.get_intermediate_layers(imgs, (3, 11))  # type: ignore
+            patch = self.feat_extr.get_intermediate_layers(imgs, (3, 9, 17, 23))  # type: ignore
+            # patch = self.feat_extr.get_intermediate_layers(imgs, (3, 11))
             # layers.append(patch)
             # out = self.feat_extr.forward_features(imgs)  # type: ignore
             # patch = out["x_norm_patchtokens"]
@@ -110,7 +154,9 @@ class DINOv2(nn.Module):
 
     def encoder_conv(self, x):
 
-        conv_embeds = self.conv_layers_small(x)
+        conv_embeds = self.conv_layers(x)
+        # conv_embeds = self.up_144(conv_embeds)
+        conv_embeds = self.up_64(conv_embeds)
 
         return conv_embeds
 
@@ -121,26 +167,26 @@ class DINOv2(nn.Module):
         # conv_3 = self.relu(self.bn(self.conv(conv_2)))
         new_features = []
 
-        new_features.append(features[0].reshape(-1, 36, 36, 768))
-        new_features.append(features[1].reshape(-1, 36, 36, 768))
-        # new_features.append(features[2].reshape(-1, 16, 16, 1024))
-        # new_features.append(features[3].reshape(-1, 16, 16, 1024))
+        new_features.append(features[0].reshape(-1, 16, 16, 1024))
+        new_features.append(features[1].reshape(-1, 16, 16, 1024))
+        new_features.append(features[2].reshape(-1, 16, 16, 1024))
+        new_features.append(features[3].reshape(-1, 16, 16, 1024))
 
         new_features[0] = torch.permute(new_features[0], (0, 3, 1, 2))
         new_features[1] = torch.permute(new_features[1], (0, 3, 1, 2))
-        # new_features[2] = torch.permute(new_features[2], (0, 3, 1, 2))
-        # new_features[3] = torch.permute(new_features[3], (0, 3, 1, 2))
+        new_features[2] = torch.permute(new_features[2], (0, 3, 1, 2))
+        new_features[3] = torch.permute(new_features[3], (0, 3, 1, 2))
         # features[4] = torch.permute(features[4], (0, 3, 1, 2))
 
-        # new_features[-1] = F.interpolate(
-        #     new_features[-1], scale_factor=0.5, mode="bilinear", align_corners=True
-        # )
+        new_features[-1] = F.interpolate(
+            new_features[-1], scale_factor=0.5, mode="bilinear", align_corners=True
+        )
         # features[2] = self.up_1(features[2])
         new_features[1] = self.up_1(new_features[1])
         new_features[0] = self.up_2(new_features[0])
 
         new_features[0] = torch.cat((new_features[0], conv_embeds), 1)
-        # features[1] = torch.cat((features[1], conv_1), 1)
+        # new_features[1] = torch.cat((new_features[1], conv_1), 1)
         # features[2] = torch.cat((features[2], conv_2), 1)
         # features[3] = torch.cat((features[3], conv_3), 1)
 
@@ -150,12 +196,12 @@ class DINOv2(nn.Module):
         # x = self.head(features[-1])
         x = self.head(self.FPN(new_features))
 
-        x = F.interpolate(x, size=512, mode="bilinear", align_corners=False)
+        x = F.interpolate(x, size=self.input_size, mode="bilinear", align_corners=False)
         return x
 
     def decoder_linear(self, x):
         logits = self.classifier(x)
-        logits = F.interpolate(logits, size=512, mode="bilinear", align_corners=False)
+        logits = F.interpolate(logits, size=224, mode="bilinear", align_corners=False)
         return logits
 
     def forward(self, x):

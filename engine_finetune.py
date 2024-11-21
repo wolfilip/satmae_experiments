@@ -13,6 +13,7 @@ from typing import Iterable, Optional
 
 import matplotlib
 import matplotlib.pyplot as plt
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -22,7 +23,7 @@ from timm.utils import accuracy
 from torch import device
 from torch.nn import Module
 from torch.optim.optimizer import Optimizer
-from torchmetrics import JaccardIndex
+from torchmetrics import F1Score, JaccardIndex
 
 import util.lr_sched as lr_sched
 import util.misc as misc
@@ -284,9 +285,20 @@ def train_one_epoch_segmentation(
     if log_writer is not None:
         print("log_dir: {}".format(log_writer.log_dir))
 
-    # if args.dataset_type == "spacenet":  # type: ignore
-    miou_metric = JaccardIndex(task="multiclass", num_classes=args.nb_classes)  # type: ignore
-
+    if args.dataset_type == "spacenet":  # type: ignore
+        miou_metric = JaccardIndex(task="multiclass", num_classes=args.nb_classes)  # type: ignore
+    else:
+        miou_metric = JaccardIndex(
+            task="multiclass", num_classes=args.nb_classes, average="micro"
+        )
+        miou_metric_2 = JaccardIndex(
+            task="multiclass", num_classes=args.nb_classes, average="weighted"
+        )
+        f1_score = F1Score(
+            task="multiclass", num_classes=args.nb_classes, average="micro"
+        )
+        f1_score = f1_score.to(device)
+        miou_metric_2 = miou_metric_2.to(device)
     miou_metric = miou_metric.to(device)
 
     if epoch == 0:
@@ -340,7 +352,7 @@ def train_one_epoch_segmentation(
             data = data.to(device)
             pred, _ = model(data)
 
-            if args.dataset_type == "loveda" or args.dataset_type == "vaihingen":  # type: ignore
+            if args.dataset_type == "loveda" or args.dataset_type == "vaihingen" or args.dataset_type == "potsdam":  # type: ignore
                 mask = mask.squeeze(1)
 
             mask_one_hot = F.one_hot(mask, num_classes=args.nb_classes).permute(  # type: ignore
@@ -351,6 +363,9 @@ def train_one_epoch_segmentation(
             # dice_loss = DiceLoss()
             # loss_2 = dice_loss(pred, mask_one_hot.float())
             miou_metric.update(pred.argmax(1), mask)
+            if args.dataset_type != "spacenet":
+                miou_metric_2.update(pred.argmax(1), mask)
+                f1_score.update(pred.argmax(1), mask)
 
         if not math.isfinite(loss_value):
             print("Loss is {}, stopping training".format(loss_value))
@@ -402,11 +417,21 @@ def train_one_epoch_segmentation(
 
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
-    print(
-        "* IoU {iou:.4f} loss {losses.global_avg:.4f}".format(
-            iou=miou_metric.compute(), losses=metric_logger.loss
+    if args.dataset_type == "spacenet":
+        print(
+            "* IoU {iou:.4f} loss {losses.global_avg:.4f}".format(
+                iou=miou_metric.compute(), losses=metric_logger.loss
+            )
         )
-    )
+    else:
+        print(
+            "* IoU {iou:.4f} ioU 2 {iou2:.4f} F1 {f1:.4f} loss {losses.global_avg:.4f}".format(
+                iou=miou_metric.compute(),
+                iou2=miou_metric_2.compute(),
+                f1=f1_score.compute(),
+                losses=metric_logger.loss,
+            )
+        )
     return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
 
 
@@ -532,7 +557,56 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
 
     cnt = 0
 
-    miou_metric = JaccardIndex(task="multiclass", num_classes=args.nb_classes)
+    if args.eval:
+        if not os.path.exists(
+            "satmae_experiments/"
+            + args.dataset_type
+            + "_"
+            + args.dataset_split
+            + "pc_results/images/"
+            + args.method_name
+        ):
+            os.makedirs(
+                "satmae_experiments/"
+                + args.dataset_type
+                + "_"
+                + args.dataset_split
+                + "pc_results/images/"
+                + args.method_name
+            )
+        if not os.path.exists(
+            "satmae_experiments/"
+            + args.dataset_type
+            + "_"
+            + args.dataset_split
+            + "pc_results/per_image/"
+            + args.method_name
+        ):
+            os.makedirs(
+                "satmae_experiments/"
+                + args.dataset_type
+                + "_"
+                + args.dataset_split
+                + "pc_results/per_image/"
+                + args.method_name
+            )
+
+    if args.dataset_type == "spacenet":  # type: ignore
+        miou_metric = JaccardIndex(task="multiclass", num_classes=args.nb_classes)  # type: ignore
+    else:
+        miou_metric = JaccardIndex(
+            task="multiclass", num_classes=args.nb_classes, average="micro"
+        )
+        miou_metric_2 = JaccardIndex(
+            task="multiclass", num_classes=args.nb_classes, average="weighted"
+        )
+        f1_score = F1Score(
+            task="multiclass", num_classes=args.nb_classes, average="micro"
+        )
+
+        f1_score = f1_score.to(device)
+        miou_metric_2 = miou_metric_2.to(device)
+
     miou_metric = miou_metric.to(device)
 
     miou_test = 0
@@ -550,7 +624,11 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
             data = data.to(device)
             pred, features = model(data)
 
-            if args.dataset_type == "loveda" or args.dataset_type == "vaihingen":
+            if (
+                args.dataset_type == "loveda"
+                or args.dataset_type == "vaihingen"
+                or args.dataset_type == "potsdam"
+            ):
                 mask = mask.squeeze(1)
 
             mask_one_hot = F.one_hot(mask, num_classes=args.nb_classes).permute(
@@ -561,6 +639,9 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
             # dice_loss = DiceLoss()
             # loss_2 = dice_loss(pred, mask_one_hot.float())
             miou_metric.update(pred.argmax(1), mask)
+            if args.dataset_type != "spacenet":
+                miou_metric_2.update(pred.argmax(1), mask)
+                f1_score.update(pred.argmax(1), mask)
 
             miou_test = save_results(
                 data, mask, pred, device, epoch, cnt, miou_test, args
@@ -576,9 +657,14 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
         print("miou test: " + str(miou_test * args.world_size / 1940))
     elif args.dataset_type == "vaihingen":
         print("miou test: " + str(miou_test * args.world_size / 398))
+    elif args.dataset_type == "potsdam":
+        print("miou test: " + str(miou_test * args.world_size / 2016))
 
     # gather the stats from all processes
     miou = miou_metric.compute().item()
+    if args.dataset_type != "spacenet":
+        miou_2 = miou_metric_2.compute().item()
+        f1 = f1_score.compute().item()
 
     cnt = 0
 
@@ -600,13 +686,14 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
                     if (
                         args.dataset_type == "loveda"
                         or args.dataset_type == "vaihingen"
+                        or args.dataset_type == "potsdam"
                     ):
                         mask = mask.squeeze(1)
 
                     save_images(data, mask, pred, features, cnt, args)
 
                 cnt += data.shape[0]
-    elif args.epochs == epoch - 1:
+    elif epoch == args.epochs - 1 or args.eval:
         for batch in data_loader:
             data = batch[0]
             mask = batch[-1]
@@ -620,7 +707,11 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
                 data = data.to(device)
                 pred, features = model(data)
 
-                if args.dataset_type == "loveda" or args.dataset_type == "vaihingen":
+                if (
+                    args.dataset_type == "loveda"
+                    or args.dataset_type == "vaihingen"
+                    or args.dataset_type == "potsdam"
+                ):
                     mask = mask.squeeze(1)
 
                 save_images(data, mask, pred, features, cnt, args)
@@ -634,18 +725,31 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
 
     metric_logger.update(IoU=miou)
 
-    print(
-        "* IoU {iou.global_avg:.4f} loss {losses.global_avg:.4f}".format(
-            iou=metric_logger.IoU, losses=metric_logger.loss
+    if args.dataset_type == "spacenet":
+        print(
+            "* IoU {iou:.4f} loss {losses.global_avg:.4f}".format(
+                iou=miou, losses=metric_logger.loss
+            )
         )
-    )
+    else:
+        metric_logger.update(f1=f1)
+        print(
+            "* IoU {iou:.4f} IoU 2 {iou2:.4f} F1 {f1:.4f} loss {losses.global_avg:.4f}".format(
+                iou=miou, iou2=miou_2, f1=f1, losses=metric_logger.loss
+            )
+        )
 
     return {k: meter.global_avg for k, meter in metric_logger.meters.items()}, max_iou
 
 
 def save_results(data, mask, pred, device, epoch, cnt, miou_test, args):
 
-    miou_temp = JaccardIndex(task="multiclass", num_classes=args.nb_classes)
+    if args.dataset_type == "spacenet":  # type: ignore
+        miou_temp = JaccardIndex(task="multiclass", num_classes=args.nb_classes)  # type: ignore
+    else:
+        miou_temp = JaccardIndex(
+            task="multiclass", num_classes=args.nb_classes, average="micro"
+        )
     miou_temp = miou_temp.to(device)
 
     f = open(
@@ -688,12 +792,18 @@ def save_images(data, mask, pred, features, cnt, args):
             axarr[1].imshow(mask[i].cpu())
             axarr[2].imshow(pred.argmax(1).cpu()[i])
 
-        elif args.dataset_type == "loveda" or args.dataset_type == "vaihingen":
+        elif (
+            args.dataset_type == "loveda"
+            or args.dataset_type == "vaihingen"
+            or args.dataset_type == "potsdam"
+        ):
+            mask_array = np.array(mask.cpu())
+            color_list = ["white", "red", "yellow", "blue", "violet", "green"]
             cmap = matplotlib.colors.ListedColormap(
-                ["white", "red", "yellow", "blue", "violet", "green"]
+                [color_list[i] for i in np.unique(mask_array)]
             )
-            axarr[1].imshow(mask[i].cpu(), cmap=cmap)
-            axarr[2].imshow(pred.argmax(1).cpu()[i], cmap=cmap)
+            axarr[1].imshow(mask[i].cpu(), cmap=cmap, interpolation="none")
+            axarr[2].imshow(pred.argmax(1).cpu()[i], cmap=cmap, interpolation="none")
 
         if args.visualize_features:
             axarr[3].imshow(viz_1.permute(1, 2, 0))

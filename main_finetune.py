@@ -264,6 +264,7 @@ def get_args_parser():
             "spacenet",
             "loveda",
             "vaihingen",
+            "potsdam",
         ],
         help="Whether to use fmow rgb, sentinel, or other dataset.",
     )
@@ -532,6 +533,12 @@ def main(args):
         # interpolate position embedding
         interpolate_pos_embed(model, checkpoint_model)
 
+        if "cross_scale" in args.finetune:
+            for key in list(checkpoint_model.keys()):
+                checkpoint_model[key.replace("encoder", "blocks")] = (
+                    checkpoint_model.pop(key)
+                )
+
         # load pre-trained model
         msg = model.load_state_dict(checkpoint_model, strict=False)
         print(msg)
@@ -620,7 +627,9 @@ def main(args):
             or args.model_type == "dinov2_segmentation"
             or args.model_type == "dinov2_vit"
         ):
-            test_stats = evaluate_segmentation(data_loader_val, model, device, 0, args)
+            test_stats, max_iou = evaluate_segmentation(
+                data_loader_val, model, device, 0, 0, args
+            )
         else:
             test_stats = evaluate(data_loader_val, model, device)
 
@@ -734,13 +743,16 @@ def main(args):
             or args.model_type == "dinov2_segmentation"
             or args.model_type == "dinov2_vit"
         ):
-            print(
-                f"mIoU of the network on the {len(dataset_val)} test images: {test_stats['IoU']:.4f}"  # type: ignore
-            )
+            # print(
+            #     f"mIoU of the network on the {len(dataset_val)} test images: {test_stats['IoU']:.4f}"  # type: ignore
+            # )
 
             if log_writer is not None:
                 log_writer.add_scalar("perf/test_iou", test_stats["IoU"], epoch)
                 log_writer.add_scalar("perf/test_loss", test_stats["loss"], epoch)
+                if args.dataset_type != "spacenet":
+                    log_writer.add_scalar("perf/test_f1", test_stats["f1"], epoch)
+
         else:
             print(
                 f"Accuracy of the network on the {len(dataset_val)} test images: {test_stats['acc1']:.1f}%"  # type: ignore

@@ -25,6 +25,37 @@ log.setLevel(logging.ERROR)
 warnings.simplefilter("ignore", Image.DecompressionBombWarning)
 
 
+def rgb2mask(img):
+
+    color2index = {
+        (255, 255, 255): 0,
+        (0, 0, 255): 1,
+        (0, 255, 255): 2,
+        (0, 255, 0): 3,
+        (255, 255, 0): 4,
+        (255, 0, 0): 5,
+        (0, 0, 0): 6,
+    }
+
+    assert len(img.shape) == 3
+    height, width, ch = img.shape
+    assert ch == 3
+
+    W = np.power(256, [[0], [1], [2]])
+
+    img_id = img.dot(W).squeeze(-1)
+    values = np.unique(img_id)
+
+    mask = np.zeros(img_id.shape)
+
+    for i, c in enumerate(values):
+        try:
+            mask[img_id == c] = color2index[tuple(img[img_id == c][0])]
+        except:
+            pass
+    return mask.astype(int)
+
+
 CATEGORIES = [
     "airport",
     "airport_hangar",
@@ -166,12 +197,30 @@ class SpaceNetDataset(SatelliteDataset):
         self.raster_list = raster_list
         self.mask_list = mask_list
         self.s = 224
+
         self.is_train = is_train
         self.transforms_train = transforms.Compose(
             [
-                # transforms.Scale(224),
-                transforms.RandomCrop(224),
+                transforms.RandomResizedCrop(self.s, scale=(0.5, 1.0)),
                 transforms.RandomHorizontalFlip(),
+                transforms.Compose(
+                    [
+                        transforms.ToImage(),
+                        transforms.ToDtype(torch.float32, scale=True),
+                    ]
+                ),
+                # transforms.RandomPhotometricDistort(),
+            ]
+        )
+
+        self.transforms_test = transforms.Compose(
+            [
+                transforms.Compose(
+                    [
+                        transforms.ToImage(),
+                        transforms.ToDtype(torch.float32, scale=True),
+                    ]
+                ),
                 # transforms.RandomPhotometricDistort(),
             ]
         )
@@ -184,8 +233,13 @@ class SpaceNetDataset(SatelliteDataset):
 
         self.transforms_val = transforms.Compose(
             [
-                # transforms.Scale(224),
-                transforms.Resize(224),
+                transforms.Resize(self.s),
+                transforms.Compose(
+                    [
+                        transforms.ToImage(),
+                        transforms.ToDtype(torch.float32, scale=True),
+                    ]
+                ),
             ]
         )
 
@@ -206,6 +260,12 @@ class SpaceNetDataset(SatelliteDataset):
         )
         img = torch.from_numpy(img.astype("float32"))
         mask = torch.from_numpy(mask.astype("int64"))
+        if self.is_train:
+            image, mask = self.transforms_train(img, mask)
+            image = self.transforms_distort(image)
+            # image, mask = self.transforms_test(image, mask)
+        else:
+            image, mask = self.transforms_val(img, mask)
         # mask = F.one_hot(mask, num_classes=2).permute(2, 0, 1)
         # if self.is_train:
         #     image_and_mask = torch.cat([img, mask], dim=0)
@@ -223,8 +283,8 @@ class SpaceNetDataset(SatelliteDataset):
         return img, mask
 
 
-class VaihingenDataset(SatelliteDataset):
-    def __init__(self, img_path, mask_path, is_train):
+class VaihingenPotsdamDataset(SatelliteDataset):
+    def __init__(self, img_path, mask_path, is_train, args):
         super().__init__(in_c=3)
 
         self.img_path = img_path
@@ -246,6 +306,10 @@ class VaihingenDataset(SatelliteDataset):
             os.path.join(self.mask_path, file_name)
             for file_name in self.mask_filenames_temp
         ]
+
+        if args.dataset_split == "10" and is_train:
+            self.image_filenames = self.image_filenames[:68]
+            self.mask_filenames = self.mask_filenames[:68]
 
         self.transforms_train = transforms.Compose(
             [
@@ -301,27 +365,31 @@ class VaihingenDataset(SatelliteDataset):
         image = Image.open(image_path).convert("RGB")
         mask = Image.open(mask_path)
         # mask_array = np.array(mask)
+        # # mask_array = rgb2mask(mask_array)
+
         # print(np.unique(mask_array, return_counts=True))
-        # color_list = ["white", "red", "yellow", "blue", "violet", "green"]
+        # color_list = ["white", "red", "yellow", "blue", "violet", "green", "black"]
         # print([color_list[i] for i in np.unique(mask_array)])
         # cmap = matplotlib.colors.ListedColormap(
         #     [color_list[i] for i in np.unique(mask_array)]
         # )
         # f, axarr = plt.subplots(2)
-        # axarr[0].imshow(mask_array, cmap=cmap)
-        # axarr[1].imshow(image)
+        # axarr[0].imshow(mask_array, cmap=cmap, interpolation="none")
+        # axarr[1].imshow(image, interpolation="none")
         # # mask = self.transforms_test(mask)
 
-        # plt.savefig("img.png")
+        # plt.savefig("img.png", dpi=1200)
         # plt.close()
 
         if self.is_train:
             image, mask = self.transforms_train(image, mask)
             image = self.transforms_distort(image)
+            # image, mask = self.transforms_test(image, mask)
         else:
             image, mask = self.transforms_val(image, mask)
+            # image, mask = self.transforms_test(image, mask)
 
-        mask = (mask * 256).to(torch.int64) - 1
+        mask = (mask * 256).to(torch.int64)
 
         # print(mask.unique())
         return image, mask
@@ -1236,14 +1304,27 @@ def build_fmow_dataset(is_train: bool, args) -> SatelliteDataset:
         if is_train:
             data_paths_imgs_train = "/home/filip/vaihingen_dataset/img_dir/train"
             data_paths_ann_train = "/home/filip/vaihingen_dataset/ann_dir/train"
-            dataset = VaihingenDataset(
-                data_paths_imgs_train, data_paths_ann_train, is_train
+            dataset = VaihingenPotsdamDataset(
+                data_paths_imgs_train, data_paths_ann_train, is_train, args
             )
         else:
             data_paths_imgs_train = "/home/filip/vaihingen_dataset/img_dir/val"
             data_paths_ann_train = "/home/filip/vaihingen_dataset/ann_dir/val"
-            dataset = VaihingenDataset(
-                data_paths_imgs_train, data_paths_ann_train, is_train
+            dataset = VaihingenPotsdamDataset(
+                data_paths_imgs_train, data_paths_ann_train, is_train, args
+            )
+    elif args.dataset_type == "potsdam":
+        if is_train:
+            data_paths_imgs_train = "/home/filip/potsdam_dataset/img_dir/train"
+            data_paths_ann_train = "/home/filip/potsdam_dataset/ann_dir/train"
+            dataset = VaihingenPotsdamDataset(
+                data_paths_imgs_train, data_paths_ann_train, is_train, args
+            )
+        else:
+            data_paths_imgs_train = "/home/filip/potsdam_dataset/img_dir/val"
+            data_paths_ann_train = "/home/filip/potsdam_dataset/ann_dir/val"
+            dataset = VaihingenPotsdamDataset(
+                data_paths_imgs_train, data_paths_ann_train, is_train, args
             )
     else:
         raise ValueError(f"Invalid dataset type: {args.dataset_type}")
