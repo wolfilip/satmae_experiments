@@ -203,13 +203,13 @@ class SpaceNetDataset(SatelliteDataset):
             [
                 transforms.RandomResizedCrop(self.s, scale=(0.5, 1.0)),
                 transforms.RandomHorizontalFlip(),
+                transforms.RandomVerticalFlip(),
                 transforms.Compose(
                     [
                         transforms.ToImage(),
                         transforms.ToDtype(torch.float32, scale=True),
                     ]
                 ),
-                # transforms.RandomPhotometricDistort(),
             ]
         )
 
@@ -307,7 +307,7 @@ class VaihingenPotsdamDataset(SatelliteDataset):
             for file_name in self.mask_filenames_temp
         ]
 
-        if args.dataset_split == "10" and is_train:
+        if args.dataset_split == "20" and is_train:
             self.image_filenames = self.image_filenames[:68]
             self.mask_filenames = self.mask_filenames[:68]
 
@@ -315,6 +315,7 @@ class VaihingenPotsdamDataset(SatelliteDataset):
             [
                 transforms.RandomResizedCrop(self.s, scale=(0.5, 1.0)),
                 transforms.RandomHorizontalFlip(),
+                transforms.RandomVerticalFlip(),
                 transforms.Compose(
                     [
                         transforms.ToImage(),

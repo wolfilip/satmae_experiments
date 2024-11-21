@@ -26,7 +26,7 @@ class LinearClassifier(nn.Module):
 
 class DINOv2(nn.Module):
 
-    def __init__(self, model_args, args, device) -> None:
+    def __init__(self, args, device) -> None:
         super().__init__()
         # self.model_size = model_args["model_size"]
         self.model_size = args.model
@@ -44,18 +44,28 @@ class DINOv2(nn.Module):
             )
         if self.model_size == "large":
             self.feat_extr = torch.hub.load("facebookresearch/dinov2", "dinov2_vitl14")
-        self.layer_num = model_args["layer"]
         self.feat_extr.eval()  # type: ignore
         self.feat_extr.to(device)  # type: ignore
         self.device = device
         self.patch_size = 14
 
         # upernet stuff
+        if self.model_size == "base":
+            self.embed_dim = 768
+            feature_channels = [
+                self.embed_dim + 256,
+                self.embed_dim,
+            ]
+        else:
+            self.embed_dim = 1024
+            feature_channels = [
+                self.embed_dim,
+                self.embed_dim,
+                self.embed_dim,
+                self.embed_dim,
+            ]
 
-        feature_channels = [1024 + 256, 1024, 1024, 1024]
-        # feature_channels = [768 + 256, 768]
-
-        fpn_out = 1024 + 256
+        fpn_out = self.embed_dim
         self.input_size = (args.input_size, args.input_size)
 
         self.PPN = PSPModule(feature_channels[-1])
@@ -63,8 +73,8 @@ class DINOv2(nn.Module):
         self.head = nn.Conv2d(fpn_out, args.nb_classes, kernel_size=3, padding=1)
         self.up_1 = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
         self.up_2 = nn.Upsample(scale_factor=4, mode="bilinear", align_corners=True)
-        # self.up_144 = nn.Upsample(size=(144, 144), mode="bilinear", align_corners=True)
-        self.up_64 = nn.Upsample(size=(64, 64), mode="bilinear", align_corners=True)
+        self.up_144 = nn.Upsample(size=(144, 144), mode="bilinear", align_corners=True)
+        # self.up_64 = nn.Upsample(size=(64, 64), mode="bilinear", align_corners=True)
 
         # self.conv = nn.Conv2d(
         #     in_channels=128, out_channels=256, kernel_size=3, stride=2, padding=1
@@ -92,7 +102,7 @@ class DINOv2(nn.Module):
         #     # ),  # Kernel size 3x3, stride 2, padding 1
         #     # nn.BatchNorm2d(64),
         #     # nn.ReLU(),
-        #     nn.Upsample(size=(144, 144), mode="bilinear", align_corners=False),
+        #     # nn.Upsample(size=(144, 144), mode="bilinear", align_corners=False),
         # )
 
         self.conv_layers = nn.Sequential(
@@ -138,8 +148,10 @@ class DINOv2(nn.Module):
                         imgs, size=504, mode="bilinear", align_corners=True
                     )
             # if self.layer_num == "last":
-            patch = self.feat_extr.get_intermediate_layers(imgs, (3, 9, 17, 23))  # type: ignore
-            # patch = self.feat_extr.get_intermediate_layers(imgs, (3, 11))
+            if self.model_size == "base":
+                patch = self.feat_extr.get_intermediate_layers(imgs, (3, 11))  # type: ignore
+            else:
+                patch = self.feat_extr.get_intermediate_layers(imgs, (3, 9, 17, 23))  # type: ignore
             # layers.append(patch)
             # out = self.feat_extr.forward_features(imgs)  # type: ignore
             # patch = out["x_norm_patchtokens"]
@@ -155,32 +167,45 @@ class DINOv2(nn.Module):
     def encoder_conv(self, x):
 
         conv_embeds = self.conv_layers(x)
-        # conv_embeds = self.up_144(conv_embeds)
-        conv_embeds = self.up_64(conv_embeds)
+        conv_embeds = self.up_144(conv_embeds)
+        # conv_embeds = self.up_64(conv_embeds)
 
         return conv_embeds
 
     def decoder_upernet(self, features, conv_embeds):
+
+        num_patches = int(self.input_size[0] / self.patch_size)
 
         # conv_1 = self.relu(self.bn(self.conv(conv_embeds)))
         # conv_2 = self.relu(self.bn(self.conv(conv_1)))
         # conv_3 = self.relu(self.bn(self.conv(conv_2)))
         new_features = []
 
-        new_features.append(features[0].reshape(-1, 16, 16, 1024))
-        new_features.append(features[1].reshape(-1, 16, 16, 1024))
-        new_features.append(features[2].reshape(-1, 16, 16, 1024))
-        new_features.append(features[3].reshape(-1, 16, 16, 1024))
+        new_features.append(
+            features[0].reshape(-1, num_patches, num_patches, self.embed_dim)
+        )
+        new_features.append(
+            features[1].reshape(-1, num_patches, num_patches, self.embed_dim)
+        )
+        if self.model_size == "large":
+            new_features.append(
+                features[2].reshape(-1, num_patches, num_patches, self.embed_dim)
+            )
+            new_features.append(
+                features[3].reshape(-1, num_patches, num_patches, self.embed_dim)
+            )
 
         new_features[0] = torch.permute(new_features[0], (0, 3, 1, 2))
         new_features[1] = torch.permute(new_features[1], (0, 3, 1, 2))
-        new_features[2] = torch.permute(new_features[2], (0, 3, 1, 2))
-        new_features[3] = torch.permute(new_features[3], (0, 3, 1, 2))
+        if self.model_size == "large":
+            new_features[2] = torch.permute(new_features[2], (0, 3, 1, 2))
+            new_features[3] = torch.permute(new_features[3], (0, 3, 1, 2))
         # features[4] = torch.permute(features[4], (0, 3, 1, 2))
 
-        new_features[-1] = F.interpolate(
-            new_features[-1], scale_factor=0.5, mode="bilinear", align_corners=True
-        )
+        if self.model_size == "large":
+            new_features[-1] = F.interpolate(
+                new_features[-1], scale_factor=0.5, mode="bilinear", align_corners=True
+            )
         # features[2] = self.up_1(features[2])
         new_features[1] = self.up_1(new_features[1])
         new_features[0] = self.up_2(new_features[0])
@@ -201,7 +226,9 @@ class DINOv2(nn.Module):
 
     def decoder_linear(self, x):
         logits = self.classifier(x)
-        logits = F.interpolate(logits, size=224, mode="bilinear", align_corners=False)
+        logits = F.interpolate(
+            logits, size=self.input_size, mode="bilinear", align_corners=False
+        )
         return logits
 
     def forward(self, x):

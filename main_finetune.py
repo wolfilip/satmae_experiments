@@ -271,7 +271,7 @@ def get_args_parser():
     parser.add_argument(
         "--dataset_split",
         default="100",
-        choices=["100", "10"],
+        choices=["100", "20", "10"],
         help="What percentage split of the data to use.",
     )
     parser.add_argument(
@@ -481,8 +481,7 @@ def main(args):
             drop_path_rate=args.drop_path,
         )
     elif args.model_type == "dinov2_segmentation":
-        model_args = {"model_size": "base", "layer": "last"}
-        model = DINOv2(model_args, args, "cuda")
+        model = DINOv2(args, "cuda")
     elif args.model_type == "dinov2_vit":
         model = models_vit_dinov2_segmentation.__dict__[args.model](
             patch_size=args.patch_size,
@@ -562,7 +561,7 @@ def main(args):
     model_without_ddp = model
     n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
 
-    print("Model = %s" % str(model_without_ddp))
+    # print("Model = %s" % str(model_without_ddp))
     print("number of params (M): %.2f" % (n_parameters / 1.0e6))
 
     eff_batch_size = args.batch_size * args.accum_iter * misc.get_world_size()
