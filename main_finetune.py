@@ -64,6 +64,11 @@ def get_args_parser():
         default=False,
         help="Visualize first three PCA components",
     )
+    parser.add_argument(
+        "--save_images",
+        action="store_true",
+        default=False,
+    )
     # Model parameters
     parser.add_argument(
         "--model_type",

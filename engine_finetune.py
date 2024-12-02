@@ -702,7 +702,8 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
                     ):
                         mask = mask.squeeze(1)
 
-                    save_images(data, mask, pred, features, cnt, args)
+                    if args.save_images:
+                        save_images(data, mask, pred, features, cnt, args)
 
                 cnt += data.shape[0]
     elif epoch == args.epochs - 1 or args.eval:
@@ -726,7 +727,8 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
                 ):
                     mask = mask.squeeze(1)
 
-                save_images(data, mask, pred, features, cnt, args)
+                if args.save_images:
+                    save_images(data, mask, pred, features, cnt, args)
 
             cnt += data.shape[0]
 
@@ -793,6 +795,7 @@ def save_results(data, mask, pred, device, epoch, cnt, miou_test, args):
 def save_images(data, mask, pred, features, cnt, args):
 
     for i in range(data.shape[0]):
+
         if args.visualize_features:
             _, axarr = plt.subplots(4)
             viz_1, _ = visualize_features(features)
@@ -802,8 +805,8 @@ def save_images(data, mask, pred, features, cnt, args):
         axarr[0].imshow(data.cpu()[i].permute(1, 2, 0))
 
         if args.dataset_type == "spacenet":
-            axarr[1].imshow(mask[i].cpu())
-            axarr[2].imshow(pred.argmax(1).cpu()[i])
+            axarr[1].imshow(mask[i].cpu(), interpolation="none")
+            axarr[2].imshow(pred.argmax(1).cpu()[i], interpolation="none")
 
         elif (
             args.dataset_type == "loveda"
@@ -830,6 +833,6 @@ def save_images(data, mask, pred, features, cnt, args):
             + args.method_name
             + "/img_"
             + str(cnt + i)
-            + ".png"
+            + ".png",
         )
         plt.close()
