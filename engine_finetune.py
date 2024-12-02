@@ -23,7 +23,7 @@ from timm.utils import accuracy
 from torch import device
 from torch.nn import Module
 from torch.optim.optimizer import Optimizer
-from torchmetrics import F1Score, JaccardIndex
+from torchmetrics import F1Score, JaccardIndex, Accuracy
 
 import util.lr_sched as lr_sched
 import util.misc as misc
@@ -297,8 +297,12 @@ def train_one_epoch_segmentation(
         f1_score = F1Score(
             task="multiclass", num_classes=args.nb_classes, average="micro"
         )
+        overall_accuracy = Accuracy(
+            task="multiclass", num_classes=args.nb_classes, average="weighted"
+        )
         f1_score = f1_score.to(device)
         miou_metric_2 = miou_metric_2.to(device)
+        overall_accuracy = overall_accuracy.to(device)
     miou_metric = miou_metric.to(device)
 
     if epoch == 0:
@@ -366,6 +370,7 @@ def train_one_epoch_segmentation(
             if args.dataset_type != "spacenet":
                 miou_metric_2.update(pred.argmax(1), mask)
                 f1_score.update(pred.argmax(1), mask)
+                overall_accuracy.update(pred.argmax(1), mask)
 
         if not math.isfinite(loss_value):
             print("Loss is {}, stopping training".format(loss_value))
@@ -425,10 +430,11 @@ def train_one_epoch_segmentation(
         )
     else:
         print(
-            "* IoU {iou:.4f} ioU 2 {iou2:.4f} F1 {f1:.4f} loss {losses.global_avg:.4f}".format(
+            "* IoU {iou:.4f} ioU 2 {iou2:.4f} F1 {f1:.4f} OA {oa:.4f} loss {losses.global_avg:.4f}".format(
                 iou=miou_metric.compute(),
                 iou2=miou_metric_2.compute(),
                 f1=f1_score.compute(),
+                oa=overall_accuracy.compute(),
                 losses=metric_logger.loss,
             )
         )
@@ -603,9 +609,13 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
         f1_score = F1Score(
             task="multiclass", num_classes=args.nb_classes, average="micro"
         )
+        overall_accuracy = Accuracy(
+            task="multiclass", num_classes=args.nb_classes, average="weighted"
+        )
 
         f1_score = f1_score.to(device)
         miou_metric_2 = miou_metric_2.to(device)
+        overall_accuracy = overall_accuracy.to(device)
 
     miou_metric = miou_metric.to(device)
 
@@ -642,6 +652,7 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
             if args.dataset_type != "spacenet":
                 miou_metric_2.update(pred.argmax(1), mask)
                 f1_score.update(pred.argmax(1), mask)
+                overall_accuracy.update(pred.argmax(1), mask)
 
             miou_test = save_results(
                 data, mask, pred, device, epoch, cnt, miou_test, args
@@ -665,6 +676,7 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
     if args.dataset_type != "spacenet":
         miou_2 = miou_metric_2.compute().item()
         f1 = f1_score.compute().item()
+        oa = overall_accuracy.compute().item()
 
     cnt = 0
 
@@ -733,9 +745,10 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
         )
     else:
         metric_logger.update(f1=f1)
+        metric_logger.update(oa=oa)
         print(
-            "* IoU {iou:.4f} IoU 2 {iou2:.4f} F1 {f1:.4f} loss {losses.global_avg:.4f}".format(
-                iou=miou, iou2=miou_2, f1=f1, losses=metric_logger.loss
+            "* IoU {iou:.4f} IoU 2 {iou2:.4f} F1 {f1:.4f} oa {oa:.4f} loss {losses.global_avg:.4f}".format(
+                iou=miou, iou2=miou_2, f1=f1, oa=oa, losses=metric_logger.loss
             )
         )
 
