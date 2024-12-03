@@ -207,7 +207,7 @@ class SpaceNetDataset(SatelliteDataset):
                 transforms.Compose(
                     [
                         transforms.ToImage(),
-                        transforms.ToDtype(torch.float32, scale=True),
+                        transforms.ToDtype(torch.float32),
                     ]
                 ),
             ]
@@ -218,7 +218,7 @@ class SpaceNetDataset(SatelliteDataset):
                 transforms.Compose(
                     [
                         transforms.ToImage(),
-                        transforms.ToDtype(torch.float32, scale=True),
+                        transforms.ToDtype(torch.float32),
                     ]
                 ),
                 # transforms.RandomPhotometricDistort(),
@@ -233,11 +233,11 @@ class SpaceNetDataset(SatelliteDataset):
 
         self.transforms_val = transforms.Compose(
             [
-                transforms.Resize(self.s),
+                # transforms.Resize(self.s),
                 transforms.Compose(
                     [
                         transforms.ToImage(),
-                        transforms.ToDtype(torch.float32, scale=True),
+                        transforms.ToDtype(torch.float32),
                     ]
                 ),
             ]

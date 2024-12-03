@@ -678,10 +678,34 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
         f1 = f1_score.compute().item()
         oa = overall_accuracy.compute().item()
 
-    cnt = 0
+    if args.save_images:
+        cnt = 0
+        if args.best_epoch:
+            if miou > max_iou and epoch > 4:
+                for batch in data_loader:
+                    data = batch[0]
+                    mask = batch[-1]
+                    # print('images and targets')
+                    data = data.to(device, non_blocking=True)
+                    mask = mask.to(device, non_blocking=True)
 
-    if args.best_epoch:
-        if miou > max_iou and epoch > 4:
+                    # print("before pass model")
+                    # compute output
+                    with torch.amp.autocast("cuda"):  # type: ignore
+                        data = data.to(device)
+                        pred, features = model(data)
+
+                        if (
+                            args.dataset_type == "loveda"
+                            or args.dataset_type == "vaihingen"
+                            or args.dataset_type == "potsdam"
+                        ):
+                            mask = mask.squeeze(1)
+
+                        save_images(data, mask, pred, features, cnt, args)
+
+                    cnt += data.shape[0]
+        elif epoch == args.epochs - 1 or args.eval:
             for batch in data_loader:
                 data = batch[0]
                 mask = batch[-1]
@@ -702,35 +726,9 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
                     ):
                         mask = mask.squeeze(1)
 
-                    if args.save_images:
-                        save_images(data, mask, pred, features, cnt, args)
-
-                cnt += data.shape[0]
-    elif epoch == args.epochs - 1 or args.eval:
-        for batch in data_loader:
-            data = batch[0]
-            mask = batch[-1]
-            # print('images and targets')
-            data = data.to(device, non_blocking=True)
-            mask = mask.to(device, non_blocking=True)
-
-            # print("before pass model")
-            # compute output
-            with torch.amp.autocast("cuda"):  # type: ignore
-                data = data.to(device)
-                pred, features = model(data)
-
-                if (
-                    args.dataset_type == "loveda"
-                    or args.dataset_type == "vaihingen"
-                    or args.dataset_type == "potsdam"
-                ):
-                    mask = mask.squeeze(1)
-
-                if args.save_images:
                     save_images(data, mask, pred, features, cnt, args)
 
-            cnt += data.shape[0]
+                cnt += data.shape[0]
 
     max_iou = max(max_iou, miou)
     print(f"Max IoU: {max_iou:.4f}")
@@ -802,6 +800,9 @@ def save_images(data, mask, pred, features, cnt, args):
         else:
             _, axarr = plt.subplots(3)
 
+        for ax in axarr:
+            ax.axis("off")
+
         axarr[0].imshow(data.cpu()[i].permute(1, 2, 0))
 
         if args.dataset_type == "spacenet":
@@ -834,5 +835,9 @@ def save_images(data, mask, pred, features, cnt, args):
             + "/img_"
             + str(cnt + i)
             + ".png",
+            figsize=(3, 1),
+            bbox_inches="tight",
+            pad_inches=0.1,
+            dpi=600,
         )
         plt.close()
