@@ -681,7 +681,7 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
     if args.save_images:
         cnt = 0
         if args.best_epoch:
-            if miou > max_iou and epoch > 4:
+            if miou > max_iou and epoch > 200:
                 for batch in data_loader:
                     data = batch[0]
                     mask = batch[-1]
@@ -814,13 +814,17 @@ def save_images(data, mask, pred, features, cnt, args):
             or args.dataset_type == "vaihingen"
             or args.dataset_type == "potsdam"
         ):
-            mask_array = np.array(mask.cpu())
+            mask_array_1 = np.array(mask[i].cpu())
+            mask_array_2 = np.array(pred.argmax(1).cpu()[i])
             color_list = ["white", "red", "yellow", "blue", "violet", "green"]
-            cmap = matplotlib.colors.ListedColormap(
-                [color_list[i] for i in np.unique(mask_array)]
+            cmap_1 = matplotlib.colors.ListedColormap(
+                [color_list[j] for j in np.unique(mask_array_1)]
             )
-            axarr[1].imshow(mask[i].cpu(), cmap=cmap, interpolation="none")
-            axarr[2].imshow(pred.argmax(1).cpu()[i], cmap=cmap, interpolation="none")
+            cmap_2 = matplotlib.colors.ListedColormap(
+                [color_list[j] for j in np.unique(mask_array_2)]
+            )
+            axarr[1].imshow(mask[i].cpu(), cmap=cmap_1, interpolation="none")
+            axarr[2].imshow(pred.argmax(1).cpu()[i], cmap=cmap_2, interpolation="none")
 
         if args.visualize_features:
             axarr[3].imshow(viz_1.permute(1, 2, 0))

@@ -38,8 +38,10 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         # for param in self.patch_embed.parameters():
         #     param.requires_grad = False
 
+        self.conv_size = 256
+
         feature_channels = [
-            self.embed_dim,
+            self.embed_dim + self.conv_size,
             self.embed_dim,
             self.embed_dim,
             self.embed_dim,
@@ -48,7 +50,7 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         self.input_size = kwargs["img_size"]
         self.num_patches = int(kwargs["img_size"] / kwargs["patch_size"])
 
-        fpn_out = self.embed_dim
+        fpn_out = self.embed_dim + self.conv_size
 
         self.PPN = PSPModule(feature_channels[-1])
         self.FPN = FPN_fuse(feature_channels, fpn_out=fpn_out)
@@ -66,38 +68,38 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         # self.relu = nn.ReLU()
 
         # Convolutional layers to transform from [B, 3, 224, 224] to [B, 1024, 56, 56]
-        # self.conv_layers = nn.Sequential(
-        #     # Conv1: Input [B, 3, 224, 224] -> Output [B, 64, 112, 112]
-        #     nn.Conv2d(
-        #         in_channels=3, out_channels=64, kernel_size=7, stride=2, padding=3
-        #     ),  # Kernel size 7x7, stride 2, padding 3
-        #     nn.BatchNorm2d(64),
-        #     nn.ReLU(),
-        #     # Conv2: Input [B, 64, 112, 112] -> Output [B, 128, 56, 56]
-        #     nn.Conv2d(
-        #         in_channels=64, out_channels=128, kernel_size=3, stride=2, padding=1
-        #     ),  # Kernel size 3x3, stride 2, padding 1
-        #     nn.BatchNorm2d(128),
-        #     nn.ReLU(),
-        #     # Conv3: Input [B, 128, 56, 56] -> Output [B, 256, 56, 56]
-        #     nn.Conv2d(
-        #         in_channels=128, out_channels=256, kernel_size=3, stride=1, padding=1
-        #     ),  # Kernel size 3x3, stride 1, padding 1
-        #     nn.BatchNorm2d(256),
-        #     nn.ReLU(),
-        #     # Conv4: Input [B, 256, 56, 56] -> Output [B, 512, 56, 56]
-        #     # nn.Conv2d(
-        #     #     in_channels=256, out_channels=512, kernel_size=3, stride=1, padding=1
-        #     # ),  # Kernel size 3x3, stride 1, padding 1
-        #     # nn.BatchNorm2d(512),
-        #     # nn.ReLU(),
-        #     # Conv5: Input [B, 512, 56, 56] -> Output [B, 1024, 56, 56]
-        #     # nn.Conv2d(
-        #     #     in_channels=512, out_channels=1024, kernel_size=3, stride=1, padding=1
-        #     # ),  # Kernel size 3x3, stride 1, padding 1
-        #     # nn.BatchNorm2d(1024),
-        #     # nn.ReLU(),
-        # )
+        self.conv_layers = nn.Sequential(
+            # Conv1: Input [B, 3, 224, 224] -> Output [B, 64, 112, 112]
+            nn.Conv2d(
+                in_channels=3, out_channels=64, kernel_size=7, stride=2, padding=3
+            ),  # Kernel size 7x7, stride 2, padding 3
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            # Conv2: Input [B, 64, 112, 112] -> Output [B, 128, 56, 56]
+            nn.Conv2d(
+                in_channels=64, out_channels=128, kernel_size=3, stride=2, padding=1
+            ),  # Kernel size 3x3, stride 2, padding 1
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+            # Conv3: Input [B, 128, 56, 56] -> Output [B, 256, 56, 56]
+            nn.Conv2d(
+                in_channels=128, out_channels=256, kernel_size=3, stride=1, padding=1
+            ),  # Kernel size 3x3, stride 1, padding 1
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
+            # Conv4: Input [B, 256, 56, 56] -> Output [B, 512, 56, 56]
+            # nn.Conv2d(
+            #     in_channels=256, out_channels=512, kernel_size=3, stride=1, padding=1
+            # ),  # Kernel size 3x3, stride 1, padding 1
+            # nn.BatchNorm2d(512),
+            # nn.ReLU(),
+            # Conv5: Input [B, 512, 56, 56] -> Output [B, 1024, 56, 56]
+            # nn.Conv2d(
+            #     in_channels=512, out_channels=1024, kernel_size=3, stride=1, padding=1
+            # ),  # Kernel size 3x3, stride 1, padding 1
+            # nn.BatchNorm2d(1024),
+            # nn.ReLU(),
+        )
 
         # self.conv_layers_small = nn.Sequential(
         #     # Conv1: Input [B, 3, 224, 224] -> Output [B, 64, 112, 112]
@@ -161,7 +163,7 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
 
         return outs
 
-    def decoder_upernet(self, features):
+    def decoder_upernet(self, features, conv_embeds):
 
         # features = []
 
@@ -200,7 +202,8 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         features[1] = self.up_1(features[1])
         features[0] = self.up_2(features[0])
 
-        # features[0] = torch.cat((features[0], conv_embeds), 1)
+        if self.conv_size > 0:
+            features[0] = torch.cat((features[0], conv_embeds), 1)
         # features[1] = torch.cat((features[1], conv_1), 1)
         # features[2] = torch.cat((features[2], conv_2), 1)
         # features[3] = torch.cat((features[3], conv_3), 1)
@@ -228,11 +231,13 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         return x
 
     def forward(self, x):
-        # conv_embeds = self.encoder_conv(x)
+        conv_embeds = 0
+        if self.conv_size > 0:
+            conv_embeds = self.encoder_conv(x)
         features = self.encoder_forward(x)
         # x = self.decoder_upernet(features, conv_embeds)
         # x = self.encoder_forward(x)
-        x = self.decoder_upernet(features)
+        x = self.decoder_upernet(features, conv_embeds)
         return x, features
 
 
