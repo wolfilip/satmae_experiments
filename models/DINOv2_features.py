@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from einops import rearrange
 
 from UPerNet.FPN_fuse import FPN_fuse
 from UPerNet.PSPModule import PSPModule
@@ -75,6 +76,7 @@ class DINOv2(nn.Module):
 
         fpn_out = self.embed_dim + self.conv_size
         self.input_size = (args.input_size, args.input_size)
+        num_patches = int(self.input_size[0] / self.patch_size)
 
         self.PPN = PSPModule(feature_channels[-1])
         self.FPN = FPN_fuse(feature_channels, fpn_out=fpn_out)
@@ -103,7 +105,9 @@ class DINOv2(nn.Module):
         # self.bn = nn.BatchNorm2d(64)
         # self.relu = nn.ReLU()
 
-        # self.classifier = LinearClassifier(768, 16, 16, args.nb_classes)
+        self.classifier = LinearClassifier(
+            self.embed_dim, num_patches, num_patches, args.nb_classes
+        )
 
         if self.conv_size == 32:
             self.conv_layers = nn.Sequential(
@@ -179,8 +183,6 @@ class DINOv2(nn.Module):
             else:
                 patch = self.feat_extr.get_intermediate_layers(imgs, (3, 9, 17, 23))  # type: ignore
             # layers.append(patch)
-            # out = self.feat_extr.forward_features(imgs)  # type: ignore
-            # patch = out["x_norm_patchtokens"]
             # layers.append(patch)
             # cls = out["x_norm_clstoken"]
             # elif self.layer_num == "first":
@@ -249,12 +251,10 @@ class DINOv2(nn.Module):
         x = F.interpolate(x, size=self.input_size, mode="bilinear", align_corners=False)
         return x
 
-    def decoder_linear(self, x):
-        logits = self.classifier(x)
-        logits = F.interpolate(
-            logits, size=self.input_size, mode="bilinear", align_corners=False
-        )
-        return logits
+    def decoder_linear(self, x, conv_embeds):
+        x = self.classifier(x)
+        x = F.interpolate(x, size=self.input_size, mode="bilinear", align_corners=False)
+        return x
 
     def forward(self, x):
         conv_embeds = 0
@@ -264,8 +264,9 @@ class DINOv2(nn.Module):
         # x = self.decoder_upernet(x, conv_embeds)
         features = self.get_features(x)
         # x = self.encoder_forward(x)
-        x = self.decoder_upernet(features, conv_embeds)
+        # x = self.decoder_upernet(features, conv_embeds)
+        x = self.decoder_linear(features[-1], conv_embeds)
 
         # x = self.decoder_upernet(x[1])
 
-        return x, features
+        return x, (conv_embeds, features[-1])

@@ -632,7 +632,7 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
         # compute output
         with torch.amp.autocast("cuda"):  # type: ignore
             data = data.to(device)
-            pred, features = model(data)
+            pred, _ = model(data)
 
             if (
                 args.dataset_type == "loveda"
@@ -795,8 +795,10 @@ def save_images(data, mask, pred, features, cnt, args):
     for i in range(data.shape[0]):
 
         if args.visualize_features:
-            _, axarr = plt.subplots(4)
-            viz_1, _ = visualize_features(features)
+            _, axarr = plt.subplots(5)
+            if features[0] != 0:
+                viz_conv_1, viz_conv_2 = visualize_features(features[0], True)
+            viz_vit_1, viz_vit_2 = visualize_features(features[1], False)
         else:
             _, axarr = plt.subplots(3)
 
@@ -827,21 +829,62 @@ def save_images(data, mask, pred, features, cnt, args):
             axarr[2].imshow(pred.argmax(1).cpu()[i], cmap=cmap_2, interpolation="none")
 
         if args.visualize_features:
-            axarr[3].imshow(viz_1.permute(1, 2, 0))
+            if i % 2 == 0:
+                axarr[3].imshow(viz_vit_1.permute(1, 2, 0))
+                if features[0] != 0:
+                    axarr[4].imshow(viz_conv_1.permute(1, 2, 0))
+            else:
+                axarr[3].imshow(viz_vit_2.permute(1, 2, 0))
+                if features[0] != 0:
+                    axarr[4].imshow(viz_conv_2.permute(1, 2, 0))
 
-        plt.savefig(
-            "satmae_experiments/"
-            + args.dataset_type
-            + "_"
-            + args.dataset_split
-            + "pc_results/images/"
-            + args.method_name
-            + "/img_"
-            + str(cnt + i)
-            + ".png",
-            figsize=(3, 1),
-            bbox_inches="tight",
-            pad_inches=0.1,
-            dpi=600,
-        )
+            if features[0] == 0:
+                plt.savefig(
+                    "satmae_experiments/"
+                    + args.dataset_type
+                    + "_"
+                    + args.dataset_split
+                    + "pc_results/images/"
+                    + args.method_name
+                    + "/img_"
+                    + str(cnt + i)
+                    + ".png",
+                    figsize=(4, 1),
+                    bbox_inches="tight",
+                    pad_inches=0.1,
+                    dpi=600,
+                )
+            else:
+                plt.savefig(
+                    "satmae_experiments/"
+                    + args.dataset_type
+                    + "_"
+                    + args.dataset_split
+                    + "pc_results/images/"
+                    + args.method_name
+                    + "/img_"
+                    + str(cnt + i)
+                    + ".png",
+                    figsize=(5, 1),
+                    bbox_inches="tight",
+                    pad_inches=0.1,
+                    dpi=600,
+                )
+
+        else:
+            plt.savefig(
+                "satmae_experiments/"
+                + args.dataset_type
+                + "_"
+                + args.dataset_split
+                + "pc_results/images/"
+                + args.method_name
+                + "/img_"
+                + str(cnt + i)
+                + ".png",
+                figsize=(3, 1),
+                bbox_inches="tight",
+                pad_inches=0.1,
+                dpi=600,
+            )
         plt.close()

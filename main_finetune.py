@@ -281,7 +281,7 @@ def get_args_parser():
     )
     parser.add_argument(
         "--method_name",
-        default="dinov2_b-2_blocks_conv_32",
+        default="debug_method",
         help="Method name used for saving preocedures.",
     )
     parser.add_argument(
