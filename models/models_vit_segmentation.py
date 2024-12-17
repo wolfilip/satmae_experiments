@@ -14,6 +14,7 @@ import torch.nn.functional as F
 
 from UPerNet.FPN_fuse import FPN_fuse
 from UPerNet.PSPModule import PSPModule
+from util.linear_calssifier import LinearClassifier
 from util.pos_embed import get_2d_sincos_pos_embed
 
 
@@ -38,7 +39,7 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         # for param in self.patch_embed.parameters():
         #     param.requires_grad = False
 
-        self.conv_size = 256
+        self.conv_size = 0
 
         feature_channels = [
             self.embed_dim + self.conv_size,
@@ -60,6 +61,10 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         # self.up_3 = nn.Upsample(scale_factor=8, mode="bilinear", align_corners=True)
         # self.up_4 = nn.Upsample(scale_factor=16, mode="bilinear", align_corners=True)
         # self.sigmoid = nn.Sigmoid()
+
+        # self.classifier = LinearClassifier(
+        #     self.embed_dim, self.num_patches, self.num_patches, self.num_classes
+        # )
 
         # self.conv = nn.Conv2d(
         #     in_channels=256, out_channels=256, kernel_size=3, stride=2, padding=1
@@ -231,6 +236,11 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         x = F.interpolate(x, size=self.input_size, mode="bilinear")
         return x
 
+    def decoder_linear(self, x, conv_embeds):
+        x = self.classifier(x)
+        x = F.interpolate(x, size=self.input_size, mode="bilinear", align_corners=False)
+        return x
+
     def forward(self, x):
         conv_embeds = 0
         if self.conv_size > 0:
@@ -238,7 +248,8 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         features = self.encoder_forward(x)
         # x = self.decoder_upernet(features, conv_embeds)
         # x = self.encoder_forward(x)
-        x = self.decoder_upernet(features, conv_embeds)
+        # x = self.decoder_upernet(features, conv_embeds)
+        x = self.decoder_linear(features[-1], conv_embeds)
         return x, (conv_embeds, features[-1])
 
 

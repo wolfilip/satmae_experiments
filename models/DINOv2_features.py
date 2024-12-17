@@ -5,24 +5,7 @@ from einops import rearrange
 
 from UPerNet.FPN_fuse import FPN_fuse
 from UPerNet.PSPModule import PSPModule
-
-
-class LinearClassifier(nn.Module):
-    def __init__(self, in_channels, tokenW=16, tokenH=16, num_labels=1):
-        super(LinearClassifier, self).__init__()
-
-        self.in_channels = in_channels
-        self.width = tokenW
-        self.height = tokenH
-        self.classifier = nn.Conv2d(in_channels, num_labels, (1, 1))
-
-    def forward(self, embeddings):
-        embeddings = embeddings.reshape(-1, self.height, self.width, self.in_channels)
-        embeddings = embeddings.permute(0, 3, 1, 2)
-
-        # embeddings = torch.cat((embeddings, conv_embeds), 1)
-
-        return self.classifier(embeddings)
+from util.linear_calssifier import LinearClassifier
 
 
 class DINOv2(nn.Module):
@@ -105,9 +88,9 @@ class DINOv2(nn.Module):
         # self.bn = nn.BatchNorm2d(64)
         # self.relu = nn.ReLU()
 
-        self.classifier = LinearClassifier(
-            self.embed_dim, num_patches, num_patches, args.nb_classes
-        )
+        # self.classifier = LinearClassifier(
+        #     self.embed_dim, num_patches, num_patches, args.nb_classes
+        # )
 
         if self.conv_size == 32:
             self.conv_layers = nn.Sequential(
@@ -264,8 +247,8 @@ class DINOv2(nn.Module):
         # x = self.decoder_upernet(x, conv_embeds)
         features = self.get_features(x)
         # x = self.encoder_forward(x)
-        # x = self.decoder_upernet(features, conv_embeds)
-        x = self.decoder_linear(features[-1], conv_embeds)
+        x = self.decoder_upernet(features, conv_embeds)
+        # x = self.decoder_linear(features[-1], conv_embeds)
 
         # x = self.decoder_upernet(x[1])
 

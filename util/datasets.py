@@ -311,6 +311,10 @@ class VaihingenPotsdamDataset(SatelliteDataset):
             self.image_filenames = self.image_filenames[:68]
             self.mask_filenames = self.mask_filenames[:68]
 
+        if args.dataset_split == "10" and is_train:
+            self.image_filenames = self.image_filenames[:345]
+            self.mask_filenames = self.mask_filenames[:345]
+
         self.transforms_train = transforms.Compose(
             [
                 transforms.RandomResizedCrop(self.s, scale=(0.5, 1.0)),
