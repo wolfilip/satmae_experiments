@@ -59,7 +59,13 @@ class DINOv2(nn.Module):
 
         fpn_out = self.embed_dim + self.conv_size
         self.input_size = (args.input_size, args.input_size)
-        num_patches = int(self.input_size[0] / self.patch_size)
+        self.num_patches = int(self.input_size[0] / self.patch_size)
+
+        self.do_interpolation = False
+
+        if args.input_size % 14 != 0:
+            if args.input_size == 512:
+                self.do_interpolation = True
 
         self.PPN = PSPModule(feature_channels[-1])
         self.FPN = FPN_fuse(feature_channels, fpn_out=fpn_out)
@@ -89,7 +95,7 @@ class DINOv2(nn.Module):
         # self.relu = nn.ReLU()
 
         # self.classifier = LinearClassifier(
-        #     self.embed_dim, num_patches, num_patches, args.nb_classes
+        #     self.embed_dim, self.num_patches, self.num_patches, args.nb_classes
         # )
 
         if self.conv_size == 32:
@@ -155,11 +161,10 @@ class DINOv2(nn.Module):
         # layer = self.layer_num[0] # TODO: make it a list
         # layers = []
         with torch.no_grad():
-            if imgs.shape[-1] % 14 != 0:
-                if imgs.shape[-1] == 512:
-                    imgs = F.interpolate(
-                        imgs, size=504, mode="bilinear", align_corners=True
-                    )
+            if self.do_interpolation:
+                imgs = F.interpolate(
+                    imgs, size=504, mode="bilinear", align_corners=True
+                )
             # if self.layer_num == "last":
             if self.model_size == "base" or self.model_size == "small":
                 patch = self.feat_extr.get_intermediate_layers(imgs, (3, 11))  # type: ignore
@@ -184,25 +189,27 @@ class DINOv2(nn.Module):
 
     def decoder_upernet(self, features, conv_embeds):
 
-        num_patches = int(self.input_size[0] / self.patch_size)
-
         # conv_1 = self.relu(self.bn(self.conv(conv_embeds)))
         # conv_2 = self.relu(self.bn(self.conv(conv_1)))
         # conv_3 = self.relu(self.bn(self.conv(conv_2)))
         new_features = []
 
         new_features.append(
-            features[0].reshape(-1, num_patches, num_patches, self.embed_dim)
+            features[0].reshape(-1, self.num_patches, self.num_patches, self.embed_dim)
         )
         new_features.append(
-            features[1].reshape(-1, num_patches, num_patches, self.embed_dim)
+            features[1].reshape(-1, self.num_patches, self.num_patches, self.embed_dim)
         )
         if self.model_size == "large":
             new_features.append(
-                features[2].reshape(-1, num_patches, num_patches, self.embed_dim)
+                features[2].reshape(
+                    -1, self.num_patches, self.num_patches, self.embed_dim
+                )
             )
             new_features.append(
-                features[3].reshape(-1, num_patches, num_patches, self.embed_dim)
+                features[3].reshape(
+                    -1, self.num_patches, self.num_patches, self.embed_dim
+                )
             )
 
         new_features[0] = torch.permute(new_features[0], (0, 3, 1, 2))

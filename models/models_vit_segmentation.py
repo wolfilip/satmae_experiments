@@ -32,12 +32,12 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         )
         self.pos_embed.data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
 
-        # for block in self.blocks:
-        #     for param in block.parameters():
-        #         param.requires_grad = False
+        for block in self.blocks:
+            for param in block.parameters():
+                param.requires_grad = False
 
-        # for param in self.patch_embed.parameters():
-        #     param.requires_grad = False
+        for param in self.patch_embed.parameters():
+            param.requires_grad = False
 
         self.conv_size = 0
 
@@ -248,8 +248,8 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         features = self.encoder_forward(x)
         # x = self.decoder_upernet(features, conv_embeds)
         # x = self.encoder_forward(x)
-        # x = self.decoder_upernet(features, conv_embeds)
-        x = self.decoder_linear(features[-1], conv_embeds)
+        x = self.decoder_upernet(features, conv_embeds)
+        # x = self.decoder_linear(features[-1], conv_embeds)
         return x, (conv_embeds, features[-1])
 
 
