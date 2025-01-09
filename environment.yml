@@ -299,7 +299,7 @@ dependencies:
       - jsonargparse==4.27.5
       - lightly==1.5.0
       - lightly-utils==0.0.2
-      - lightning==2.2.0.post0
+      - lightning==1.8.6
       - lightning-utilities==0.10.1
       - markdown-it-py==3.0.0
       - mdurl==0.1.2

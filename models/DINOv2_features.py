@@ -64,8 +64,14 @@ class DINOv2(nn.Module):
         self.do_interpolation = False
 
         if args.input_size % 14 != 0:
-            if args.input_size == 512:
-                self.do_interpolation = True
+            self.do_interpolation = True
+
+        if args.dataset_type == "euro_sat" or args.dataset_type == "rgb":
+            self.task = "classification"
+            # self.classifier = LinearClassifier(
+            #     self.embed_dim, self.num_patches, self.num_patches, args.nb_classes
+            # )
+            self.classification_head = nn.Linear(self.embed_dim, args.nb_classes)
 
         self.PPN = PSPModule(feature_channels[-1])
         self.FPN = FPN_fuse(feature_channels, fpn_out=fpn_out)
@@ -160,16 +166,31 @@ class DINOv2(nn.Module):
     def get_features(self, imgs):
         # layer = self.layer_num[0] # TODO: make it a list
         # layers = []
-        with torch.no_grad():
-            if self.do_interpolation:
+        if self.do_interpolation:
+            if imgs.shape[-1] == 512:
                 imgs = F.interpolate(
                     imgs, size=504, mode="bilinear", align_corners=True
                 )
-            # if self.layer_num == "last":
-            if self.model_size == "base" or self.model_size == "small":
-                patch = self.feat_extr.get_intermediate_layers(imgs, (3, 11))  # type: ignore
+            elif imgs.shape[-1] == 64:
+                imgs = F.interpolate(imgs, size=56, mode="bilinear", align_corners=True)
+            elif imgs.shape[-1] == 256:
+                imgs = F.interpolate(
+                    imgs, size=252, mode="bilinear", align_corners=True
+                )
+
+        with torch.no_grad():
+            if self.task == "classification":
+                out = self.feat_extr.forward_features(imgs)
+                cls = out["x_norm_clstoken"]
+                out = cls
             else:
-                patch = self.feat_extr.get_intermediate_layers(imgs, (3, 9, 17, 23))  # type: ignore
+                # if self.layer_num == "last":
+                if self.model_size == "base" or self.model_size == "small":
+                    patch = self.feat_extr.get_intermediate_layers(imgs, (3, 11))  # type: ignore
+                else:
+                    patch = self.feat_extr.get_intermediate_layers(imgs, (3, 9, 17, 23))  # type: ignore
+                out = patch
+
             # layers.append(patch)
             # layers.append(patch)
             # cls = out["x_norm_clstoken"]
@@ -177,7 +198,6 @@ class DINOv2(nn.Module):
 
         # elif self.layer_num == "avg":
         #     pass
-        out = patch
         return out
 
     def encoder_conv(self, x):
@@ -254,7 +274,9 @@ class DINOv2(nn.Module):
         # x = self.decoder_upernet(x, conv_embeds)
         features = self.get_features(x)
         # x = self.encoder_forward(x)
-        x = self.decoder_upernet(features, conv_embeds)
+        # x = self.decoder_upernet(features, conv_embeds)
+
+        x = self.classification_head(features)
         # x = self.decoder_linear(features[-1], conv_embeds)
 
         # x = self.decoder_upernet(x[1])

@@ -81,6 +81,7 @@ def get_args_parser():
             "vanilla",
             "segmentation",
             "dinov2_segmentation",
+            "dinov2_classification",
             "dinov2_vit",
         ],
         help="Use channel model",
@@ -485,7 +486,10 @@ def main(args):
             num_classes=args.nb_classes,
             drop_path_rate=args.drop_path,
         )
-    elif args.model_type == "dinov2_segmentation":
+    elif (
+        args.model_type == "dinov2_segmentation"
+        or args.model_type == "dinov2_classification"
+    ):
         model = DINOv2(args, "cuda")
     elif args.model_type == "dinov2_vit":
         model = models_vit_dinov2_segmentation.__dict__[args.model](
@@ -587,7 +591,9 @@ def main(args):
 
     # build optimizer with layer-wise lr decay (lrd)
     if args.model_type is not None and (
-        args.model_type.startswith("resnet") or args.model_type == "dinov2_segmentation"
+        args.model_type.startswith("resnet")
+        or args.model_type == "dinov2_segmentation"
+        or args.model_type == "dinov2_classification"
     ):
         param_groups = model_without_ddp.parameters()
     else:
@@ -756,7 +762,6 @@ def main(args):
                 log_writer.add_scalar("perf/test_loss", test_stats["loss"], epoch)
                 if args.dataset_type != "spacenet":
                     log_writer.add_scalar("perf/test_f1", test_stats["f1"], epoch)
-
         else:
             print(
                 f"Accuracy of the network on the {len(dataset_val)} test images: {test_stats['acc1']:.1f}%"  # type: ignore

@@ -83,8 +83,8 @@ def train_one_epoch(
         if mixup_fn is not None:
             samples, targets = mixup_fn(samples, targets)
 
-        with torch.cuda.amp.autocast():
-            outputs = model(samples)
+        with torch.amp.autocast("cuda"):
+            outputs, _ = model(samples)
             loss = criterion(outputs, targets)
 
         loss_value = loss.item()
@@ -348,13 +348,19 @@ def train_one_epoch_segmentation(
             lr_sched.adjust_learning_rate(
                 optimizer, data_iter_step / len(data_loader) + epoch, args  # type: ignore
             )
-
-        data = data.to(device, non_blocking=True)
+        if len(data) == 2:
+            data_rgb = data[0].to(device, non_blocking=True)
+            data_depth = data[1].to(device, non_blocking=True)
+        else:
+            data = data.to(device, non_blocking=True)
         mask = mask.to(device, non_blocking=True)
 
         with torch.amp.autocast("cuda"):  # type: ignore
-            data = data.to(device)
-            pred, _ = model(data)
+            # data = data.to(device)
+            if len(data) == 2:
+                pred, _ = model((data_rgb, data_depth))
+            else:
+                pred, _ = model(data)
 
             if args.dataset_type == "loveda" or args.dataset_type == "vaihingen" or args.dataset_type == "potsdam":  # type: ignore
                 mask = mask.squeeze(1)
@@ -460,8 +466,8 @@ def evaluate(data_loader, model, device):
 
         # print("before pass model")
         # compute output
-        with torch.cuda.amp.autocast():
-            output = model(images)
+        with torch.amp.autocast("cuda"):
+            output, _ = model(images)
             loss = criterion(output, target)
 
         acc1, acc5 = accuracy(output, target, topk=(1, 5))
@@ -625,14 +631,21 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
         data = batch[0]
         mask = batch[-1]
         # print('images and targets')
-        data = data.to(device, non_blocking=True)
+        if len(data) == 2:
+            data_rgb = data[0].to(device, non_blocking=True)
+            data_depth = data[1].to(device, non_blocking=True)
+        else:
+            data = data.to(device, non_blocking=True)
         mask = mask.to(device, non_blocking=True)
 
         # print("before pass model")
         # compute output
         with torch.amp.autocast("cuda"):  # type: ignore
-            data = data.to(device)
-            pred, _ = model(data)
+            # data = data.to(device)
+            if len(data) == 2:
+                pred, _ = model((data_rgb, data_depth))
+            else:
+                pred, _ = model(data)
 
             if (
                 args.dataset_type == "loveda"
@@ -654,11 +667,9 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
                 f1_score.update(pred.argmax(1), mask)
                 overall_accuracy.update(pred.argmax(1), mask)
 
-            miou_test = save_results(
-                data, mask, pred, device, epoch, cnt, miou_test, args
-            )
+            miou_test = save_results(mask, pred, device, epoch, cnt, miou_test, args)
 
-        cnt += data.shape[0]
+        cnt += args.batch_size
 
         # batch_size = images.shape[0]
         metric_logger.update(loss=loss)
@@ -755,7 +766,7 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
     return {k: meter.global_avg for k, meter in metric_logger.meters.items()}, max_iou
 
 
-def save_results(data, mask, pred, device, epoch, cnt, miou_test, args):
+def save_results(mask, pred, device, epoch, cnt, miou_test, args):
 
     if args.dataset_type == "spacenet":  # type: ignore
         miou_temp = JaccardIndex(task="multiclass", num_classes=args.nb_classes)  # type: ignore
@@ -778,7 +789,7 @@ def save_results(data, mask, pred, device, epoch, cnt, miou_test, args):
         "a",
     )
 
-    for i in range(data.shape[0]):
+    for i in range(pred.shape[0]):
         mIoU = miou_temp(pred.argmax(1)[i], mask[i]).item()
         if torch.all(mask[i] == 0) and torch.all(pred.argmax(1)[i] == 0):
             mIoU = 1.0

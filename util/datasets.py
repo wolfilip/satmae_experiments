@@ -13,6 +13,7 @@ import rasterio
 import rasterio as rio
 import torch
 import torchvision.transforms.v2 as transforms
+from torchvision.utils import save_image
 from PIL import Image
 from rasterio import logging
 from rasterio.enums import Resampling
@@ -190,11 +191,22 @@ class SatelliteDataset(Dataset):
 
 
 class SpaceNetDataset(SatelliteDataset):
-    def __init__(self, raster, mask, raster_list, mask_list, is_train):
+    def __init__(
+        self,
+        raster_rgb,
+        raster_depth,
+        mask,
+        raster_list_rgb,
+        raster_list_depth,
+        mask_list,
+        is_train,
+    ):
         super().__init__(in_c=3)
-        self.raster = raster
+        self.raster_rgb = raster_rgb
+        self.raster_depth = raster_depth
         self.mask = mask
-        self.raster_list = raster_list
+        self.raster_list_rgb = raster_list_rgb
+        self.raster_list_depth = raster_list_depth
         self.mask_list = mask_list
         self.s = 224
 
@@ -207,7 +219,7 @@ class SpaceNetDataset(SatelliteDataset):
                 transforms.Compose(
                     [
                         transforms.ToImage(),
-                        transforms.ToDtype(torch.float32),
+                        transforms.ToDtype(torch.float32, scale=True),
                     ]
                 ),
             ]
@@ -233,39 +245,62 @@ class SpaceNetDataset(SatelliteDataset):
 
         self.transforms_val = transforms.Compose(
             [
-                # transforms.Resize(self.s),
+                transforms.Resize(self.s),
                 transforms.Compose(
                     [
                         transforms.ToImage(),
-                        transforms.ToDtype(torch.float32),
+                        transforms.ToDtype(torch.float32, scale=True),
                     ]
                 ),
             ]
         )
 
     def __len__(self):
-        return len(self.raster_list)
+        return len(self.raster_list_rgb)
 
     def __getitem__(self, index):
-        img = (
-            rio.open(self.raster + self.raster_list[index]).read(
+        img_rgb = (
+            rio.open(self.raster_rgb + self.raster_list_rgb[index]).read(
                 out_shape=(self.s, self.s), resampling=Resampling.bilinear
             )
             / 255
         )
+        # img_rgb = Image.open(self.raster_rgb + self.raster_list_rgb[index]).convert(
+        #     "RGB"
+        # )
+
+        # print(self.raster_list_depth[index], self.raster_list_rgb[index])
+        img_depth = Image.open(self.raster_depth + self.raster_list_depth[index])
+        # name = self.raster_list[index][:-3]
+        # print("SpaceNetV1/imgs/" + name + "png")
         mask = (
             rio.open(self.mask + self.mask_list[index])
             .read(out_shape=(self.s, self.s), resampling=Resampling.bilinear)
             .squeeze()
         )
-        img = torch.from_numpy(img.astype("float32"))
+        img_rgb = torch.from_numpy(img_rgb.astype("float32"))
+        # same images till here
+        # save_image(img, "../SpaceNetV1/imgs/" + self.raster_list[index][:-3] + "png")
         mask = torch.from_numpy(mask.astype("int64"))
         if self.is_train:
-            image, mask = self.transforms_train(img, mask)
-            image = self.transforms_distort(image)
-            # image, mask = self.transforms_test(image, mask)
+            img_rgb, img_depth, mask = self.transforms_train(img_rgb, img_depth, mask)
+            img_rgb, img_depth = self.transforms_distort(img_rgb, img_depth)
+            # img_rgb, img_depth, mask = self.transforms_val(img_rgb, img_depth, mask)
+
+            # f, axarr = plt.subplots(2)
+            # axarr[0].imshow(img_rgb.permute(1, 2, 0), interpolation="none")
+            # axarr[1].imshow(img_depth.permute(1, 2, 0), interpolation="none")
+
+            # plt.savefig("img.png", dpi=600)
+            # plt.close()
         else:
-            image, mask = self.transforms_val(img, mask)
+            img_rgb, img_depth, mask = self.transforms_val(img_rgb, img_depth, mask)
+            # f, axarr = plt.subplots(2)
+            # axarr[0].imshow(img_rgb.permute(1, 2, 0), interpolation="none")
+            # axarr[1].imshow(img_depth.permute(1, 2, 0), interpolation="none")
+
+            # plt.savefig("img.png", dpi=600)
+            # plt.close()
         # mask = F.one_hot(mask, num_classes=2).permute(2, 0, 1)
         # if self.is_train:
         #     image_and_mask = torch.cat([img, mask], dim=0)
@@ -280,7 +315,7 @@ class SpaceNetDataset(SatelliteDataset):
         #     mask = mask.to(torch.int64)
         # img, mask = torch.split(image_and_mask, [3, 1])
         # image_and_mask = self.transforms_val(image_and_mask)
-        return img, mask
+        return (img_depth, img_depth), mask
 
 
 class VaihingenPotsdamDataset(SatelliteDataset):
@@ -525,10 +560,10 @@ class LoveDADataset(SatelliteDataset):
 
 class CustomDatasetFromImages(SatelliteDataset):
     # resics
-    # mean = [0.368, 0.381, 0.3436]
-    # std = [0.2035, 0.1854, 0.1849]
-    mean = [0.4182007312774658, 0.4214799106121063, 0.3991275727748871]
-    std = [0.28774282336235046, 0.27541765570640564, 0.2764017581939697]
+    mean = [0.368, 0.381, 0.3436]
+    std = [0.2035, 0.1854, 0.1849]
+    # mean = [0.4182007312774658, 0.4214799106121063, 0.3991275727748871]
+    # std = [0.28774282336235046, 0.27541765570640564, 0.2764017581939697]
 
     def __init__(self, csv_path, transform):
         """
@@ -560,7 +595,7 @@ class CustomDatasetFromImages(SatelliteDataset):
         # Transform the image
         img_as_tensor = self.transforms(img_as_img)
         # Get label(class) of the image based on the cropped pandas column
-        # single_image_label = self.label_arr[index]
+        single_image_label = self.label_arr[index]
         # cv2.imwrite(
         #     os.path.join("/home/filip/satmae_experiments", "object_result.png"),
         #     (255 * self.scale(self.totensor(img_as_img)))
@@ -573,7 +608,7 @@ class CustomDatasetFromImages(SatelliteDataset):
 
         return (
             img_as_tensor,
-            0,
+            single_image_label,
             # self.scale(self.totensor(img_as_img)),
         )
 
@@ -1264,14 +1299,17 @@ def build_fmow_dataset(is_train: bool, args) -> SatelliteDataset:
     elif args.dataset_type == "spacenet":
         # DataFolder = "/storage/local/ssd/filipwolf-workspace/SpaceNetV1/"
         DataFolder = "/home/filip/SpaceNetV1/"
-        raster = DataFolder + "3band/"
+        raster_rgb = DataFolder + "3band/"
+        raster_depth = DataFolder + "depth/"
         mask = DataFolder + "mask/"
 
-        raster_list = os.listdir(raster)
-        raster_list.sort()
+        raster_list_rgb = os.listdir(raster_rgb)
+        raster_list_rgb.sort()
+        raster_list_depth = os.listdir(raster_depth)
+        raster_list_depth.sort()
         mask_list = os.listdir(mask)
         mask_list.sort()
-        r = 0.7
+        # r = 0.7
 
         if is_train:
             # train_raster_list = raster_list[: int(0.1 * len(raster_list))]
@@ -1279,22 +1317,43 @@ def build_fmow_dataset(is_train: bool, args) -> SatelliteDataset:
             # train_raster_list = raster_list[: int(r * len(raster_list))]
             # train_mask_list = mask_list[: int(r * len(mask_list))]
             if args.dataset_split == "100":
-                train_raster_list = raster_list[:4999]
+                train_raster_list_rgb = raster_list_rgb[:4999]
+                train_raster_list_depth = raster_list_depth[:4999]
                 train_mask_list = mask_list[:4999]
                 dataset = SpaceNetDataset(
-                    raster, mask, train_raster_list, train_mask_list, is_train
+                    raster_rgb,
+                    raster_depth,
+                    mask,
+                    train_raster_list_rgb,
+                    train_raster_list_depth,
+                    train_mask_list,
+                    is_train,
                 )
             elif args.dataset_split == "10":
-                train_raster_list = raster_list[:499]
+                train_raster_list_rgb = raster_list_rgb[:499]
+                train_raster_list_depth = raster_list_depth[:499]
                 train_mask_list = mask_list[:499]
                 dataset = SpaceNetDataset(
-                    raster, mask, train_raster_list, train_mask_list, is_train
+                    raster_rgb,
+                    raster_depth,
+                    mask,
+                    train_raster_list_rgb,
+                    train_raster_list_depth,
+                    train_mask_list,
+                    is_train,
                 )
         else:
-            val_raster_list = raster_list[4999:]
+            val_raster_list_rgb = raster_list_rgb[4999:]
+            val_raster_list_depth = raster_list_depth[4999:]
             val_mask_list = mask_list[4999:]
             dataset = SpaceNetDataset(
-                raster, mask, val_raster_list, val_mask_list, is_train
+                raster_rgb,
+                raster_depth,
+                mask,
+                val_raster_list_rgb,
+                val_raster_list_depth,
+                val_mask_list,
+                is_train,
             )
     elif args.dataset_type == "loveda":
         if is_train:
