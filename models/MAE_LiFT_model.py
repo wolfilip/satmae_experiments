@@ -14,6 +14,7 @@ import torch.nn.functional as F
 
 from UPerNet.FPN_fuse import FPN_fuse
 from UPerNet.PSPModule import PSPModule
+from util.LiFT_module import LiFT
 from util.linear_calssifier import LinearClassifier
 from util.pos_embed import get_2d_sincos_pos_embed
 
@@ -32,14 +33,15 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         )
         self.pos_embed.data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
 
-        # for block in self.blocks:
-        #     for param in block.parameters():
-        #         param.requires_grad = False
+        for block in self.blocks:
+            for param in block.parameters():
+                param.requires_grad = False
 
-        # for param in self.patch_embed.parameters():
-        #     param.requires_grad = False
+        for param in self.patch_embed.parameters():
+            param.requires_grad = False
 
         self.conv_size = 0
+        lift_path = "/home/filip/lift/lift_fmow_trains_layer_3/vit_base_patch16_224_0.001_cosine_aug_256/lift_30.pth"
 
         feature_channels = [
             self.embed_dim + self.conv_size,
@@ -50,6 +52,19 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
 
         self.input_size = kwargs["img_size"]
         self.num_patches = int(kwargs["img_size"] / kwargs["patch_size"])
+
+        self.lift = LiFT(self.embed_dim, kwargs["patch_size"])
+        state_dict = torch.load(lift_path)
+        self.lift.eval()
+
+        for k in list(state_dict.keys()):
+            if k.startswith("module."):
+                state_dict[k[7:]] = state_dict[k]
+                del state_dict[k]
+
+        self.lift.load_state_dict(state_dict)
+        self.lift.to("cuda")
+        print("Loaded LiFT module from: " + lift_path)
 
         fpn_out = self.embed_dim + self.conv_size
 
@@ -176,7 +191,7 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
 
         new_features.append(
             torch.unflatten(
-                features[0], dim=1, sizes=(self.num_patches, self.num_patches)
+                features[0], dim=1, sizes=(self.num_patches * 2, self.num_patches * 2)
             )
         )
         new_features.append(
@@ -246,6 +261,8 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         if self.conv_size > 0:
             conv_embeds = self.encoder_conv(x)
         features = self.encoder_forward(x)
+        with torch.no_grad():
+            features[0] = self.lift(x, features[0])
         # x = self.decoder_upernet(features, conv_embeds)
         # x = self.encoder_forward(x)
         x = self.decoder_upernet(features, conv_embeds)

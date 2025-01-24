@@ -72,6 +72,8 @@ class DINOv2(nn.Module):
             #     self.embed_dim, self.num_patches, self.num_patches, args.nb_classes
             # )
             self.classification_head = nn.Linear(self.embed_dim, args.nb_classes)
+        else:
+            self.task = "segmentation"
 
         self.PPN = PSPModule(feature_channels[-1])
         self.FPN = FPN_fuse(feature_channels, fpn_out=fpn_out)
@@ -180,7 +182,7 @@ class DINOv2(nn.Module):
 
         with torch.no_grad():
             if self.task == "classification":
-                out = self.feat_extr.forward_features(imgs)
+                out = self.feat_extr.forward_features(imgs)  # type: ignore
                 cls = out["x_norm_clstoken"]
                 out = cls
             else:
@@ -274,9 +276,9 @@ class DINOv2(nn.Module):
         # x = self.decoder_upernet(x, conv_embeds)
         features = self.get_features(x)
         # x = self.encoder_forward(x)
-        # x = self.decoder_upernet(features, conv_embeds)
+        x = self.decoder_upernet(features, conv_embeds)
 
-        x = self.classification_head(features)
+        # x = self.classification_head(features)
         # x = self.decoder_linear(features[-1], conv_embeds)
 
         # x = self.decoder_upernet(x[1])

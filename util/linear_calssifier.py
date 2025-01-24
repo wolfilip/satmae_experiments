@@ -2,7 +2,7 @@ import torch.nn as nn
 
 
 class LinearClassifier(nn.Module):
-    def __init__(self, in_channels, tokenW=16, tokenH=16, num_labels=1):
+    def __init__(self, in_channels, tokenW=64, tokenH=64, num_labels=1):
         super(LinearClassifier, self).__init__()
 
         self.in_channels = in_channels

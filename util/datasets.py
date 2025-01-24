@@ -213,13 +213,13 @@ class SpaceNetDataset(SatelliteDataset):
         self.is_train = is_train
         self.transforms_train = transforms.Compose(
             [
-                transforms.RandomResizedCrop(self.s, scale=(0.5, 1.0)),
-                transforms.RandomHorizontalFlip(),
-                transforms.RandomVerticalFlip(),
+                # transforms.RandomResizedCrop(self.s, scale=(0.5, 1.0)),
+                # transforms.RandomHorizontalFlip(),
+                # transforms.RandomVerticalFlip(),
                 transforms.Compose(
                     [
                         transforms.ToImage(),
-                        transforms.ToDtype(torch.float32, scale=True),
+                        transforms.ToDtype(torch.float32),
                     ]
                 ),
             ]
@@ -249,7 +249,7 @@ class SpaceNetDataset(SatelliteDataset):
                 transforms.Compose(
                     [
                         transforms.ToImage(),
-                        transforms.ToDtype(torch.float32, scale=True),
+                        transforms.ToDtype(torch.float32),
                     ]
                 ),
             ]
@@ -270,7 +270,7 @@ class SpaceNetDataset(SatelliteDataset):
         # )
 
         # print(self.raster_list_depth[index], self.raster_list_rgb[index])
-        img_depth = Image.open(self.raster_depth + self.raster_list_depth[index])
+        # img_depth = Image.open(self.raster_depth + self.raster_list_depth[index])
         # name = self.raster_list[index][:-3]
         # print("SpaceNetV1/imgs/" + name + "png")
         mask = (
@@ -283,8 +283,10 @@ class SpaceNetDataset(SatelliteDataset):
         # save_image(img, "../SpaceNetV1/imgs/" + self.raster_list[index][:-3] + "png")
         mask = torch.from_numpy(mask.astype("int64"))
         if self.is_train:
-            img_rgb, img_depth, mask = self.transforms_train(img_rgb, img_depth, mask)
-            img_rgb, img_depth = self.transforms_distort(img_rgb, img_depth)
+            # img_rgb, img_depth, mask = self.transforms_train(img_rgb, img_depth, mask)
+            # img_rgb, img_depth = self.transforms_distort(img_rgb, img_depth)
+            img_rgb, mask = self.transforms_train(img_rgb, mask)
+            img_rgb = self.transforms_distort(img_rgb)
             # img_rgb, img_depth, mask = self.transforms_val(img_rgb, img_depth, mask)
 
             # f, axarr = plt.subplots(2)
@@ -294,7 +296,7 @@ class SpaceNetDataset(SatelliteDataset):
             # plt.savefig("img.png", dpi=600)
             # plt.close()
         else:
-            img_rgb, img_depth, mask = self.transforms_val(img_rgb, img_depth, mask)
+            img_rgb, mask = self.transforms_val(img_rgb, mask)
             # f, axarr = plt.subplots(2)
             # axarr[0].imshow(img_rgb.permute(1, 2, 0), interpolation="none")
             # axarr[1].imshow(img_depth.permute(1, 2, 0), interpolation="none")
@@ -315,7 +317,7 @@ class SpaceNetDataset(SatelliteDataset):
         #     mask = mask.to(torch.int64)
         # img, mask = torch.split(image_and_mask, [3, 1])
         # image_and_mask = self.transforms_val(image_and_mask)
-        return (img_depth, img_depth), mask
+        return img_rgb, mask
 
 
 class VaihingenPotsdamDataset(SatelliteDataset):

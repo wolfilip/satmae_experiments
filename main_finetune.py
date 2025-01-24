@@ -21,6 +21,9 @@ from torch.optim.adamw import AdamW
 from torch.utils.data import DataLoader, DistributedSampler, SequentialSampler
 from torch.utils.tensorboard.writer import SummaryWriter
 
+from models import MAE_LiFT_model, SAMHQ_model
+from models.SAMHQ_model import SAMHQ
+from models.models_lift import LiFT, LiFTModel
 import models.models_resnet as models_resnet
 import models.models_vit as models_vit
 import models.models_vit_dinov2_segmentation as models_vit_dinov2_segmentation
@@ -81,6 +84,8 @@ def get_args_parser():
             "vanilla",
             "segmentation",
             "dinov2_segmentation",
+            "samhq_segmentation",
+            "lift_segmentation",
             "dinov2_classification",
             "dinov2_vit",
         ],
@@ -486,11 +491,21 @@ def main(args):
             num_classes=args.nb_classes,
             drop_path_rate=args.drop_path,
         )
+    elif args.model_type == "lift_segmentation":
+        model = MAE_LiFT_model.__dict__[args.model](
+            patch_size=args.patch_size,
+            img_size=args.input_size,
+            in_chans=dataset_train.in_c,
+            num_classes=args.nb_classes,
+            drop_path_rate=args.drop_path,
+        )
     elif (
         args.model_type == "dinov2_segmentation"
         or args.model_type == "dinov2_classification"
     ):
         model = DINOv2(args, "cuda")
+    elif args.model_type == "samhq_segmentation":
+        model = SAMHQ(args, "cuda")
     elif args.model_type == "dinov2_vit":
         model = models_vit_dinov2_segmentation.__dict__[args.model](
             patch_size=args.patch_size,
@@ -511,6 +526,7 @@ def main(args):
 
     if args.finetune:
         checkpoint = torch.load(args.finetune, map_location="cpu")
+        # print(checkpoint_model)
 
         print("Load pre-trained checkpoint from: %s" % args.finetune)
         checkpoint_model = checkpoint["model"]
@@ -592,8 +608,10 @@ def main(args):
     # build optimizer with layer-wise lr decay (lrd)
     if args.model_type is not None and (
         args.model_type.startswith("resnet")
-        or args.model_type == "dinov2_segmentation"
         or args.model_type == "dinov2_classification"
+        or args.model_type == "dinov2_segmentation"
+        or args.model_type == "samhq_segmentation"
+        or args.model_type == "lift_segmentation"
     ):
         param_groups = model_without_ddp.parameters()
     else:
@@ -635,6 +653,8 @@ def main(args):
         elif (
             args.model_type == "segmentation"
             or args.model_type == "dinov2_segmentation"
+            or args.model_type == "samhq_segmentation"
+            or args.model_type == "lift_segmentation"
             or args.model_type == "dinov2_vit"
         ):
             test_stats, max_iou = evaluate_segmentation(
@@ -646,6 +666,8 @@ def main(args):
         if (
             args.model_type == "segmentation"
             or args.model_type == "dinov2_segmentation"
+            or args.model_type == "samhq_segmentation"
+            or args.model_type == "lift_segmentation"
             or args.model_type == "dinov2_vit"
         ):
             print(
@@ -684,6 +706,8 @@ def main(args):
             elif (
                 args.model_type == "segmentation"
                 or args.model_type == "dinov2_segmentation"
+                or args.model_type == "samhq_segmentation"
+                or args.model_type == "lift_segmentation"
                 or args.model_type == "dinov2_vit"
             ):
                 # test_stats = evaluate_segmentation(data_loader_val, model, device)
@@ -740,6 +764,8 @@ def main(args):
         elif (
             args.model_type == "segmentation"
             or args.model_type == "dinov2_segmentation"
+            or args.model_type == "samhq_segmentation"
+            or args.model_type == "lift_segmentation"
             or args.model_type == "dinov2_vit"
         ):
             test_stats, max_iou = evaluate_segmentation(
@@ -751,6 +777,8 @@ def main(args):
         if (
             args.model_type == "segmentation"
             or args.model_type == "dinov2_segmentation"
+            or args.model_type == "samhq_segmentation"
+            or args.model_type == "lift_segmentation"
             or args.model_type == "dinov2_vit"
         ):
             # print(

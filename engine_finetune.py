@@ -83,7 +83,7 @@ def train_one_epoch(
         if mixup_fn is not None:
             samples, targets = mixup_fn(samples, targets)
 
-        with torch.amp.autocast("cuda"):
+        with torch.amp.autocast("cuda"):  # type: ignore
             outputs, _ = model(samples)
             loss = criterion(outputs, targets)
 
@@ -348,19 +348,19 @@ def train_one_epoch_segmentation(
             lr_sched.adjust_learning_rate(
                 optimizer, data_iter_step / len(data_loader) + epoch, args  # type: ignore
             )
-        if len(data) == 2:
-            data_rgb = data[0].to(device, non_blocking=True)
-            data_depth = data[1].to(device, non_blocking=True)
-        else:
-            data = data.to(device, non_blocking=True)
+        # if len(data) == 2:
+        #     data_rgb = data[0].to(device, non_blocking=True)
+        #     data_depth = data[1].to(device, non_blocking=True)
+        # else:
+        data = data.to(device, non_blocking=True)
         mask = mask.to(device, non_blocking=True)
 
         with torch.amp.autocast("cuda"):  # type: ignore
             # data = data.to(device)
-            if len(data) == 2:
-                pred, _ = model((data_rgb, data_depth))
-            else:
-                pred, _ = model(data)
+            # if len(data) == 2:
+            #     pred, _ = model((data_rgb, data_depth))
+            # else:
+            pred, _ = model(data)
 
             if args.dataset_type == "loveda" or args.dataset_type == "vaihingen" or args.dataset_type == "potsdam":  # type: ignore
                 mask = mask.squeeze(1)
@@ -631,21 +631,44 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
         data = batch[0]
         mask = batch[-1]
         # print('images and targets')
-        if len(data) == 2:
-            data_rgb = data[0].to(device, non_blocking=True)
-            data_depth = data[1].to(device, non_blocking=True)
-        else:
-            data = data.to(device, non_blocking=True)
+        # if len(data) == 2:
+        #     data_rgb = data[0].to(device, non_blocking=True)
+        #     data_depth = data[1].to(device, non_blocking=True)
+        # else:
+        data = data.to(device, non_blocking=True)
         mask = mask.to(device, non_blocking=True)
 
         # print("before pass model")
         # compute output
         with torch.amp.autocast("cuda"):  # type: ignore
             # data = data.to(device)
-            if len(data) == 2:
-                pred, _ = model((data_rgb, data_depth))
-            else:
-                pred, _ = model(data)
+            # print(data.shape)
+            # if len(data) == 2:
+            #     pred, _ = model((data_rgb, data_depth))
+            # else:
+            pred, _ = model(data)
+
+            # _, axarr = plt.subplots(3)
+
+            # axarr[0].imshow(data[0].cpu().squeeze().permute(1, 2, 0))
+            # axarr[1].imshow(mask[0].cpu(), interpolation="none")
+            # axarr[2].imshow(pred[0].argmax(0).cpu(), interpolation="none")
+
+            # plt.savefig(
+            #     "satmae_experiments/"
+            #     + args.dataset_type
+            #     + "_"
+            #     + args.dataset_split
+            #     + "pc_results/images/"
+            #     + args.method_name
+            #     + "/img_"
+            #     + str(cnt)
+            #     + ".png",
+            #     figsize=(3, 1),
+            #     bbox_inches="tight",
+            #     pad_inches=0.1,
+            #     dpi=600,
+            # )
 
             if (
                 args.dataset_type == "loveda"
@@ -692,7 +715,7 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
     if args.save_images:
         cnt = 0
         if args.best_epoch:
-            if miou > max_iou and epoch > 200:
+            if miou > max_iou and epoch > 0:
                 for batch in data_loader:
                     data = batch[0]
                     mask = batch[-1]
