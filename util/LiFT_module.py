@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 
+
 class DoubleConv(nn.Module):
     """(convolution => [BN] => ReLU) * 2"""
 
@@ -18,6 +19,7 @@ class DoubleConv(nn.Module):
     def forward(self, x):
         return self.double_conv(x)
 
+
 class Up(nn.Module):
     """Upscaling then double conv"""
 
@@ -33,6 +35,7 @@ class Up(nn.Module):
         x = torch.cat([x, imgs_1], dim=1)
         x = self.conv_1(x)
         return x
+
 
 class LiFT(nn.Module):
     def __init__(self, in_channels, patch_size, pre_shape=True, post_shape=True):

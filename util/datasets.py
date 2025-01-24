@@ -5,20 +5,16 @@ from glob import glob
 from typing import Any, List, Optional
 
 import kornia.augmentation as K
-from matplotlib import pyplot as plt
-import matplotlib
 import numpy as np
 import pandas as pd
 import rasterio
 import rasterio as rio
 import torch
 import torchvision.transforms.v2 as transforms
-from torchvision.utils import save_image
 from PIL import Image
 from rasterio import logging
 from rasterio.enums import Resampling
 from torch.utils.data import Dataset
-from torch.utils.data.dataset import Dataset
 
 log = logging.getLogger()
 log.setLevel(logging.ERROR)
@@ -39,7 +35,7 @@ def rgb2mask(img):
     }
 
     assert len(img.shape) == 3
-    height, width, ch = img.shape
+    _, _, ch = img.shape
     assert ch == 3
 
     W = np.power(256, [[0], [1], [2]])
@@ -49,11 +45,9 @@ def rgb2mask(img):
 
     mask = np.zeros(img_id.shape)
 
-    for i, c in enumerate(values):
-        try:
-            mask[img_id == c] = color2index[tuple(img[img_id == c][0])]
-        except:
-            pass
+    for c in values:
+        mask[img_id == c] = color2index[tuple(img[img_id == c][0])]
+
     return mask.astype(int)
 
 
@@ -1100,12 +1094,12 @@ class SentinelIndividualImageDataset(SatelliteDataset):
             ]
             img_as_tensor = img_as_tensor[keep_idxs, :, :]
 
-        sample = {
-            "images": images,
-            "labels": labels,
-            "image_ids": selection["image_id"],
-            "timestamps": selection["timestamp"],
-        }
+        # sample = {
+        #     "images": images,
+        #     "labels": labels,
+        #     "image_ids": selection["image_id"],
+        #     "timestamps": selection["timestamp"],
+        # }
         return img_as_tensor, labels
 
     @staticmethod

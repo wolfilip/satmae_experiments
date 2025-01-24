@@ -310,7 +310,7 @@ class NativeScalerWithGradNormCount:
     state_dict_key = "amp_scaler"
 
     def __init__(self):
-        self._scaler = torch.amp.GradScaler()
+        self._scaler = torch.amp.GradScaler()  # type: ignore
 
     def __call__(
         self,

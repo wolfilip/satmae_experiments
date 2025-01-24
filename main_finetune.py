@@ -21,9 +21,6 @@ from torch.optim.adamw import AdamW
 from torch.utils.data import DataLoader, DistributedSampler, SequentialSampler
 from torch.utils.tensorboard.writer import SummaryWriter
 
-from models import MAE_LiFT_model, SAMHQ_model
-from models.SAMHQ_model import SAMHQ
-from models.models_lift import LiFT, LiFTModel
 import models.models_resnet as models_resnet
 import models.models_vit as models_vit
 import models.models_vit_dinov2_segmentation as models_vit_dinov2_segmentation
@@ -40,7 +37,9 @@ from engine_finetune import (
     train_one_epoch_segmentation,
     train_one_epoch_temporal,
 )
+from models import MAE_LiFT_model
 from models.DINOv2_features import DINOv2
+from models.SAMHQ_model import SAMHQ
 from util.datasets import build_fmow_dataset
 from util.misc import NativeScalerWithGradNormCount as NativeScaler
 from util.pos_embed import interpolate_pos_embed
@@ -828,7 +827,7 @@ def main(args):
                 try:
                     wandb.log(log_stats)
                 except ValueError:
-                    print(f"Invalid stats?")
+                    print("Invalid stats?")
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))

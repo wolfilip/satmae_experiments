@@ -246,7 +246,6 @@ class UNet(nn.Module):
         return x
 
     def final_output(self, x):
-        c = x.shape[1]
         f = self.act(self.norm(x))
         f = self.final(f)
         return f

@@ -9,7 +9,6 @@ from argparse import ArgumentParser
 sys.path.append("../")
 
 from models import models_vit_segmentation
-from models.DINOv2_features import DINOv2
 import torch
 
 
@@ -46,23 +45,23 @@ def get_args_parser():
 
 
 def params():
-    config = {
-        "--nproc_per_node",
-        "1",
-        "--model",
-        "base_0",
-        "--input_size",
-        "224",
-        "--dataset_type",
-        "spacenet",
-    }
+    # config = {
+    #     "--nproc_per_node",
+    #     "1",
+    #     "--model",
+    #     "base_0",
+    #     "--input_size",
+    #     "224",
+    #     "--dataset_type",
+    #     "spacenet",
+    # }
     # model = DINOv2(config, "cuda")
 
-    model = models_vit_segmentation.__dict__[args.model](
+    model = models_vit_segmentation.__dict__[args.model](  # type: ignore
         patch_size=16,
-        img_size=args.input_size,
+        img_size=args.input_size,  # type: ignore
         in_chans=3,
-        num_classes=args.nb_classes,
+        num_classes=args.nb_classes,  # type: ignore
         drop_path_rate=0.1,
     )
 
@@ -95,7 +94,7 @@ def prepare_model(args):
     checkpoint = torch.load(
         "../../scale-mae/scalemae-vitlarge-800.pth", map_location="cpu"
     )
-    msg = model.load_state_dict(checkpoint["model"], strict=False)
+    model.load_state_dict(checkpoint["model"], strict=False)
 
     model.to("cuda")
     model.to(torch.float16)
@@ -114,7 +113,7 @@ def inference_speed(reps, args):
         img = img.to("cpu")
 
         img = img.to("cuda")
-        out = model(img)
+        model(img)
 
     total_time = 0
     # next - real
@@ -123,7 +122,7 @@ def inference_speed(reps, args):
 
         img = img.to("cuda")
         t0 = timeit.default_timer()
-        out = model(img)
+        model(img)
         t1 = timeit.default_timer()
 
         total_time += t1 - t0

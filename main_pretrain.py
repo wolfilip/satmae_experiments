@@ -18,7 +18,6 @@ import torch
 import torch.backends.cudnn as cudnn
 import wandb
 from kornia.constants import Resample
-from matplotlib import pyplot as plt
 from torch.nn.parallel import DistributedDataParallel
 from torch.optim.adamw import AdamW
 from torch.utils.data import DataLoader, DistributedSampler
@@ -45,7 +44,6 @@ from util.resolution_sched import (
     get_source_size_scheduler,
     get_target_size_scheduler,
 )
-from util.visualize_features import visualize_features
 
 
 def get_args_parser():

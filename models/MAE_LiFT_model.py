@@ -15,7 +15,6 @@ import torch.nn.functional as F
 from UPerNet.FPN_fuse import FPN_fuse
 from UPerNet.PSPModule import PSPModule
 from util.LiFT_module import LiFT
-from util.linear_calssifier import LinearClassifier
 from util.pos_embed import get_2d_sincos_pos_embed
 
 

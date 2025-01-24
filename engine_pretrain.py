@@ -3,17 +3,14 @@
 # MAE: https://github.com/facebookresearch/mae
 # --------------------------------------------------------
 import math
-import os
 import sys
 from typing import Iterable
 
 import torch
 import wandb
-from matplotlib import pyplot as plt
 
 import util.lr_sched as lr_sched
 import util.misc as misc
-from util.visualize_features import visualize_features
 
 
 def train_one_epoch(

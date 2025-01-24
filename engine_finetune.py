@@ -23,7 +23,7 @@ from timm.utils import accuracy
 from torch import device
 from torch.nn import Module
 from torch.optim.optimizer import Optimizer
-from torchmetrics import F1Score, JaccardIndex, Accuracy
+from torchmetrics import Accuracy, F1Score, JaccardIndex
 
 import util.lr_sched as lr_sched
 import util.misc as misc

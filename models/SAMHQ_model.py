@@ -1,6 +1,4 @@
-import numpy as np
 from segment_anything import sam_model_registry
-from segment_anything.modeling import ImageEncoderViT
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

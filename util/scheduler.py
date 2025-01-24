@@ -6,7 +6,7 @@ class ResolutionScheduler:
         pass
 
     def get_target_size(self, epoch):
-        raise NotImplemented
+        raise NotImplementedError
 
 
 class ConstantResolutionScheduler(ResolutionScheduler):
