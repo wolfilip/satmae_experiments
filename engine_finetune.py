@@ -289,16 +289,16 @@ def train_one_epoch_segmentation(
         miou_metric = JaccardIndex(task="multiclass", num_classes=args.nb_classes)  # type: ignore
     else:
         miou_metric = JaccardIndex(
-            task="multiclass", num_classes=args.nb_classes, average="micro"
+            task="multiclass", num_classes=args.nb_classes, average="micro"  # type: ignore
         )
         miou_metric_2 = JaccardIndex(
-            task="multiclass", num_classes=args.nb_classes, average="weighted"
+            task="multiclass", num_classes=args.nb_classes, average="weighted"  # type: ignore
         )
         f1_score = F1Score(
-            task="multiclass", num_classes=args.nb_classes, average="micro"
+            task="multiclass", num_classes=args.nb_classes, average="micro"  # type: ignore
         )
         overall_accuracy = Accuracy(
-            task="multiclass", num_classes=args.nb_classes, average="weighted"
+            task="multiclass", num_classes=args.nb_classes, average="weighted"  # type: ignore
         )
         f1_score = f1_score.to(device)
         miou_metric_2 = miou_metric_2.to(device)
@@ -308,35 +308,35 @@ def train_one_epoch_segmentation(
     if epoch == 0:
         if not os.path.exists(
             "satmae_experiments/"
-            + args.dataset_type
+            + args.dataset_type  # type: ignore
             + "_"
-            + args.dataset_split
+            + args.dataset_split  # type: ignore
             + "pc_results/images/"
-            + args.method_name
+            + args.method_name  # type: ignore
         ):
             os.makedirs(
                 "satmae_experiments/"
-                + args.dataset_type
+                + args.dataset_type  # type: ignore
                 + "_"
-                + args.dataset_split
+                + args.dataset_split  # type: ignore
                 + "pc_results/images/"
-                + args.method_name
+                + args.method_name  # type: ignore
             )
         if not os.path.exists(
             "satmae_experiments/"
-            + args.dataset_type
+            + args.dataset_type  # type: ignore
             + "_"
-            + args.dataset_split
+            + args.dataset_split  # type: ignore
             + "pc_results/per_image/"
-            + args.method_name
+            + args.method_name  # type: ignore
         ):
             os.makedirs(
                 "satmae_experiments/"
-                + args.dataset_type
+                + args.dataset_type  # type: ignore
                 + "_"
-                + args.dataset_split
+                + args.dataset_split  # type: ignore
                 + "pc_results/per_image/"
-                + args.method_name
+                + args.method_name  # type: ignore
             )
 
     for data_iter_step, (data, mask) in enumerate(
@@ -373,7 +373,7 @@ def train_one_epoch_segmentation(
             # dice_loss = DiceLoss()
             # loss_2 = dice_loss(pred, mask_one_hot.float())
             miou_metric.update(pred.argmax(1), mask)
-            if args.dataset_type != "spacenet":
+            if args.dataset_type != "spacenet":  # type: ignore
                 miou_metric_2.update(pred.argmax(1), mask)
                 f1_score.update(pred.argmax(1), mask)
                 overall_accuracy.update(pred.argmax(1), mask)
@@ -428,7 +428,7 @@ def train_one_epoch_segmentation(
 
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
-    if args.dataset_type == "spacenet":
+    if args.dataset_type == "spacenet":  # type: ignore
         print(
             "* IoU {iou:.4f} loss {losses.global_avg:.4f}".format(
                 iou=miou_metric.compute(), losses=metric_logger.loss
@@ -466,7 +466,7 @@ def evaluate(data_loader, model, device):
 
         # print("before pass model")
         # compute output
-        with torch.amp.autocast("cuda"):
+        with torch.amp.autocast("cuda"):  # type: ignore
             output, _ = model(images)
             loss = criterion(output, target)
 

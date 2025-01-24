@@ -688,7 +688,7 @@ def main(args):
         # if args.distributed:
         data_loader_train.sampler.set_epoch(epoch)  # type: ignore
 
-        if args.eval == False:
+        if args.eval is False:
             if args.model_type == "temporal":
                 train_stats = train_one_epoch_temporal(
                     model,
@@ -801,7 +801,7 @@ def main(args):
                 log_writer.add_scalar("perf/test_acc5", test_stats["acc5"], epoch)
                 log_writer.add_scalar("perf/test_loss", test_stats["loss"], epoch)
 
-        if args.eval == False:
+        if args.eval is False:
             log_stats = {
                 **{f"train_{k}": v for k, v in train_stats.items()},
                 **{f"test_{k}": v for k, v in test_stats.items()},
