@@ -41,6 +41,16 @@ def get_bce_loss(pred, mask):
     return loss
 
 
+def get_bce_loss_ignore(pred, mask):
+    bce = F.cross_entropy(pred, mask, ignore_index=0)
+    # m = nn.Sigmoid()
+    # pred = pred.argmax(1)
+    # loss = F.binary_cross_entropy_with_logits(pred, mask)
+    # loss = bce(torch.clamp(pred, min=0.0001, max=1.0), torch.clamp(mask, min=0.0001, max=1.0))
+    # loss = bce(pred, mask)
+    return bce
+
+
 def train_one_epoch(
     model: Module,
     criterion: Module,
@@ -287,6 +297,8 @@ def train_one_epoch_segmentation(
 
     if args.dataset_type == "spacenet":  # type: ignore
         miou_metric = JaccardIndex(task="multiclass", num_classes=args.nb_classes)  # type: ignore
+    elif args.dataset_type == "sen1floods11":  # type: ignore
+        miou_metric = JaccardIndex(task="multiclass", num_classes=args.nb_classes, ignore_index=0, average="micro")  # type: ignore
     else:
         miou_metric = JaccardIndex(
             task="multiclass", num_classes=args.nb_classes, average="micro"  # type: ignore
@@ -354,6 +366,7 @@ def train_one_epoch_segmentation(
         # else:
         data = data.to(device, non_blocking=True)
         mask = mask.to(device, non_blocking=True)
+        # print(mask.unique())
 
         with torch.amp.autocast("cuda"):  # type: ignore
             # data = data.to(device)
@@ -365,15 +378,20 @@ def train_one_epoch_segmentation(
             if args.dataset_type == "loveda" or args.dataset_type == "vaihingen" or args.dataset_type == "potsdam":  # type: ignore
                 mask = mask.squeeze(1)
 
-            mask_one_hot = F.one_hot(mask, num_classes=args.nb_classes).permute(  # type: ignore
-                0, 3, 1, 2
-            )
+            if args.dataset_type != "sen1floods11":
+                mask_one_hot = F.one_hot(mask, num_classes=args.nb_classes).permute(  # type: ignore
+                    0, 3, 1, 2
+                )
+            # print(mask_one_hot.unique())
 
-            loss_value = get_bce_loss(pred, mask_one_hot.float())
+            if args.dataset_type == "sen1floods11":  # type: ignore
+                loss_value = get_bce_loss_ignore(pred, mask)
+            else:
+                loss_value = get_bce_loss(pred, mask_one_hot.float())
             # dice_loss = DiceLoss()
             # loss_2 = dice_loss(pred, mask_one_hot.float())
             miou_metric.update(pred.argmax(1), mask)
-            if args.dataset_type != "spacenet":  # type: ignore
+            if args.dataset_type != "spacenet" and args.dataset_type != "sen1floods11":  # type: ignore
                 miou_metric_2.update(pred.argmax(1), mask)
                 f1_score.update(pred.argmax(1), mask)
                 overall_accuracy.update(pred.argmax(1), mask)
@@ -428,7 +446,7 @@ def train_one_epoch_segmentation(
 
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
-    if args.dataset_type == "spacenet":  # type: ignore
+    if args.dataset_type == "spacenet" or args.dataset_type == "sen1floods11":  # type: ignore
         print(
             "* IoU {iou:.4f} loss {losses.global_avg:.4f}".format(
                 iou=miou_metric.compute(), losses=metric_logger.loss
@@ -605,6 +623,8 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
 
     if args.dataset_type == "spacenet":  # type: ignore
         miou_metric = JaccardIndex(task="multiclass", num_classes=args.nb_classes)  # type: ignore
+    elif args.dataset_type == "sen1floods11":  # type: ignore
+        miou_metric = JaccardIndex(task="multiclass", num_classes=args.nb_classes, ignore_index=0, average="micro")  # type: ignore
     else:
         miou_metric = JaccardIndex(
             task="multiclass", num_classes=args.nb_classes, average="micro"
@@ -685,7 +705,7 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
             # dice_loss = DiceLoss()
             # loss_2 = dice_loss(pred, mask_one_hot.float())
             miou_metric.update(pred.argmax(1), mask)
-            if args.dataset_type != "spacenet":
+            if args.dataset_type != "spacenet" and args.dataset_type != "sen1floods11":
                 miou_metric_2.update(pred.argmax(1), mask)
                 f1_score.update(pred.argmax(1), mask)
                 overall_accuracy.update(pred.argmax(1), mask)
@@ -704,10 +724,12 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
         print("miou test: " + str(miou_test * args.world_size / 398))
     elif args.dataset_type == "potsdam":
         print("miou test: " + str(miou_test * args.world_size / 2016))
+    elif args.dataset_type == "sen1floods11":
+        print("miou test: " + str(miou_test * args.world_size / 90))
 
     # gather the stats from all processes
     miou = miou_metric.compute().item()
-    if args.dataset_type != "spacenet":
+    if args.dataset_type != "spacenet" and args.dataset_type != "sen1floods11":
         miou_2 = miou_metric_2.compute().item()
         f1 = f1_score.compute().item()
         oa = overall_accuracy.compute().item()
@@ -715,7 +737,7 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
     if args.save_images:
         cnt = 0
         if args.best_epoch:
-            if miou > max_iou and epoch > 0:
+            if miou > max_iou and epoch > 4:
                 for batch in data_loader:
                     data = batch[0]
                     mask = batch[-1]
@@ -771,7 +793,7 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
 
     metric_logger.update(IoU=miou)
 
-    if args.dataset_type == "spacenet":
+    if args.dataset_type == "spacenet" or args.dataset_type == "sen1floods11":
         print(
             "* IoU {iou:.4f} loss {losses.global_avg:.4f}".format(
                 iou=miou, losses=metric_logger.loss
@@ -793,6 +815,8 @@ def save_results(mask, pred, device, epoch, cnt, miou_test, args):
 
     if args.dataset_type == "spacenet":  # type: ignore
         miou_temp = JaccardIndex(task="multiclass", num_classes=args.nb_classes)  # type: ignore
+    elif args.dataset_type == "sen1floods11":  # type: ignore
+        miou_temp = JaccardIndex(task="multiclass", num_classes=args.nb_classes, ignore_index=0, average="micro")  # type: ignore
     else:
         miou_temp = JaccardIndex(
             task="multiclass", num_classes=args.nb_classes, average="micro"
@@ -824,6 +848,15 @@ def save_results(mask, pred, device, epoch, cnt, miou_test, args):
     return miou_test
 
 
+def sentinel2_l2a_to_rgb(image):
+    min_val = 0.0
+    max_val = 0.3
+    rgb_image = (image / 10000 - min_val) / (max_val - min_val)
+    rgb_image[rgb_image < 0] = 0
+    rgb_image[rgb_image > 1] = 1
+    return rgb_image
+
+
 def save_images(data, mask, pred, features, cnt, args):
 
     for i in range(data.shape[0]):
@@ -839,12 +872,28 @@ def save_images(data, mask, pred, features, cnt, args):
         for ax in axarr:
             ax.axis("off")
 
-        axarr[0].imshow(data.cpu()[i].permute(1, 2, 0))
+        # bla = sentinel2_l2a_to_rgb(data.cpu()[i])
+
+        if args.dataset_type == "sen1floods11":
+            axarr[0].imshow(sentinel2_l2a_to_rgb(data[i].cpu()).permute(1, 2, 0))
+        else:
+            axarr[0].imshow(data[i].cpu().permute(1, 2, 0))
 
         if args.dataset_type == "spacenet":
             axarr[1].imshow(mask[i].cpu(), interpolation="none")
             axarr[2].imshow(pred.argmax(1).cpu()[i], interpolation="none")
-
+        elif args.dataset_type == "sen1floods11":
+            color_list = ["white", "grey", "blue"]
+            mask_array_1 = np.array(mask[i].cpu())
+            mask_array_2 = np.array(pred.argmax(1).cpu()[i])
+            cmap_1 = matplotlib.colors.ListedColormap(
+                [color_list[j] for j in np.unique(mask_array_1)]
+            )
+            cmap_2 = matplotlib.colors.ListedColormap(
+                [color_list[j] for j in np.unique(mask_array_2)]
+            )
+            axarr[1].imshow(mask[i].cpu(), cmap=cmap_1, interpolation="none")
+            axarr[2].imshow(pred.argmax(1).cpu()[i], cmap=cmap_2, interpolation="none")
         elif (
             args.dataset_type == "loveda"
             or args.dataset_type == "vaihingen"

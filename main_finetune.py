@@ -275,6 +275,7 @@ def get_args_parser():
             "loveda",
             "vaihingen",
             "potsdam",
+            "sen1floods11",
         ],
         help="Whether to use fmow rgb, sentinel, or other dataset.",
     )
@@ -486,7 +487,7 @@ def main(args):
         model = models_vit_segmentation.__dict__[args.model](
             patch_size=args.patch_size,
             img_size=args.input_size,
-            in_chans=dataset_train.in_c,
+            in_chans=3,
             num_classes=args.nb_classes,
             drop_path_rate=args.drop_path,
         )
@@ -787,7 +788,10 @@ def main(args):
             if log_writer is not None:
                 log_writer.add_scalar("perf/test_iou", test_stats["IoU"], epoch)
                 log_writer.add_scalar("perf/test_loss", test_stats["loss"], epoch)
-                if args.dataset_type != "spacenet":
+                if (
+                    args.dataset_type != "spacenet"
+                    and args.dataset_type != "sen1floods11"
+                ):
                     log_writer.add_scalar("perf/test_f1", test_stats["f1"], epoch)
         else:
             print(

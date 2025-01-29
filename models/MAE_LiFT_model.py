@@ -40,7 +40,7 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
             param.requires_grad = False
 
         self.conv_size = 0
-        lift_path = "/home/filip/lift/lift_fmow_trains_layer_3/vit_base_patch16_224_0.001_cosine_aug_256/lift_30.pth"
+        lift_path = "/home/filip/lift/lift_fmow_trains_layer_3/vit_base_patch16_224_0.001_cosine_aug_256/lift_10.pth"
 
         feature_channels = [
             self.embed_dim + self.conv_size,

@@ -83,6 +83,10 @@ class DINOv2(nn.Module):
                 self.up = nn.Upsample(
                     size=(64, 64), mode="bilinear", align_corners=True
                 )
+            elif args.dataset_type == "sen1floods1":
+                self.up = nn.Upsample(
+                    size=(64, 64), mode="bilinear", align_corners=True
+                )
             else:
                 self.up = nn.Upsample(
                     size=(144, 144), mode="bilinear", align_corners=True

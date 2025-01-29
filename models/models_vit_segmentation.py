@@ -38,7 +38,7 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         # for param in self.patch_embed.parameters():
         #     param.requires_grad = False
 
-        self.conv_size = 0
+        self.conv_size = 32
 
         feature_channels = [
             self.embed_dim + self.conv_size,
