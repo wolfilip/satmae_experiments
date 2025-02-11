@@ -42,7 +42,9 @@ def get_bce_loss(pred, mask):
 
 
 def get_bce_loss_ignore(pred, mask):
-    bce = F.cross_entropy(pred, mask, ignore_index=0)
+    # print(pred.unique(), mask.unique())
+    bce = F.cross_entropy(pred, mask)
+    # print(bce)
     # m = nn.Sigmoid()
     # pred = pred.argmax(1)
     # loss = F.binary_cross_entropy_with_logits(pred, mask)
@@ -286,7 +288,7 @@ def train_one_epoch_segmentation(
     metric_logger = misc.MetricLogger(delimiter="  ")
     metric_logger.add_meter("lr", misc.SmoothedValue(window_size=1, fmt="{value:.6f}"))
     header = "Epoch: [{}]".format(epoch)
-    print_freq = 20
+    print_freq = 50
 
     accum_iter = args.accum_iter  # type: ignore
 
@@ -299,6 +301,35 @@ def train_one_epoch_segmentation(
         miou_metric = JaccardIndex(task="multiclass", num_classes=args.nb_classes)  # type: ignore
     elif args.dataset_type == "sen1floods11":  # type: ignore
         miou_metric = JaccardIndex(task="multiclass", num_classes=args.nb_classes, ignore_index=0, average="micro")  # type: ignore
+    elif args.dataset_type == "isaid":
+        miou_metric = JaccardIndex(
+            task="multiclass",
+            num_classes=args.nb_classes,
+            average="micro",
+            ignore_index=0,
+        )
+        miou_metric_2 = JaccardIndex(
+            task="multiclass",
+            num_classes=args.nb_classes,
+            average="weighted",
+            ignore_index=0,
+        )
+        f1_score = F1Score(
+            task="multiclass",
+            num_classes=args.nb_classes,
+            average="micro",
+            ignore_index=0,
+        )
+        overall_accuracy = Accuracy(
+            task="multiclass",
+            num_classes=args.nb_classes,
+            average="weighted",
+            ignore_index=0,
+        )
+
+        f1_score = f1_score.to(device)
+        miou_metric_2 = miou_metric_2.to(device)
+        overall_accuracy = overall_accuracy.to(device)
     else:
         miou_metric = JaccardIndex(
             task="multiclass", num_classes=args.nb_classes, average="micro"  # type: ignore
@@ -351,7 +382,7 @@ def train_one_epoch_segmentation(
                 + args.method_name  # type: ignore
             )
 
-    for data_iter_step, (data, mask) in enumerate(
+    for data_iter_step, batch in enumerate(
         metric_logger.log_every(data_loader, print_freq, header)
     ):
 
@@ -364,8 +395,9 @@ def train_one_epoch_segmentation(
         #     data_rgb = data[0].to(device, non_blocking=True)
         #     data_depth = data[1].to(device, non_blocking=True)
         # else:
-        data = data.to(device, non_blocking=True)
-        mask = mask.to(device, non_blocking=True)
+        data = batch[0].to(device, non_blocking=True)
+        mask = batch[-1].to(device, non_blocking=True)
+
         # print(mask.unique())
 
         with torch.amp.autocast("cuda"):  # type: ignore
@@ -378,16 +410,17 @@ def train_one_epoch_segmentation(
             if args.dataset_type == "loveda" or args.dataset_type == "vaihingen" or args.dataset_type == "potsdam":  # type: ignore
                 mask = mask.squeeze(1)
 
-            if args.dataset_type != "sen1floods11":
+            if args.dataset_type != "sen1floods11" and args.dataset_type != "isaid":
                 mask_one_hot = F.one_hot(mask, num_classes=args.nb_classes).permute(  # type: ignore
                     0, 3, 1, 2
                 )
             # print(mask_one_hot.unique())
 
-            if args.dataset_type == "sen1floods11":  # type: ignore
+            if args.dataset_type == "sen1floods11" or args.dataset_type == "isaid":  # type: ignore
                 loss_value = get_bce_loss_ignore(pred, mask)
             else:
                 loss_value = get_bce_loss(pred, mask_one_hot.float())
+            # print(loss_value)
             # dice_loss = DiceLoss()
             # loss_2 = dice_loss(pred, mask_one_hot.float())
             miou_metric.update(pred.argmax(1), mask)
@@ -625,6 +658,47 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
         miou_metric = JaccardIndex(task="multiclass", num_classes=args.nb_classes)  # type: ignore
     elif args.dataset_type == "sen1floods11":  # type: ignore
         miou_metric = JaccardIndex(task="multiclass", num_classes=args.nb_classes, ignore_index=0, average="micro")  # type: ignore
+    elif args.dataset_type == "isaid":
+        miou_metric = JaccardIndex(
+            task="multiclass",
+            num_classes=args.nb_classes,
+            average="micro",
+            ignore_index=0,
+        )
+        miou_metric_3 = JaccardIndex(
+            task="multiclass",
+            num_classes=args.nb_classes,
+            average="micro",
+        )
+        miou_metric_2 = JaccardIndex(
+            task="multiclass",
+            num_classes=args.nb_classes,
+            average="macro",
+            ignore_index=0,
+        )
+        miou_metric_4 = JaccardIndex(
+            task="multiclass",
+            num_classes=args.nb_classes,
+            average="macro",
+        )
+        f1_score = F1Score(
+            task="multiclass",
+            num_classes=args.nb_classes,
+            average="micro",
+            ignore_index=0,
+        )
+        overall_accuracy = Accuracy(
+            task="multiclass",
+            num_classes=args.nb_classes,
+            average="weighted",
+            ignore_index=0,
+        )
+
+        f1_score = f1_score.to(device)
+        miou_metric_2 = miou_metric_2.to(device)
+        miou_metric_3 = miou_metric_2.to(device)
+        miou_metric_4 = miou_metric_2.to(device)
+        overall_accuracy = overall_accuracy.to(device)
     else:
         miou_metric = JaccardIndex(
             task="multiclass", num_classes=args.nb_classes, average="micro"
@@ -647,7 +721,7 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
 
     miou_test = 0
 
-    for batch in metric_logger.log_every(data_loader, 10, header):
+    for batch in metric_logger.log_every(data_loader, 50, header):
         data = batch[0]
         mask = batch[-1]
         # print('images and targets')
@@ -707,6 +781,8 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
             miou_metric.update(pred.argmax(1), mask)
             if args.dataset_type != "spacenet" and args.dataset_type != "sen1floods11":
                 miou_metric_2.update(pred.argmax(1), mask)
+                miou_metric_3.update(pred.argmax(1), mask)
+                miou_metric_4.update(pred.argmax(1), mask)
                 f1_score.update(pred.argmax(1), mask)
                 overall_accuracy.update(pred.argmax(1), mask)
 
@@ -726,20 +802,27 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
         print("miou test: " + str(miou_test * args.world_size / 2016))
     elif args.dataset_type == "sen1floods11":
         print("miou test: " + str(miou_test * args.world_size / 90))
+    elif args.dataset_type == "isaid":
+        print("miou test: " + str(miou_test * args.world_size / 11644))
 
     # gather the stats from all processes
     miou = miou_metric.compute().item()
     if args.dataset_type != "spacenet" and args.dataset_type != "sen1floods11":
         miou_2 = miou_metric_2.compute().item()
+        miou_3 = miou_metric_3.compute().item()
+        miou_4 = miou_metric_4.compute().item()
         f1 = f1_score.compute().item()
         oa = overall_accuracy.compute().item()
 
     if args.save_images:
         cnt = 0
         if args.best_epoch:
-            if miou > max_iou and epoch > 4:
+            if miou > max_iou and epoch > -1:
                 for batch in data_loader:
                     data = batch[0]
+                    if args.dataset_type == "sen1floods11":
+                        data_viz = batch[1]
+                        data_viz = data_viz.to(device, non_blocking=True)
                     mask = batch[-1]
                     # print('images and targets')
                     data = data.to(device, non_blocking=True)
@@ -748,7 +831,6 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
                     # print("before pass model")
                     # compute output
                     with torch.amp.autocast("cuda"):  # type: ignore
-                        data = data.to(device)
                         pred, features = model(data)
 
                         if (
@@ -757,13 +839,17 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
                             or args.dataset_type == "potsdam"
                         ):
                             mask = mask.squeeze(1)
-
-                        save_images(data, mask, pred, features, cnt, args)
-
+                        if args.dataset_type == "sen1floods11":
+                            save_images(data_viz, mask, pred, features, cnt, args)
+                        else:
+                            save_images(data, mask, pred, features, cnt, args)
                     cnt += data.shape[0]
         elif epoch == args.epochs - 1 or args.eval:
             for batch in data_loader:
                 data = batch[0]
+                if args.dataset_type == "sen1floods11":
+                    data_viz = batch[1]
+                    data_viz = data_viz.to(device, non_blocking=True)
                 mask = batch[-1]
                 # print('images and targets')
                 data = data.to(device, non_blocking=True)
@@ -782,7 +868,10 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
                     ):
                         mask = mask.squeeze(1)
 
-                    save_images(data, mask, pred, features, cnt, args)
+                    if args.dataset_type == "sen1floods11":
+                        save_images(data_viz, mask, pred, features, cnt, args)
+                    else:
+                        save_images(data, mask, pred, features, cnt, args)
 
                 cnt += data.shape[0]
 
@@ -803,8 +892,14 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
         metric_logger.update(f1=f1)
         metric_logger.update(oa=oa)
         print(
-            "* IoU {iou:.4f} IoU 2 {iou2:.4f} F1 {f1:.4f} oa {oa:.4f} loss {losses.global_avg:.4f}".format(
-                iou=miou, iou2=miou_2, f1=f1, oa=oa, losses=metric_logger.loss
+            "* IoU {iou:.4f} IoU 2 {iou2:.4f} IoU 3 {iou3:.4f} IoU 4 {iou4:.4f} F1 {f1:.4f} oa {oa:.4f} loss {losses.global_avg:.4f}".format(
+                iou=miou,
+                iou2=miou_2,
+                iou3=miou_3,
+                iou4=miou_4,
+                f1=f1,
+                oa=oa,
+                losses=metric_logger.loss,
             )
         )
 
@@ -879,7 +974,7 @@ def save_images(data, mask, pred, features, cnt, args):
         else:
             axarr[0].imshow(data[i].cpu().permute(1, 2, 0))
 
-        if args.dataset_type == "spacenet":
+        if args.dataset_type == "spacenet" or args.dataset_type == "isaid":
             axarr[1].imshow(mask[i].cpu(), interpolation="none")
             axarr[2].imshow(pred.argmax(1).cpu()[i], interpolation="none")
         elif args.dataset_type == "sen1floods11":

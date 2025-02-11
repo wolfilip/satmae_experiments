@@ -12,6 +12,7 @@ import rasterio
 import rasterio as rio
 import torch
 import torchvision.transforms.v2 as transforms
+import torchvision.transforms.functional as F
 from PIL import Image
 from rasterio import logging
 from rasterio.enums import Resampling
@@ -22,7 +23,6 @@ from tqdm import tqdm
 import json
 
 from engine_finetune import sentinel2_l2a_to_rgb
-
 
 log = logging.getLogger()
 log.setLevel(logging.ERROR)
@@ -179,6 +179,117 @@ class SatelliteDataset(Dataset):
 
         # t.append(transforms.Normalize(mean, std))
         return transforms.Compose(t)
+
+
+class iSAIDDataset(SatelliteDataset):
+    def __init__(self, img_path, mask_path, is_train, args):
+        super().__init__(in_c=3)
+
+        self.img_path = img_path
+        self.mask_path = mask_path
+        self.s = 896
+        self.is_train = is_train
+
+        self.image_filenames = []  # List to store image file names
+        self.mask_filenames = []  # List to store mask file names
+
+        self.image_filenames_temp = sorted(os.listdir(self.img_path))
+        self.mask_filenames_temp = sorted(os.listdir(self.mask_path))
+
+        self.image_filenames = [
+            os.path.join(self.img_path, file_name)
+            for file_name in self.image_filenames_temp
+        ]
+        self.mask_filenames = [
+            os.path.join(self.mask_path, file_name)
+            for file_name in self.mask_filenames_temp
+        ]
+
+        # if args.dataset_split == "20" and is_train:
+        #     self.image_filenames = self.image_filenames[:68]
+        #     self.mask_filenames = self.mask_filenames[:68]
+
+        if args.dataset_split == "10" and is_train:
+            self.image_filenames = self.image_filenames[:3398]
+            self.mask_filenames = self.mask_filenames[:3398]
+
+        self.transforms_train = K.AugmentationSequential(
+            K.RandomResizedCrop(size=(self.s, self.s), scale=(0.5, 1.0)),
+            K.RandomHorizontalFlip(p=0.5),
+            K.RandomVerticalFlip(p=0.5),
+            data_keys=["input", "mask"],
+        )
+        self.transforms_val = K.AugmentationSequential(
+            data_keys=["input", "mask"],
+        )
+
+        self.transforms_distort = transforms.Compose(
+            [
+                transforms.RandomPhotometricDistort(),
+            ]
+        )
+
+        self.transforms_bla = transforms.Compose(
+            [
+                transforms.Compose(
+                    [
+                        transforms.ToImage(),
+                        transforms.ToDtype(torch.float32, scale=True),
+                    ]
+                ),
+            ]
+        )
+
+    def __len__(self):
+        return len(self.image_filenames)
+
+    def __getitem__(self, index):
+        image_path = self.image_filenames[index]
+        mask_path = self.mask_filenames[index]
+
+        # print(len(self.mask_filenames))
+
+        # print(image_path, mask_path)
+        # Load image and mask
+        image = F.pil_to_tensor(Image.open(image_path).convert("RGB")) / 255
+        mask = F.pil_to_tensor(Image.open(mask_path))
+        # if 255 in mask:
+        #     print(image_path, mask_path)
+        # print(np.unique(mask, return_counts=True))
+        mask[mask == 255] = 0
+        mask = mask.float()
+        # mask_array = np.array(mask)
+        # # mask_array = rgb2mask(mask_array)
+
+        # print(np.unique(mask, return_counts=True))
+        # if 255 in np.unique(mask):
+        #     print("bla")
+        # # color_list = ["white", "red", "yellow", "blue", "violet", "green", "black"]
+        # # print([color_list[i] for i in np.unique(mask_array)])
+        # # cmap = matplotlib.colors.ListedColormap(
+        # #     [color_list[i] for i in np.unique(mask_array)]
+        # # )
+        # _, axarr = plt.subplots(2)
+        # axarr[0].imshow(mask.permute(1, 2, 0), interpolation="none")
+        # axarr[1].imshow(image.permute(1, 2, 0), interpolation="none")
+        # # mask = self.transforms_test(mask)
+
+        # plt.savefig("img.png", dpi=600)
+        # plt.close()
+
+        # mask = F.pil_to_tensor(mask).float()
+
+        if self.is_train:
+            image, mask = self.transforms_train(image, mask.unsqueeze(0))
+            image = self.transforms_distort(image)
+            # image, mask = self.transforms_test(image, mask)
+        else:
+            image, mask = self.transforms_val(image, mask.unsqueeze(0))
+            # image, mask = self.transforms_test(image, mask)
+
+        # mask = (mask * 256).to(torch.int64)
+
+        return image.squeeze(0), mask.squeeze(0).squeeze(0).long()
 
 
 class SpaceNetDataset(SatelliteDataset):
@@ -483,7 +594,7 @@ class Sen1Floods11Dataset(Dataset):
 
         # timestamp = self._get_date(index)
 
-        s2_image = torch.from_numpy(s2_image).float()[[3, 2, 1]]
+        s2_image_rgb = torch.from_numpy(s2_image).float()[[3, 2, 7]]
         # s1_image = torch.from_numpy(s1_image).float()
         # ratio_band = s1_image[:1, :, :] / (s1_image[1:, :, :] + 1e-10)
         # ratio_band = torch.clamp(ratio_band, max=1e4, min=-1e4)
@@ -491,7 +602,7 @@ class Sen1Floods11Dataset(Dataset):
         target = torch.from_numpy(target).long()
 
         output = {
-            "s2": s2_image,
+            "s2": s2_image_rgb,
             # "s1": s1_image.unsqueeze(0),
             "label": target,
             # "s2_dates": timestamp[0],
@@ -528,7 +639,11 @@ class Sen1Floods11Dataset(Dataset):
         # if self.split == "train":
         #     output["s2"] = self.transforms_distort(output["s2"].clamp(min=0, max=1))
 
-        return output["s2"].squeeze(0), output["label"].squeeze(0).squeeze(0).long() + 1
+        return (
+            output["s2"].squeeze(0),
+            torch.from_numpy(s2_image).float()[[3, 2, 1]],
+            output["label"].squeeze(0).squeeze(0).long() + 1,
+        )
 
     # Calculate image-wise class distributions for segmentation
     def calculate_class_distributions(self):
@@ -746,7 +861,7 @@ class VaihingenPotsdamDataset(SatelliteDataset):
 
         mask = (mask * 256).to(torch.int64)
 
-        # print(mask.unique())
+        print(mask.unique())
         return image, mask
 
 
@@ -1722,6 +1837,20 @@ def build_fmow_dataset(is_train: bool, args) -> SatelliteDataset:
         else:
             dataset = Sen1Floods11Dataset(
                 "/home/filip/sen1floods11", ["s2"], transforms_test, "test"
+            )
+    elif args.dataset_type == "isaid":
+
+        if is_train:
+            data_paths_imgs_train = "/home/filip/iSAID_converted/img_dir/train"
+            data_paths_ann_train = "/home/filip/iSAID_converted/ann_dir/train"
+            dataset = iSAIDDataset(
+                data_paths_imgs_train, data_paths_ann_train, is_train, args
+            )
+        else:
+            data_paths_imgs_train = "/home/filip/iSAID_converted/img_dir/val"
+            data_paths_ann_train = "/home/filip/iSAID_converted/ann_dir/val"
+            dataset = iSAIDDataset(
+                data_paths_imgs_train, data_paths_ann_train, is_train, args
             )
     else:
         raise ValueError(f"Invalid dataset type: {args.dataset_type}")

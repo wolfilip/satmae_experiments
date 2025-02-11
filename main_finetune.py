@@ -276,6 +276,7 @@ def get_args_parser():
             "vaihingen",
             "potsdam",
             "sen1floods11",
+            "isaid",
         ],
         help="Whether to use fmow rgb, sentinel, or other dataset.",
     )
