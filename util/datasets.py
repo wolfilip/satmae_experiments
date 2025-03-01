@@ -205,10 +205,6 @@ class iSAIDDataset(SatelliteDataset):
             for file_name in self.mask_filenames_temp
         ]
 
-        # if args.dataset_split == "20" and is_train:
-        #     self.image_filenames = self.image_filenames[:68]
-        #     self.mask_filenames = self.mask_filenames[:68]
-
         if args.dataset_split == "10" and is_train:
             self.image_filenames = self.image_filenames[:3398]
             self.mask_filenames = self.mask_filenames[:3398]
@@ -262,8 +258,119 @@ class iSAIDDataset(SatelliteDataset):
         # # mask_array = rgb2mask(mask_array)
 
         # print(np.unique(mask, return_counts=True))
-        # if 255 in np.unique(mask):
-        #     print("bla")
+        # # if 255 in np.unique(mask):
+        # #     print("bla")
+        # # color_list = ["white", "red", "yellow", "blue", "violet", "green", "black"]
+        # # print([color_list[i] for i in np.unique(mask_array)])
+        # # cmap = matplotlib.colors.ListedColormap(
+        # #     [color_list[i] for i in np.unique(mask_array)]
+        # # )
+        # _, axarr = plt.subplots(2)
+        # axarr[0].imshow(mask.permute(1, 2, 0), interpolation="none")
+        # axarr[1].imshow(image.permute(1, 2, 0), interpolation="none")
+        # # mask = self.transforms_test(mask)
+
+        # plt.savefig("img.png", dpi=600)
+        # plt.close()
+
+        # mask = F.pil_to_tensor(mask).float()
+
+        if self.is_train:
+            image, mask = self.transforms_train(image, mask.unsqueeze(0))
+            image = self.transforms_distort(image)
+            # image, mask = self.transforms_test(image, mask)
+        else:
+            image, mask = self.transforms_val(image, mask.unsqueeze(0))
+            # image, mask = self.transforms_test(image, mask)
+
+        # mask = (mask * 256).to(torch.int64)
+
+        return image.squeeze(0), mask.squeeze(0).squeeze(0).long()
+
+
+class MassachusettsRoadsDataset(SatelliteDataset):
+    def __init__(self, img_path, mask_path, is_train, args):
+        super().__init__(in_c=3)
+
+        self.img_path = img_path
+        self.mask_path = mask_path
+        self.s = 1500
+        self.is_train = is_train
+
+        self.image_filenames = []  # List to store image file names
+        self.mask_filenames = []  # List to store mask file names
+
+        self.image_filenames_temp = sorted(os.listdir(self.img_path))
+        self.mask_filenames_temp = sorted(os.listdir(self.mask_path))
+
+        self.image_filenames = [
+            os.path.join(self.img_path, file_name)
+            for file_name in self.image_filenames_temp
+        ]
+        self.mask_filenames = [
+            os.path.join(self.mask_path, file_name)
+            for file_name in self.mask_filenames_temp
+        ]
+
+        # if args.dataset_split == "20" and is_train:
+        #     self.image_filenames = self.image_filenames[:68]
+        #     self.mask_filenames = self.mask_filenames[:68]
+
+        # if args.dataset_split == "10" and is_train:
+        #     self.image_filenames = self.image_filenames[:3398]
+        #     self.mask_filenames = self.mask_filenames[:3398]
+
+        self.transforms_train = K.AugmentationSequential(
+            K.RandomResizedCrop(size=(self.s, self.s), scale=(0.5, 1.0)),
+            K.RandomHorizontalFlip(p=0.5),
+            K.RandomVerticalFlip(p=0.5),
+            data_keys=["input", "mask"],
+        )
+        self.transforms_val = K.AugmentationSequential(
+            data_keys=["input", "mask"],
+        )
+
+        self.transforms_distort = transforms.Compose(
+            [
+                transforms.RandomPhotometricDistort(),
+            ]
+        )
+
+        self.transforms_bla = transforms.Compose(
+            [
+                transforms.Compose(
+                    [
+                        transforms.ToImage(),
+                        transforms.ToDtype(torch.float32, scale=True),
+                    ]
+                ),
+            ]
+        )
+
+    def __len__(self):
+        return len(self.image_filenames)
+
+    def __getitem__(self, index):
+        image_path = self.image_filenames[index]
+        mask_path = self.mask_filenames[index]
+
+        # print(len(self.mask_filenames))
+
+        # print(image_path, mask_path)
+        # Load image and mask
+        image = F.pil_to_tensor(Image.open(image_path).convert("RGB")) / 255
+        mask = F.pil_to_tensor(Image.open(mask_path)).float() / 255
+        # if 255 in mask:
+        #     print(image_path, mask_path)
+        # print(np.unique(mask, return_counts=True))
+        # mask[mask == 255] = 0
+        # mask = mask.float()
+        # mask_array = np.array(mask)
+        # # mask_array = rgb2mask(mask_array)
+
+        # print(np.unique(mask, return_counts=True))
+        # # if 255 in np.unique(mask):
+        # #     print("bla")
         # # color_list = ["white", "red", "yellow", "blue", "violet", "green", "black"]
         # # print([color_list[i] for i in np.unique(mask_array)])
         # # cmap = matplotlib.colors.ListedColormap(
@@ -780,32 +887,42 @@ class VaihingenPotsdamDataset(SatelliteDataset):
             self.image_filenames = self.image_filenames[:345]
             self.mask_filenames = self.mask_filenames[:345]
 
-        self.transforms_train = transforms.Compose(
-            [
-                transforms.RandomResizedCrop(self.s, scale=(0.5, 1.0)),
-                transforms.RandomHorizontalFlip(),
-                transforms.RandomVerticalFlip(),
-                transforms.Compose(
-                    [
-                        transforms.ToImage(),
-                        transforms.ToDtype(torch.float32, scale=True),
-                    ]
-                ),
-                # transforms.RandomPhotometricDistort(),
-            ]
+        self.transforms_train = K.AugmentationSequential(
+            K.RandomResizedCrop(size=(512, 512), scale=(0.5, 1.0)),
+            K.RandomHorizontalFlip(p=0.5),
+            K.RandomVerticalFlip(p=0.5),
+            data_keys=["input", "mask"],
+        )
+        self.transforms_val = K.AugmentationSequential(
+            data_keys=["input", "mask"],
         )
 
-        self.transforms_test = transforms.Compose(
-            [
-                transforms.Compose(
-                    [
-                        transforms.ToImage(),
-                        transforms.ToDtype(torch.float32, scale=True),
-                    ]
-                ),
-                # transforms.RandomPhotometricDistort(),
-            ]
-        )
+        # self.transforms_train = transforms.Compose(
+        #     [
+        #         transforms.RandomResizedCrop(self.s, scale=(0.5, 1.0)),
+        #         transforms.RandomHorizontalFlip(),
+        #         transforms.RandomVerticalFlip(),
+        #         transforms.Compose(
+        #             [
+        #                 transforms.ToImage(),
+        #                 transforms.ToDtype(torch.float32, scale=True),
+        #             ]
+        #         ),
+        #         # transforms.RandomPhotometricDistort(),
+        #     ]
+        # )
+
+        # self.transforms_test = transforms.Compose(
+        #     [
+        #         transforms.Compose(
+        #             [
+        #                 transforms.ToImage(),
+        #                 transforms.ToDtype(torch.float32, scale=True),
+        #             ]
+        #         ),
+        #         # transforms.RandomPhotometricDistort(),
+        #     ]
+        # )
 
         self.transforms_distort = transforms.Compose(
             [
@@ -813,17 +930,17 @@ class VaihingenPotsdamDataset(SatelliteDataset):
             ]
         )
 
-        self.transforms_val = transforms.Compose(
-            [
-                transforms.Resize(self.s),
-                transforms.Compose(
-                    [
-                        transforms.ToImage(),
-                        transforms.ToDtype(torch.float32, scale=True),
-                    ]
-                ),
-            ]
-        )
+        # self.transforms_val = transforms.Compose(
+        #     [
+        #         transforms.Resize(self.s),
+        #         transforms.Compose(
+        #             [
+        #                 transforms.ToImage(),
+        #                 transforms.ToDtype(torch.float32, scale=True),
+        #             ]
+        #         ),
+        #     ]
+        # )
 
     def __len__(self):
         return len(self.image_filenames)
@@ -832,8 +949,8 @@ class VaihingenPotsdamDataset(SatelliteDataset):
         image_path = self.image_filenames[index]
         mask_path = self.mask_filenames[index]
         # Load image and mask
-        image = Image.open(image_path).convert("RGB")
-        mask = Image.open(mask_path)
+        image = F.pil_to_tensor(Image.open(image_path).convert("RGB")) / 255
+        mask = mask = F.pil_to_tensor(Image.open(mask_path)).float() / 255
         # mask_array = np.array(mask)
         # # mask_array = rgb2mask(mask_array)
 
@@ -852,17 +969,17 @@ class VaihingenPotsdamDataset(SatelliteDataset):
         # plt.close()
 
         if self.is_train:
-            image, mask = self.transforms_train(image, mask)
+            image, mask = self.transforms_train(image, mask.unsqueeze(0))
             image = self.transforms_distort(image)
             # image, mask = self.transforms_test(image, mask)
         else:
-            image, mask = self.transforms_val(image, mask)
+            image, mask = self.transforms_val(image, mask.unsqueeze(0))
             # image, mask = self.transforms_test(image, mask)
 
         mask = (mask * 256).to(torch.int64)
 
-        print(mask.unique())
-        return image, mask
+        # print(mask.unique())
+        return image.squeeze(0), mask.squeeze(0).squeeze(0).long()
 
 
 class LoveDADataset(SatelliteDataset):
@@ -1850,6 +1967,20 @@ def build_fmow_dataset(is_train: bool, args) -> SatelliteDataset:
             data_paths_imgs_train = "/home/filip/iSAID_converted/img_dir/val"
             data_paths_ann_train = "/home/filip/iSAID_converted/ann_dir/val"
             dataset = iSAIDDataset(
+                data_paths_imgs_train, data_paths_ann_train, is_train, args
+            )
+    elif args.dataset_type == "mass_roads":
+
+        if is_train:
+            data_paths_imgs_train = "/home/filip/massachusetts_roads/train"
+            data_paths_ann_train = "/home/filip/massachusetts_roads/train_labels"
+            dataset = MassachusettsRoadsDataset(
+                data_paths_imgs_train, data_paths_ann_train, is_train, args
+            )
+        else:
+            data_paths_imgs_train = "/home/filip/massachusetts_roads/test"
+            data_paths_ann_train = "/home/filip/massachusetts_roads/test_labels"
+            dataset = MassachusettsRoadsDataset(
                 data_paths_imgs_train, data_paths_ann_train, is_train, args
             )
     else:

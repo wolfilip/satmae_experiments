@@ -6,8 +6,9 @@ import timeit
 from tqdm import tqdm
 from argparse import ArgumentParser
 
-sys.path.append("../")
+sys.path.append(".")
 
+from models.DINOv2_features import DINOv2
 from models import models_vit_segmentation
 import torch
 
@@ -24,7 +25,7 @@ def get_args_parser():
     parser.add_argument("--input_size", default=224, type=int, help="images input size")
     parser.add_argument(
         "--dataset_type",
-        default="rgb",
+        default="spacenet",
         choices=[
             "rgb",
             "temporal",
@@ -45,25 +46,25 @@ def get_args_parser():
 
 
 def params():
-    # config = {
-    #     "--nproc_per_node",
-    #     "1",
-    #     "--model",
-    #     "base_0",
-    #     "--input_size",
-    #     "224",
-    #     "--dataset_type",
-    #     "spacenet",
-    # }
-    # model = DINOv2(config, "cuda")
+    config = {
+        "--nproc_per_node",
+        "1",
+        "--model",
+        "base_0",
+        "--input_size",
+        "224",
+        "--dataset_type",
+        "spacenet",
+    }
+    model = DINOv2(config, "cuda")
 
-    model = models_vit_segmentation.__dict__[args.model](  # type: ignore
-        patch_size=16,
-        img_size=args.input_size,  # type: ignore
-        in_chans=3,
-        num_classes=args.nb_classes,  # type: ignore
-        drop_path_rate=0.1,
-    )
+    # model = models_vit_segmentation.__dict__[args.model](  # type: ignore
+    #     patch_size=16,
+    #     img_size=args.input_size,  # type: ignore
+    #     in_chans=3,
+    #     num_classes=args.nb_classes,  # type: ignore
+    #     drop_path_rate=0.1,
+    # )
 
     total_params = sum(p.numel() for p in model.parameters())
     trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -81,20 +82,21 @@ def prepare_image(batched=False):
 
 
 def prepare_model(args):
-    # model = DINOv2(args, "cuda")
 
-    model = models_vit_segmentation.__dict__[args.model](
-        patch_size=16,
-        img_size=args.input_size,
-        in_chans=3,
-        num_classes=args.nb_classes,
-        drop_path_rate=0.1,
-    )
+    model = DINOv2(args, "cuda")
 
-    checkpoint = torch.load(
-        "../../scale-mae/scalemae-vitlarge-800.pth", map_location="cpu"
-    )
-    model.load_state_dict(checkpoint["model"], strict=False)
+    # model = models_vit_segmentation.__dict__[args.model](
+    #     patch_size=16,
+    #     img_size=args.input_size,
+    #     in_chans=3,
+    #     num_classes=args.nb_classes,
+    #     drop_path_rate=0.1,
+    # )
+
+    # checkpoint = torch.load(
+    #     "../../scale-mae/scalemae-vitlarge-800.pth", map_location="cpu"
+    # )
+    # model.load_state_dict(checkpoint["model"], strict=False)
 
     model.to("cuda")
     model.to(torch.float16)
@@ -107,20 +109,15 @@ def prepare_model(args):
 def inference_speed(reps, args):
     model = prepare_model(args)
     img = prepare_image()
+    img = img.to("cuda")
 
     # first - warmup
     for _ in tqdm(range(reps), desc="Warmup"):
-        img = img.to("cpu")
-
-        img = img.to("cuda")
         model(img)
 
     total_time = 0
     # next - real
     for _ in tqdm(range(reps), desc="Timing inference"):
-        img = img.to("cpu")
-
-        img = img.to("cuda")
         t0 = timeit.default_timer()
         model(img)
         t1 = timeit.default_timer()
@@ -236,22 +233,22 @@ def main(args):
 
     with open(f"perf_{args.model}.csv", "w", encoding="utf-8", newline="") as csv_file:
         writer = csv.writer(csv_file, delimiter=";")
-        writer.writerow(["time", "throughput", "memory", "tflops"])
+        writer.writerow(["time", "tflops"])
         for cyc in range(cycles):
             ms = inference_speed(reps, args)
-            thru = throughput(reps, args)
-            mbs = memory(reps, args)
+            # thru = throughput(reps, args)
+            # mbs = memory(reps, args)
             tflops = flops(reps, args)
 
             if cyc == 0:
                 # skip first one, as the system is not warmed up and it's too fast
                 continue
 
-            writer.writerow([ms, thru, mbs, tflops])
+            writer.writerow([ms, tflops])
             print("-" * 42)
             print("Speed [ms]:", ms)
-            print("Throughput:", thru)
-            print("Memory [MB]:", mbs)
+            # print("Throughput:", thru)
+            # print("Memory [MB]:", mbs)
             print("TFLOPS:", tflops)
             print("-" * 42)
 

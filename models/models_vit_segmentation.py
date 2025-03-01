@@ -14,6 +14,7 @@ import torch.nn.functional as F
 
 from UPerNet.FPN_fuse import FPN_fuse
 from UPerNet.PSPModule import PSPModule
+from util.linear_calssifier import LinearClassifier
 from util.pos_embed import get_2d_sincos_pos_embed
 
 
@@ -38,7 +39,7 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         # for param in self.patch_embed.parameters():
         #     param.requires_grad = False
 
-        self.conv_size = 32
+        self.conv_size = 256
 
         feature_channels = [
             self.embed_dim + self.conv_size,
@@ -49,6 +50,9 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
 
         self.input_size = kwargs["img_size"]
         self.num_patches = int(kwargs["img_size"] / kwargs["patch_size"])
+
+        if self.input_size % 16 != 0:
+            self.do_interpolation = True
 
         fpn_out = self.embed_dim + self.conv_size
 
@@ -61,9 +65,12 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         # self.up_4 = nn.Upsample(scale_factor=16, mode="bilinear", align_corners=True)
         # self.sigmoid = nn.Sigmoid()
 
-        # self.classifier = LinearClassifier(
-        #     self.embed_dim, self.num_patches, self.num_patches, self.num_classes
-        # )
+        self.classifier = LinearClassifier(
+            self.embed_dim, self.num_patches, self.num_patches, self.num_classes
+        )
+
+        if self.conv_size > 0:
+            self.up = nn.Upsample(size=(372, 372), mode="bilinear", align_corners=True)
 
         # self.conv = nn.Conv2d(
         #     in_channels=256, out_channels=256, kernel_size=3, stride=2, padding=1
@@ -134,6 +141,8 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
     def encoder_conv(self, x):
 
         conv_embeds = self.conv_layers(x)
+        if conv_embeds.shape[-1] == 375:
+            conv_embeds = self.up(conv_embeds)
 
         return conv_embeds
 
@@ -247,6 +256,7 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         features = self.encoder_forward(x)
         # x = self.decoder_upernet(features, conv_embeds)
         # x = self.encoder_forward(x)
+        # print(x.shape, features[0].shape, conv_embeds.shape)
         x = self.decoder_upernet(features, conv_embeds)
         # x = self.decoder_linear(features[-1], conv_embeds)
         return x, (conv_embeds, features[-1])

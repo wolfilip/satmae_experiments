@@ -28,7 +28,7 @@ class DINOv2(nn.Module):
             )
         if self.model_size == "large":
             self.feat_extr = torch.hub.load("facebookresearch/dinov2", "dinov2_vitl14")
-        self.feat_extr.eval()  # type: ignore
+        # self.feat_extr.eval()  # type: ignore
         self.feat_extr.to(device)  # type: ignore
         self.device = device
         self.patch_size = 14
@@ -83,25 +83,34 @@ class DINOv2(nn.Module):
                 self.up = nn.Upsample(
                     size=(64, 64), mode="bilinear", align_corners=True
                 )
-            elif args.dataset_type == "sen1floods1":
-                self.up = nn.Upsample(
-                    size=(64, 64), mode="bilinear", align_corners=True
-                )
-            else:
+            elif (
+                args.dataset_type == "sen1floods11"
+                or args.dataset_type == "vaihingen"
+                or args.dataset_type == "potsdam"
+            ):
                 self.up = nn.Upsample(
                     size=(144, 144), mode="bilinear", align_corners=True
                 )
+            elif args.dataset_type == "isaid":
+                self.up = nn.Upsample(
+                    size=(256, 256), mode="bilinear", align_corners=True
+                )
+            elif args.dataset_type == "mass_roads":
+                self.up = nn.Upsample(
+                    size=(428, 428), mode="bilinear", align_corners=True
+                )
+            # elif  args.dataset_type == "rgb":
 
         # self.conv = nn.Conv2d(
-        #     in_channels=128, out_channels=256, kernel_size=3, stride=2, padding=1
+        #     in_channels=256, out_channels=256, kernel_size=3, stride=2, padding=1
         # )  # 3x3 kernel, stride 2, padding 1
         # self.bn = nn.BatchNorm2d(256)
         # self.relu = nn.ReLU()
 
         # self.conv = nn.Conv2d(
-        #     in_channels=32, out_channels=64, kernel_size=3, stride=2, padding=1
+        #     in_channels=32, out_channels=32, kernel_size=3, stride=2, padding=1
         # )
-        # self.bn = nn.BatchNorm2d(64)
+        # self.bn = nn.BatchNorm2d(32)
         # self.relu = nn.ReLU()
 
         # self.classifier = LinearClassifier(
@@ -181,19 +190,23 @@ class DINOv2(nn.Module):
                 imgs = F.interpolate(
                     imgs, size=252, mode="bilinear", align_corners=True
                 )
+            elif imgs.shape[-1] == 1500:
+                imgs = F.interpolate(
+                    imgs, size=1498, mode="bilinear", align_corners=True
+                )
 
-        with torch.no_grad():
-            if self.task == "classification":
-                out = self.feat_extr.forward_features(imgs)  # type: ignore
-                cls = out["x_norm_clstoken"]
-                out = cls
+        # with torch.no_grad():
+        if self.task == "classification":
+            out = self.feat_extr.forward_features(imgs)  # type: ignore
+            cls = out["x_norm_clstoken"]
+            out = cls
+        else:
+            # if self.layer_num == "last":
+            if self.model_size == "base" or self.model_size == "small":
+                patch = self.feat_extr.get_intermediate_layers(imgs, (3, 11))  # type: ignore
             else:
-                # if self.layer_num == "last":
-                if self.model_size == "base" or self.model_size == "small":
-                    patch = self.feat_extr.get_intermediate_layers(imgs, (3, 11))  # type: ignore
-                else:
-                    patch = self.feat_extr.get_intermediate_layers(imgs, (3, 9, 17, 23))  # type: ignore
-                out = patch
+                patch = self.feat_extr.get_intermediate_layers(imgs, (3, 9, 17, 23))  # type: ignore
+            out = patch
 
             # layers.append(patch)
             # layers.append(patch)
@@ -252,9 +265,9 @@ class DINOv2(nn.Module):
         new_features[0] = self.up_2(new_features[0])
         if self.conv_size > 0:
             new_features[0] = torch.cat((new_features[0], conv_embeds), 1)
-        # new_features[1] = torch.cat((new_features[1], conv_1), 1)
-        # features[2] = torch.cat((features[2], conv_2), 1)
-        # features[3] = torch.cat((features[3], conv_3), 1)
+            # new_features[1] = torch.cat((new_features[1], conv_1), 1)
+            # new_features[2] = torch.cat((new_features[2], conv_2), 1)
+            # new_features[3] = torch.cat((new_features[3], conv_3), 1)
 
         # features[0] = features[0] + conv_embeds
 

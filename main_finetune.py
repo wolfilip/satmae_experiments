@@ -277,6 +277,7 @@ def get_args_parser():
             "potsdam",
             "sen1floods11",
             "isaid",
+            "mass_roads",
         ],
         help="Whether to use fmow rgb, sentinel, or other dataset.",
     )
@@ -792,6 +793,7 @@ def main(args):
                 if (
                     args.dataset_type != "spacenet"
                     and args.dataset_type != "sen1floods11"
+                    and args.dataset_type != "mass_roads"
                 ):
                     log_writer.add_scalar("perf/test_f1", test_stats["f1"], epoch)
         else:
