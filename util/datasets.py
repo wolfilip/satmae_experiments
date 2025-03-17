@@ -409,6 +409,7 @@ class SpaceNetDataset(SatelliteDataset):
         raster_list_depth,
         mask_list,
         is_train,
+        args,
     ):
         super().__init__(in_c=3)
         self.raster_rgb = raster_rgb
@@ -417,50 +418,23 @@ class SpaceNetDataset(SatelliteDataset):
         self.raster_list_rgb = raster_list_rgb
         self.raster_list_depth = raster_list_depth
         self.mask_list = mask_list
-        self.s = 224
+        self.s = args.input_size
 
         self.is_train = is_train
-        self.transforms_train = transforms.Compose(
-            [
-                # transforms.RandomResizedCrop(self.s, scale=(0.5, 1.0)),
-                # transforms.RandomHorizontalFlip(),
-                # transforms.RandomVerticalFlip(),
-                transforms.Compose(
-                    [
-                        transforms.ToImage(),
-                        transforms.ToDtype(torch.float32),
-                    ]
-                ),
-            ]
-        )
 
-        self.transforms_test = transforms.Compose(
-            [
-                transforms.Compose(
-                    [
-                        transforms.ToImage(),
-                        transforms.ToDtype(torch.float32),
-                    ]
-                ),
-                # transforms.RandomPhotometricDistort(),
-            ]
+        self.transforms_train = K.AugmentationSequential(
+            K.RandomResizedCrop(size=(self.s, self.s), scale=(0.5, 1.0)),
+            K.RandomHorizontalFlip(p=0.5),
+            K.RandomVerticalFlip(p=0.5),
+            data_keys=["input", "mask"],
+        )
+        self.transforms_val = K.AugmentationSequential(
+            data_keys=["input", "mask"],
         )
 
         self.transforms_distort = transforms.Compose(
             [
                 transforms.RandomPhotometricDistort(),
-            ]
-        )
-
-        self.transforms_val = transforms.Compose(
-            [
-                transforms.Resize(self.s),
-                transforms.Compose(
-                    [
-                        transforms.ToImage(),
-                        transforms.ToDtype(torch.float32),
-                    ]
-                ),
             ]
         )
 
@@ -490,7 +464,9 @@ class SpaceNetDataset(SatelliteDataset):
         img_rgb = torch.from_numpy(img_rgb.astype("float32"))
         # same images till here
         # save_image(img, "../SpaceNetV1/imgs/" + self.raster_list[index][:-3] + "png")
-        mask = torch.from_numpy(mask.astype("int64"))
+        mask = (
+            torch.from_numpy(mask.astype("float32")).unsqueeze(0).unsqueeze(0).float()
+        )
         if self.is_train:
             # img_rgb, img_depth, mask = self.transforms_train(img_rgb, img_depth, mask)
             # img_rgb, img_depth = self.transforms_distort(img_rgb, img_depth)
@@ -526,7 +502,7 @@ class SpaceNetDataset(SatelliteDataset):
         #     mask = mask.to(torch.int64)
         # img, mask = torch.split(image_and_mask, [3, 1])
         # image_and_mask = self.transforms_val(image_and_mask)
-        return img_rgb, mask
+        return img_rgb.squeeze(0), mask.squeeze(0).squeeze(0).long()
 
 
 class Sen1Floods11Dataset(Dataset):
@@ -1875,6 +1851,7 @@ def build_fmow_dataset(is_train: bool, args) -> SatelliteDataset:
                     train_raster_list_depth,
                     train_mask_list,
                     is_train,
+                    args,
                 )
             elif args.dataset_split == "10":
                 train_raster_list_rgb = raster_list_rgb[:499]
@@ -1888,6 +1865,7 @@ def build_fmow_dataset(is_train: bool, args) -> SatelliteDataset:
                     train_raster_list_depth,
                     train_mask_list,
                     is_train,
+                    args,
                 )
         else:
             val_raster_list_rgb = raster_list_rgb[4999:]
@@ -1901,6 +1879,7 @@ def build_fmow_dataset(is_train: bool, args) -> SatelliteDataset:
                 val_raster_list_depth,
                 val_mask_list,
                 is_train,
+                args,
             )
     elif args.dataset_type == "loveda":
         if is_train:

@@ -12,6 +12,10 @@ from pathlib import Path
 import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
+import transformers
+from transformers.models.mask2former.modeling_mask2former import (
+    Mask2FormerForUniversalSegmentation,
+)
 import wandb
 from timm.data.mixup import Mixup
 from timm.loss import LabelSmoothingCrossEntropy, SoftTargetCrossEntropy
@@ -21,12 +25,19 @@ from torch.optim.adamw import AdamW
 from torch.utils.data import DataLoader, DistributedSampler, SequentialSampler
 from torch.utils.tensorboard.writer import SummaryWriter
 
+from models.OmniSat import LTAE, Omni, OmniSat
+from models.OmniSat.ltae import LTAE2d
 import models.models_resnet as models_resnet
+
+# from models.models_swin import SwinModel
+from models.models_swin import SwinModel
+from models.models_swin_old import build_swin
 import models.models_vit as models_vit
 import models.models_vit_dinov2_segmentation as models_vit_dinov2_segmentation
 import models.models_vit_group_channels as models_vit_group_channels
 import models.models_vit_segmentation as models_vit_segmentation
 import models.models_vit_temporal as models_vit_temporal
+from util.fix_swin import handle_m2f_swinb_citysem
 import util.lr_decay as lrd
 import util.misc as misc
 from engine_finetune import (
@@ -43,6 +54,7 @@ from models.SAMHQ_model import SAMHQ
 from util.datasets import build_fmow_dataset
 from util.misc import NativeScalerWithGradNormCount as NativeScaler
 from util.pos_embed import interpolate_pos_embed
+from util.utils_swin import remap_pretrained_keys_swin
 
 
 def get_args_parser():
@@ -87,6 +99,8 @@ def get_args_parser():
             "lift_segmentation",
             "dinov2_classification",
             "dinov2_vit",
+            "omnisat",
+            "swin",
         ],
         help="Use channel model",
     )
@@ -508,6 +522,13 @@ def main(args):
         model = DINOv2(args, "cuda")
     elif args.model_type == "samhq_segmentation":
         model = SAMHQ(args, "cuda")
+    elif args.model_type == "omnisat":
+        projectors = {"s2": LTAE.LTAE(["s2"])}
+        encoder = Omni.OmniModule(projectors, ["s2"])
+        model = OmniSat.Fine(encoder, "omnisat_state_dict.pth")
+    elif args.model_type == "swin":
+        # model_name = transformers.AutoModel.from_pretrained(args.finetune)
+        model = SwinModel(args, device)
     elif args.model_type == "dinov2_vit":
         model = models_vit_dinov2_segmentation.__dict__[args.model](
             patch_size=args.patch_size,
@@ -526,7 +547,7 @@ def main(args):
             global_pool=args.global_pool,
         )
 
-    if args.finetune:
+    if args.finetune and args.model_type != "swin":
         checkpoint = torch.load(args.finetune, map_location="cpu")
         # print(checkpoint_model)
 
@@ -534,38 +555,56 @@ def main(args):
         checkpoint_model = checkpoint["model"]
         state_dict = model.state_dict()
 
-        # if 'patch_embed.proj.weight' in checkpoint_model and 'patch_embed.proj.weight' in state_dict:
-        #     ckpt_patch_embed_weight = checkpoint_model['patch_embed.proj.weight']
-        #     model_patch_embed_weight = state_dict['patch_embed.proj.weight']
-        #     if ckpt_patch_embed_weight.shape[1] != model_patch_embed_weight.shape[1]:
-        #         print('Using 3 channels of ckpt patch_embed')
-        #         model.patch_embed.proj.weight.data[:, :3, :, :] = ckpt_patch_embed_weight.data[:, :3, :, :]
-
-        # TODO: Do something smarter?
-        for k in [
-            "pos_embed",
-            "patch_embed.proj.weight",
-            "patch_embed.proj.bias",
-            "head.weight",
-            "head.bias",
-        ]:
-            if (
-                k in checkpoint_model
-                and checkpoint_model[k].shape != state_dict[k].shape
+        if args.model_type == "swin":
+            if any(
+                [True if "encoder." in k else False for k in checkpoint_model.keys()]
             ):
-                print(f"Removing key {k} from pretrained checkpoint")
-                del checkpoint_model[k]
+                checkpoint_model = {
+                    k.replace("encoder.", ""): v
+                    for k, v in checkpoint_model.items()
+                    if k.startswith("encoder.")
+                }
+                print("Detect pre-trained model, remove [encoder.] prefix.")
+            else:
+                print("Detect non-pre-trained model, pass without doing anything.")
+            checkpoint_model = remap_pretrained_keys_swin(model, checkpoint_model)
 
-        # interpolate position embedding
-        interpolate_pos_embed(model, checkpoint_model)
+            for k in [
+                "head.weight",
+                "head.bias",
+            ]:
+                if (
+                    k in checkpoint_model
+                    and checkpoint_model[k].shape != state_dict[k].shape
+                ):
+                    print(f"Removing key {k} from pretrained checkpoint")
+                    del checkpoint_model[k]
+        else:
+            for k in [
+                "pos_embed",
+                "patch_embed.proj.weight",
+                "patch_embed.proj.bias",
+                "head.weight",
+                "head.bias",
+            ]:
+                if (
+                    k in checkpoint_model
+                    and checkpoint_model[k].shape != state_dict[k].shape
+                ):
+                    print(f"Removing key {k} from pretrained checkpoint")
+                    del checkpoint_model[k]
 
-        if "cross_scale" in args.finetune:
-            for key in list(checkpoint_model.keys()):
-                checkpoint_model[key.replace("encoder", "blocks")] = (
-                    checkpoint_model.pop(key)
-                )
+            # interpolate position embedding
+            interpolate_pos_embed(model, checkpoint_model)
+
+            if "cross_scale" in args.finetune:
+                for key in list(checkpoint_model.keys()):
+                    checkpoint_model[key.replace("encoder", "blocks")] = (
+                        checkpoint_model.pop(key)
+                    )
 
         # load pre-trained model
+
         msg = model.load_state_dict(checkpoint_model, strict=False)
         print(msg)
 
@@ -614,6 +653,7 @@ def main(args):
         or args.model_type == "dinov2_segmentation"
         or args.model_type == "samhq_segmentation"
         or args.model_type == "lift_segmentation"
+        or args.model_type == "swin"
     ):
         param_groups = model_without_ddp.parameters()
     else:
@@ -658,6 +698,7 @@ def main(args):
             or args.model_type == "samhq_segmentation"
             or args.model_type == "lift_segmentation"
             or args.model_type == "dinov2_vit"
+            or args.model_type == "swin"
         ):
             test_stats, max_iou = evaluate_segmentation(
                 data_loader_val, model, device, 0, 0, args
@@ -671,6 +712,7 @@ def main(args):
             or args.model_type == "samhq_segmentation"
             or args.model_type == "lift_segmentation"
             or args.model_type == "dinov2_vit"
+            or args.model_type == "swin"
         ):
             print(
                 f"mIoU of the network on the {len(dataset_val)} test images: {test_stats['IoU']:.4f}"  # type: ignore
@@ -711,6 +753,7 @@ def main(args):
                 or args.model_type == "samhq_segmentation"
                 or args.model_type == "lift_segmentation"
                 or args.model_type == "dinov2_vit"
+                or args.model_type == "swin"
             ):
                 # test_stats = evaluate_segmentation(data_loader_val, model, device)
                 # print(
@@ -769,6 +812,7 @@ def main(args):
             or args.model_type == "samhq_segmentation"
             or args.model_type == "lift_segmentation"
             or args.model_type == "dinov2_vit"
+            or args.model_type == "swin"
         ):
             test_stats, max_iou = evaluate_segmentation(
                 data_loader_val, model, device, epoch, max_iou, args
@@ -782,6 +826,7 @@ def main(args):
             or args.model_type == "samhq_segmentation"
             or args.model_type == "lift_segmentation"
             or args.model_type == "dinov2_vit"
+            or args.model_type == "swin"
         ):
             # print(
             #     f"mIoU of the network on the {len(dataset_val)} test images: {test_stats['IoU']:.4f}"  # type: ignore

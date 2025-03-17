@@ -4,9 +4,8 @@ import torch.nn.functional as F
 
 
 class FPN_fuse(nn.Module):
-    def __init__(self, feature_channels=[256, 512, 1024, 2048], fpn_out=256):
+    def __init__(self, feature_channels=[256, 512, 1024, 2048], fpn_out=512):
         super(FPN_fuse, self).__init__()
-        assert feature_channels[0] == fpn_out
         self.conv1x1 = nn.ModuleList(
             [
                 nn.Conv2d(ft_size, fpn_out, kernel_size=1)

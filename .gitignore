@@ -8,3 +8,5 @@ images
 *visualizations*
 *.png
 *.csv
+*.ckpt
+*.pth

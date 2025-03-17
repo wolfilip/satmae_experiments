@@ -827,7 +827,7 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
     if args.save_images:
         cnt = 0
         if args.best_epoch:
-            if miou > max_iou and epoch > 4:
+            if miou > max_iou and epoch > 10:
                 for batch in data_loader:
                     data = batch[0]
                     if args.dataset_type == "sen1floods11":
