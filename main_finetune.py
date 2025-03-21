@@ -12,10 +12,7 @@ from pathlib import Path
 import numpy as np
 import torch
 import torch.backends.cudnn as cudnn
-import transformers
-from transformers.models.mask2former.modeling_mask2former import (
-    Mask2FormerForUniversalSegmentation,
-)
+
 import wandb
 from timm.data.mixup import Mixup
 from timm.loss import LabelSmoothingCrossEntropy, SoftTargetCrossEntropy
@@ -26,18 +23,19 @@ from torch.utils.data import DataLoader, DistributedSampler, SequentialSampler
 from torch.utils.tensorboard.writer import SummaryWriter
 
 from models.OmniSat import LTAE, Omni, OmniSat
-from models.OmniSat.ltae import LTAE2d
+from models.SimDINO_features import SimDINO
+from models.SimDINOv2_features import SimDINOv2
 import models.models_resnet as models_resnet
 
 # from models.models_swin import SwinModel
 from models.models_swin import SwinModel
-from models.models_swin_old import build_swin
 import models.models_vit as models_vit
 import models.models_vit_dinov2_segmentation as models_vit_dinov2_segmentation
 import models.models_vit_group_channels as models_vit_group_channels
 import models.models_vit_segmentation as models_vit_segmentation
 import models.models_vit_temporal as models_vit_temporal
-from util.fix_swin import handle_m2f_swinb_citysem
+from models.simdinov2_models import build_model
+from models.simdinov2_models.utils import load_pretrained_weights
 import util.lr_decay as lrd
 import util.misc as misc
 from engine_finetune import (
@@ -101,6 +99,8 @@ def get_args_parser():
             "dinov2_vit",
             "omnisat",
             "swin",
+            "simdinov2",
+            "simdino",
         ],
         help="Use channel model",
     )
@@ -113,7 +113,7 @@ def get_args_parser():
     )
 
     parser.add_argument("--input_size", default=224, type=int, help="images input size")
-    parser.add_argument("--patch_size", default=14, type=int, help="images input size")
+    parser.add_argument("--patch_size", default=16, type=int, help="images input size")
 
     parser.add_argument(
         "--drop_path",
@@ -529,6 +529,15 @@ def main(args):
     elif args.model_type == "swin":
         # model_name = transformers.AutoModel.from_pretrained(args.finetune)
         model = SwinModel(args, device)
+    elif args.model_type == "simdinov2":
+        model = SimDINOv2(args, "cuda")
+        if args.input_size is not None and args.input_size != 224:
+            print(
+                f"OPTIONS -- evaluation img size: resizing from 224 to {args.input_size}"
+            )
+            model.update_img_size(args.input_size)
+    elif args.model_type == "simdino":
+        model = SimDINO(args, "cuda")
     elif args.model_type == "dinov2_vit":
         model = models_vit_dinov2_segmentation.__dict__[args.model](
             patch_size=args.patch_size,
@@ -547,7 +556,7 @@ def main(args):
             global_pool=args.global_pool,
         )
 
-    if args.finetune and args.model_type != "swin":
+    if args.finetune and args.model_type != "swin" and "simdino" not in args.model_type:
         checkpoint = torch.load(args.finetune, map_location="cpu")
         # print(checkpoint_model)
 
@@ -654,6 +663,7 @@ def main(args):
         or args.model_type == "samhq_segmentation"
         or args.model_type == "lift_segmentation"
         or args.model_type == "swin"
+        or "simdino" in args.model_type
     ):
         param_groups = model_without_ddp.parameters()
     else:
@@ -699,6 +709,7 @@ def main(args):
             or args.model_type == "lift_segmentation"
             or args.model_type == "dinov2_vit"
             or args.model_type == "swin"
+            or "simdino" in args.model_type
         ):
             test_stats, max_iou = evaluate_segmentation(
                 data_loader_val, model, device, 0, 0, args
@@ -713,6 +724,7 @@ def main(args):
             or args.model_type == "lift_segmentation"
             or args.model_type == "dinov2_vit"
             or args.model_type == "swin"
+            or "simdino" in args.model_type
         ):
             print(
                 f"mIoU of the network on the {len(dataset_val)} test images: {test_stats['IoU']:.4f}"  # type: ignore
@@ -754,6 +766,7 @@ def main(args):
                 or args.model_type == "lift_segmentation"
                 or args.model_type == "dinov2_vit"
                 or args.model_type == "swin"
+                or "simdino" in args.model_type
             ):
                 # test_stats = evaluate_segmentation(data_loader_val, model, device)
                 # print(
@@ -813,6 +826,7 @@ def main(args):
             or args.model_type == "lift_segmentation"
             or args.model_type == "dinov2_vit"
             or args.model_type == "swin"
+            or "simdino" in args.model_type
         ):
             test_stats, max_iou = evaluate_segmentation(
                 data_loader_val, model, device, epoch, max_iou, args
@@ -827,6 +841,7 @@ def main(args):
             or args.model_type == "lift_segmentation"
             or args.model_type == "dinov2_vit"
             or args.model_type == "swin"
+            or "simdino" in args.model_type
         ):
             # print(
             #     f"mIoU of the network on the {len(dataset_val)} test images: {test_stats['IoU']:.4f}"  # type: ignore

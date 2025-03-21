@@ -7,76 +7,25 @@ import torch.nn.functional as F
 from UPerNet.UPerNetHead import UperNetHead
 from functools import partial
 
+from models.simdino_models.utils import load_pretrained_weights
+from .simdino_models import vision_transformer as vits
 
-class DINOv2(nn.Module):
+
+class SimDINO(nn.Module):
 
     def __init__(self, args, device) -> None:
         super().__init__()
         # self.model_size = model_args["model_size"]
-        self.model_size = args.model.split("_")[0]
-        self.conv_size = int(args.model.split("_")[1])
+        self.model_size = args.model.split("_")[1]
+        self.conv_size = 0
 
-        if self.model_size == "small":
-            self.feat_extr = torch.hub.load("facebookresearch/dinov2", "dinov2_vits14")
-        if self.model_size == "small_reg":
-            self.feat_extr = torch.hub.load(
-                "facebookresearch/dinov2", "dinov2_vits14_reg"
-            )
-        if self.model_size == "base":
-            self.feat_extr = torch.hub.load("facebookresearch/dinov2", "dinov2_vitb14")
-        # if self.model_size == "base":
-        #     self.feat_extr = torch.hub.load(
-        #         "/home/filip/pretrained_weights/", "vitl16_reg4_SimDINOv2_100ep.pth"
-        #     )
-        if self.model_size == "base_reg":
-            self.feat_extr = torch.hub.load(
-                "facebookresearch/dinov2", "dinov2_vitb14_reg"
-            )
-        if self.model_size == "large":
+        self.feat_extr = vits.__dict__[args.model](
+            patch_size=args.patch_size, num_classes=0
+        )
+        load_pretrained_weights(
+            self.feat_extr, args.finetune, "teacher", args.model, 16
+        )
 
-            # def revert_block_chunk_weight(state_dict):
-            #     # convert blocks.chunkid.id.* to blocks.id.*: blocks.3.22. to blocks.22.
-            #     return {
-            #         re.sub(r"blocks\.(\d+)\.(\d+)\.", r"blocks.\2.", k): v
-            #         for k, v in state_dict.items()
-            #     }
-
-            # ckpt = torch.load(
-            #     "/home/filip/pretrained_weights/vitl16_reg4_SimDINOv2_100ep.pth",
-            #     map_location="cpu",
-            # )["teacher"]
-
-            # ckpt = {
-            #     k.removeprefix("backbone."): v
-            #     for k, v in ckpt.items()
-            #     if k.startswith("backbone")
-            # }
-            # ckpt = revert_block_chunk_weight(ckpt)
-            # # ckpt = timm.models.vision_transformer.checkpoint_filter_fn(ckpt, model)
-
-            # print(timm.list_models(pretrained=True))
-
-            # self.feat_extr = timm.models.vision_transformer.VisionTransformer(
-            #     embed_dim=1024,
-            #     depth=24,
-            #     num_heads=16,
-            #     mlp_ratio=4,
-            #     qkv_bias=True,
-            #     norm_layer=partial(nn.LayerNorm, eps=1e-6),
-            # )
-            # self.feat_extr.load_state_dict(ckpt)
-            self.feat_extr = torch.hub.load("facebookresearch/dinov2", "dinov2_vitl14")
-            # self.feat_extr.load_state_dict(
-            #     torch.load(
-            #         "/home/filip/pretrained_weights/vitl16_reg4_SimDINOv2_100ep.pth"
-            #     )
-            # )
-        # f self.model_size == "large":
-        #     self.feat_extr = torch.hub.load(
-        #         "/home/filip/pretrained_weights/",
-        #         "vitl16_reg4_SimDINOv2_100ep.pth",
-        #         source="local",
-        #     )i
         self.feat_extr.eval()  # type: ignore
         self.feat_extr.to(device)  # type: ignore
         self.device = device
@@ -262,7 +211,7 @@ class DINOv2(nn.Module):
             else:
                 # if self.layer_num == "last":
                 if self.model_size == "base" or self.model_size == "small":
-                    patch = self.feat_extr.get_intermediate_layers(imgs, (3, 11))  # type: ignore
+                    patch = self.feat_extr.get_intermediate_layers(imgs, (3, 5, 8, 11))  # type: ignore
                 else:
                     patch = self.feat_extr.get_intermediate_layers(imgs, (3, 9, 17, 23))  # type: ignore
                 out = patch
@@ -296,29 +245,21 @@ class DINOv2(nn.Module):
         new_features.append(
             features[1].reshape(-1, self.num_patches, self.num_patches, self.embed_dim)
         )
-        if self.model_size == "large":
-            new_features.append(
-                features[2].reshape(
-                    -1, self.num_patches, self.num_patches, self.embed_dim
-                )
-            )
-            new_features.append(
-                features[3].reshape(
-                    -1, self.num_patches, self.num_patches, self.embed_dim
-                )
-            )
+        new_features.append(
+            features[2].reshape(-1, self.num_patches, self.num_patches, self.embed_dim)
+        )
+        new_features.append(
+            features[3].reshape(-1, self.num_patches, self.num_patches, self.embed_dim)
+        )
 
         new_features[0] = torch.permute(new_features[0], (0, 3, 1, 2))
         new_features[1] = torch.permute(new_features[1], (0, 3, 1, 2))
-        if self.model_size == "large":
-            new_features[2] = torch.permute(new_features[2], (0, 3, 1, 2))
-            new_features[3] = torch.permute(new_features[3], (0, 3, 1, 2))
-        # features[4] = torch.permute(features[4], (0, 3, 1, 2))
+        new_features[2] = torch.permute(new_features[2], (0, 3, 1, 2))
+        new_features[3] = torch.permute(new_features[3], (0, 3, 1, 2))
 
-        if self.model_size == "large":
-            new_features[-1] = F.interpolate(
-                new_features[-1], scale_factor=0.5, mode="bilinear", align_corners=True
-            )
+        new_features[-1] = F.interpolate(
+            new_features[-1], scale_factor=0.5, mode="bilinear", align_corners=True
+        )
         # features[2] = self.up_1(features[2])
         new_features[1] = self.up_1(new_features[1])
         new_features[0] = self.up_2(new_features[0])

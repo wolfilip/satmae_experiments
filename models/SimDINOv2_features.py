@@ -7,76 +7,26 @@ import torch.nn.functional as F
 from UPerNet.UPerNetHead import UperNetHead
 from functools import partial
 
+from models.simdinov2_models import build_model
+from models.simdinov2_models.utils import load_pretrained_weights
+from .simdinov2_models import vision_transformer as vits
 
-class DINOv2(nn.Module):
+
+class SimDINOv2(nn.Module):
 
     def __init__(self, args, device) -> None:
         super().__init__()
         # self.model_size = model_args["model_size"]
-        self.model_size = args.model.split("_")[0]
-        self.conv_size = int(args.model.split("_")[1])
+        self.model_size = args.model.split("_")[1]
+        self.conv_size = 0
 
-        if self.model_size == "small":
-            self.feat_extr = torch.hub.load("facebookresearch/dinov2", "dinov2_vits14")
-        if self.model_size == "small_reg":
-            self.feat_extr = torch.hub.load(
-                "facebookresearch/dinov2", "dinov2_vits14_reg"
-            )
-        if self.model_size == "base":
-            self.feat_extr = torch.hub.load("facebookresearch/dinov2", "dinov2_vitb14")
-        # if self.model_size == "base":
-        #     self.feat_extr = torch.hub.load(
-        #         "/home/filip/pretrained_weights/", "vitl16_reg4_SimDINOv2_100ep.pth"
-        #     )
-        if self.model_size == "base_reg":
-            self.feat_extr = torch.hub.load(
-                "facebookresearch/dinov2", "dinov2_vitb14_reg"
-            )
-        if self.model_size == "large":
+        self.feat_extr = vits.__dict__[args.model](
+            drop_path_rate=0.0, num_classes=args.nb_classes
+        )
+        self.feat_extr = load_pretrained_weights(
+            self.feat_extr, args.finetune, ("model", "teacher"), 4
+        )
 
-            # def revert_block_chunk_weight(state_dict):
-            #     # convert blocks.chunkid.id.* to blocks.id.*: blocks.3.22. to blocks.22.
-            #     return {
-            #         re.sub(r"blocks\.(\d+)\.(\d+)\.", r"blocks.\2.", k): v
-            #         for k, v in state_dict.items()
-            #     }
-
-            # ckpt = torch.load(
-            #     "/home/filip/pretrained_weights/vitl16_reg4_SimDINOv2_100ep.pth",
-            #     map_location="cpu",
-            # )["teacher"]
-
-            # ckpt = {
-            #     k.removeprefix("backbone."): v
-            #     for k, v in ckpt.items()
-            #     if k.startswith("backbone")
-            # }
-            # ckpt = revert_block_chunk_weight(ckpt)
-            # # ckpt = timm.models.vision_transformer.checkpoint_filter_fn(ckpt, model)
-
-            # print(timm.list_models(pretrained=True))
-
-            # self.feat_extr = timm.models.vision_transformer.VisionTransformer(
-            #     embed_dim=1024,
-            #     depth=24,
-            #     num_heads=16,
-            #     mlp_ratio=4,
-            #     qkv_bias=True,
-            #     norm_layer=partial(nn.LayerNorm, eps=1e-6),
-            # )
-            # self.feat_extr.load_state_dict(ckpt)
-            self.feat_extr = torch.hub.load("facebookresearch/dinov2", "dinov2_vitl14")
-            # self.feat_extr.load_state_dict(
-            #     torch.load(
-            #         "/home/filip/pretrained_weights/vitl16_reg4_SimDINOv2_100ep.pth"
-            #     )
-            # )
-        # f self.model_size == "large":
-        #     self.feat_extr = torch.hub.load(
-        #         "/home/filip/pretrained_weights/",
-        #         "vitl16_reg4_SimDINOv2_100ep.pth",
-        #         source="local",
-        #     )i
         self.feat_extr.eval()  # type: ignore
         self.feat_extr.to(device)  # type: ignore
         self.device = device
