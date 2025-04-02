@@ -412,8 +412,9 @@ def main(args):
 
     cudnn.benchmark = True
 
-    dataset_train = build_fmow_dataset(is_train=True, args=args)
-    dataset_val = build_fmow_dataset(is_train=False, args=args)
+    dataset_train = build_fmow_dataset(is_train=True, data_split="train", args=args)
+    dataset_val = build_fmow_dataset(is_train=False, data_split="val", args=args)
+    dataset_test = build_fmow_dataset(is_train=False, data_split="test", args=args)
 
     num_tasks = misc.get_world_size()
     global_rank = misc.get_rank()
@@ -431,8 +432,13 @@ def main(args):
         sampler_val = DistributedSampler(
             dataset_val, num_replicas=num_tasks, rank=global_rank, shuffle=True
         )  # shuffle=True to reduce monitor bias
+
+        sampler_test = DistributedSampler(
+            dataset_test, num_replicas=num_tasks, rank=global_rank, shuffle=True
+        )  # shuffle=True to reduce monitor bias
     else:
         sampler_val = SequentialSampler(dataset_val)  # type: ignore
+        dataset_test = SequentialSampler(dataset_test)  # type: ignore
 
     if global_rank == 0 and args.log_dir is not None and not args.eval:
         os.makedirs(args.log_dir, exist_ok=True)
@@ -452,6 +458,15 @@ def main(args):
     data_loader_val = DataLoader(
         dataset_val,
         sampler=sampler_val,
+        batch_size=args.batch_size,
+        num_workers=args.num_workers,
+        pin_memory=args.pin_mem,
+        drop_last=False,
+    )
+
+    data_loader_test = DataLoader(
+        dataset_test,
+        sampler=sampler_test,
         batch_size=args.batch_size,
         num_workers=args.num_workers,
         pin_memory=args.pin_mem,
@@ -740,6 +755,7 @@ def main(args):
     start_time = time.time()
     max_accuracy = 0.0
     max_iou = 0.0
+    current_iou = 0.0
     # best_model = torch.clone(model)
     for epoch in range(args.start_epoch, args.epochs):
         # if args.distributed:
@@ -831,6 +847,18 @@ def main(args):
             test_stats, max_iou = evaluate_segmentation(
                 data_loader_val, model, device, epoch, max_iou, args
             )
+
+            if max_iou > current_iou:
+                current_iou = max_iou
+                print("Saving best model")
+                misc.save_best_model(
+                    args=args,
+                    model=model,
+                    model_without_ddp=model_without_ddp,
+                    optimizer=optimizer,
+                    loss_scaler=loss_scaler,
+                    epoch=epoch,
+                )
         else:
             test_stats = evaluate(data_loader_val, model, device)
 
@@ -848,17 +876,17 @@ def main(args):
             # )
 
             if log_writer is not None:
-                log_writer.add_scalar("perf/test_iou", test_stats["IoU"], epoch)
-                log_writer.add_scalar("perf/test_loss", test_stats["loss"], epoch)
+                log_writer.add_scalar("perf/val_iou", test_stats["IoU"], epoch)
+                log_writer.add_scalar("perf/val_loss", test_stats["loss"], epoch)
                 if (
                     args.dataset_type != "spacenet"
                     and args.dataset_type != "sen1floods11"
                     and args.dataset_type != "mass_roads"
                 ):
-                    log_writer.add_scalar("perf/test_f1", test_stats["f1"], epoch)
+                    log_writer.add_scalar("perf/val_f1", test_stats["f1"], epoch)
         else:
             print(
-                f"Accuracy of the network on the {len(dataset_val)} test images: {test_stats['acc1']:.1f}%"  # type: ignore
+                f"Accuracy of the network on the {len(dataset_val)} val images: {test_stats['acc1']:.1f}%"  # type: ignore
             )
             max_accuracy = max(max_accuracy, test_stats["acc1"])
             print(f"Max accuracy: {max_accuracy:.2f}%")
@@ -871,13 +899,13 @@ def main(args):
         if args.eval is False:
             log_stats = {
                 **{f"train_{k}": v for k, v in train_stats.items()},
-                **{f"test_{k}": v for k, v in test_stats.items()},
+                **{f"val_{k}": v for k, v in test_stats.items()},
                 "epoch": epoch,
                 "n_parameters": n_parameters,
             }
         else:
             log_stats = {
-                **{f"test_{k}": v for k, v in test_stats.items()},
+                **{f"val_{k}": v for k, v in test_stats.items()},
                 "epoch": epoch,
                 "n_parameters": n_parameters,
             }
@@ -895,6 +923,50 @@ def main(args):
                     wandb.log(log_stats)
                 except ValueError:
                     print("Invalid stats?")
+
+    misc.load_best_model(args, model)
+
+    test_stats, max_iou = evaluate_segmentation(
+        data_loader_test, model, device, epoch, max_iou, args
+    )
+
+    if log_writer is not None:
+        log_writer.add_scalar("perf/test_iou", test_stats["IoU"], epoch)
+        log_writer.add_scalar("perf/test_loss", test_stats["loss"], epoch)
+        if (
+            args.dataset_type != "spacenet"
+            and args.dataset_type != "sen1floods11"
+            and args.dataset_type != "mass_roads"
+        ):
+            log_writer.add_scalar("perf/test_f1", test_stats["f1"], epoch)
+
+    if args.eval is False:
+        log_stats = {
+            **{f"train_{k}": v for k, v in train_stats.items()},
+            **{f"test_{k}": v for k, v in test_stats.items()},
+            "epoch": epoch,
+            "n_parameters": n_parameters,
+        }
+    else:
+        log_stats = {
+            **{f"test_{k}": v for k, v in test_stats.items()},
+            "epoch": epoch,
+            "n_parameters": n_parameters,
+        }
+
+    if args.output_dir and misc.is_main_process():
+        if log_writer is not None:
+            log_writer.flush()
+        with open(
+            os.path.join(args.output_dir, "log.txt"), mode="a", encoding="utf-8"
+        ) as f:
+            f.write(json.dumps(log_stats) + "\n")
+
+        if args.wandb is not None:
+            try:
+                wandb.log(log_stats)
+            except ValueError:
+                print("Invalid stats?")
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))

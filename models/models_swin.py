@@ -57,7 +57,9 @@ class SwinModel(nn.Module):
     def forward(self, x):
         # x = self.encoder_forward(x)
         # x = self.decoder_upernet(x, conv_embeds)
-        features = self.swin_backbone(x)
+        chunks = torch.split(x, [3, 7], dim=1)
+
+        features = self.swin_backbone(chunks[0])
         # x = self.encoder_forward(x)
         x = self.decoder_upernet(features["feature_maps"])
         # new_features = []

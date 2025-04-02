@@ -23,12 +23,91 @@ from timm.utils import accuracy
 from torch import device
 from torch.nn import Module
 from torch.optim.optimizer import Optimizer
-from torchmetrics import Accuracy, F1Score, JaccardIndex
+from torchmetrics import Accuracy, F1Score, JaccardIndex, Metric
 
 import util.lr_sched as lr_sched
 import util.misc as misc
 from util.misc import NativeScalerWithGradNormCount as NativeScaler
 from util.visualize_features import visualize_features
+
+
+class SegPangaea(Metric):
+    """
+    SegPangaea is a class for evaluating segmentation models using a confusion matrix approach.
+
+    Attributes:
+        num_classes (int): Number of classes in the segmentation task
+        ignore_index (int): Index value to ignore when computing metrics
+        confusion_matrix (torch.Tensor): Matrix of shape (num_classes, num_classes) to store predictions
+
+    Methods:
+        update(pred, gt):
+            Updates the confusion matrix with new predictions and ground truth.
+            Args:
+                pred (torch.Tensor): Model predictions
+                gt (dict): Dictionary containing ground truth labels under 'label' key
+
+        compute():
+            Computes various metrics from the accumulated confusion matrix.
+            Returns:
+                dict: Dictionary containing the following metrics:
+                    - mIoU: Mean Intersection over Union across all classes
+                    - mF1: Mean F1 score across all classes
+                    - mAcc: Mean pixel accuracy
+    """
+
+    def __init__(self, num_classes, ignore_index):
+        self.num_classes = num_classes
+        self.ignore_index = ignore_index
+        self.confusion_matrix = torch.zeros(num_classes, num_classes)
+
+    def update(self, pred, gt):
+        label = gt.flatten(1, 2)
+        pred = pred.flatten(1, 2)
+        valid_mask = label != self.ignore_index
+        pred, target = pred[valid_mask], label[valid_mask]
+        count = torch.bincount(
+            (pred * self.num_classes + target), minlength=self.num_classes**2
+        )
+        self.confusion_matrix = self.confusion_matrix.to(pred.device)
+        self.confusion_matrix += count.view(self.num_classes, self.num_classes)
+
+    def compute(self):
+        # Calculate IoU for each class
+        intersection = torch.diag(self.confusion_matrix)
+        union = (
+            self.confusion_matrix.sum(dim=1)
+            + self.confusion_matrix.sum(dim=0)
+            - intersection
+        )
+        iou = intersection / (union + 1e-6)
+
+        # Calculate precision and recall for each class
+        precision = intersection / (self.confusion_matrix.sum(dim=0) + 1e-6)
+        recall = intersection / (self.confusion_matrix.sum(dim=1) + 1e-6)
+
+        # Calculate F1-score for each class
+        f1 = 2 * (precision * recall) / (precision + recall + 1e-6)
+
+        # Calculate mean IoU, mean F1-score, and mean Accuracy
+        miou = iou.mean().item()
+        mf1 = f1.mean().item()
+        macc = (intersection.sum() / (self.confusion_matrix.sum() + 1e-6)).item()
+
+        # Convert metrics to CPU and to Python scalars
+        iou = iou.cpu()
+        f1 = f1.cpu()
+        precision = precision.cpu()
+        recall = recall.cpu()
+
+        # Prepare the metrics dictionary
+        metrics = {
+            "mIoU": miou,
+            "mF1": mf1,
+            "mAcc": macc,
+        }
+
+        return metrics
 
 
 def get_bce_loss(pred, mask):
@@ -43,7 +122,8 @@ def get_bce_loss(pred, mask):
 
 def get_bce_loss_ignore(pred, mask):
     # print(pred.unique(), mask.unique())
-    bce = F.cross_entropy(pred, mask)
+    # m = F.sigmoid(pred)
+    bce = F.cross_entropy(pred, mask.long(), ignore_index=0)
     # print(bce)
     # m = nn.Sigmoid()
     # pred = pred.argmax(1)
@@ -300,7 +380,8 @@ def train_one_epoch_segmentation(
     if args.dataset_type == "spacenet" or args.dataset_type == "mass_roads":  # type: ignore
         miou_metric = JaccardIndex(task="multiclass", num_classes=args.nb_classes)  # type: ignore
     elif args.dataset_type == "sen1floods11":  # type: ignore
-        miou_metric = JaccardIndex(task="multiclass", num_classes=args.nb_classes, ignore_index=0, average="micro")  # type: ignore
+        miou_metric = JaccardIndex(task="multiclass", num_classes=args.nb_classes, average="micro", ignore_index=0)  # type: ignore
+        # miou_metric = SegPangaea(num_classes=args.nb_classes, ignore_index=0)
     elif args.dataset_type == "isaid":
         miou_metric = JaccardIndex(
             task="multiclass",
@@ -346,7 +427,7 @@ def train_one_epoch_segmentation(
         f1_score = f1_score.to(device)
         miou_metric_2 = miou_metric_2.to(device)
         overall_accuracy = overall_accuracy.to(device)
-    miou_metric = miou_metric.to(device)
+    # miou_metric = miou_metric.to(device)
 
     if epoch == 0:
         if not os.path.exists(
@@ -397,6 +478,8 @@ def train_one_epoch_segmentation(
         # else:
         data = batch[0].to(device, non_blocking=True)
         mask = batch[-1].to(device, non_blocking=True)
+        # if args.dataset_type == "sen1floods11":
+        #     data_ms = batch[1].to(device, non_blocking=True)
 
         # print(mask.unique())
 
@@ -406,11 +489,13 @@ def train_one_epoch_segmentation(
             #     pred, _ = model((data_rgb, data_depth))
             # else:
             pred, _ = model(data)
+            # if args.dataset_type == "sen1floods11":
+            #     pred_ms, _ = model(data, data_ms)
 
             if args.dataset_type == "loveda" or args.dataset_type == "vaihingen" or args.dataset_type == "potsdam":  # type: ignore
                 mask = mask.squeeze(1)
 
-            if args.dataset_type != "sen1floods11" and args.dataset_type != "isaid":
+            if args.dataset_type != "isaid":
                 mask_one_hot = F.one_hot(mask, num_classes=args.nb_classes).permute(  # type: ignore
                     0, 3, 1, 2
                 )
@@ -423,7 +508,7 @@ def train_one_epoch_segmentation(
             # print(loss_value)
             # dice_loss = DiceLoss()
             # loss_2 = dice_loss(pred, mask_one_hot.float())
-            miou_metric.update(pred.argmax(1), mask)
+            # miou_metric.update(pred.argmax(1), mask)
             if args.dataset_type != "spacenet" and args.dataset_type != "sen1floods11" and args.dataset_type != "mass_roads":  # type: ignore
                 miou_metric_2.update(pred.argmax(1), mask)
                 f1_score.update(pred.argmax(1), mask)
@@ -480,11 +565,7 @@ def train_one_epoch_segmentation(
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
     if args.dataset_type == "spacenet" or args.dataset_type == "sen1floods11" or args.dataset_type == "mass_roads":  # type: ignore
-        print(
-            "* IoU {iou:.4f} loss {losses.global_avg:.4f}".format(
-                iou=miou_metric.compute(), losses=metric_logger.loss
-            )
-        )
+        print("* loss {losses.global_avg:.4f}".format(losses=metric_logger.loss))
     else:
         print(
             "* IoU {iou:.4f} ioU 2 {iou2:.4f} F1 {f1:.4f} OA {oa:.4f} loss {losses.global_avg:.4f}".format(
@@ -657,7 +738,8 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
     if args.dataset_type == "spacenet" or args.dataset_type == "mass_roads":  # type: ignore
         miou_metric = JaccardIndex(task="multiclass", num_classes=args.nb_classes)  # type: ignore
     elif args.dataset_type == "sen1floods11":  # type: ignore
-        miou_metric = JaccardIndex(task="multiclass", num_classes=args.nb_classes, ignore_index=0, average="micro")  # type: ignore
+        miou_metric = JaccardIndex(task="multiclass", num_classes=args.nb_classes, average="micro", ignore_index=0)  # type: ignore
+        # miou_metric = SegPangaea(num_classes=args.nb_classes, ignore_index=0)
     elif args.dataset_type == "isaid":
         miou_metric = JaccardIndex(
             task="multiclass",
@@ -805,7 +887,7 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
     elif args.dataset_type == "potsdam":
         print("miou test: " + str(miou_test * args.world_size / 2016))
     elif args.dataset_type == "sen1floods11":
-        print("miou test: " + str(miou_test * args.world_size / 90))
+        print("miou test: " + str(miou_test * args.world_size / 89))
     elif args.dataset_type == "isaid":
         print("miou test: " + str(miou_test * args.world_size / 11644))
     elif args.dataset_type == "mass_roads":
@@ -813,6 +895,7 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
 
     # gather the stats from all processes
     miou = miou_metric.compute().item()
+
     if (
         args.dataset_type != "spacenet"
         and args.dataset_type != "sen1floods11"
@@ -923,7 +1006,7 @@ def save_results(mask, pred, device, epoch, cnt, miou_test, args):
     if args.dataset_type == "spacenet":  # type: ignore
         miou_temp = JaccardIndex(task="multiclass", num_classes=args.nb_classes)  # type: ignore
     elif args.dataset_type == "sen1floods11":  # type: ignore
-        miou_temp = JaccardIndex(task="multiclass", num_classes=args.nb_classes, ignore_index=0, average="micro")  # type: ignore
+        miou_temp = JaccardIndex(task="multiclass", num_classes=args.nb_classes, average="micro")  # type: ignore
     else:
         miou_temp = JaccardIndex(
             task="multiclass", num_classes=args.nb_classes, average="micro"

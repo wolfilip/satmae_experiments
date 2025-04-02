@@ -39,7 +39,7 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         # for param in self.patch_embed.parameters():
         #     param.requires_grad = False
 
-        self.conv_size = 256
+        self.conv_size = 0
 
         feature_channels = [
             self.embed_dim + self.conv_size,
@@ -250,10 +250,13 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         return x
 
     def forward(self, x):
+
+        chunks = torch.split(x, [3, 7], dim=1)
+
         conv_embeds = 0
         if self.conv_size > 0:
             conv_embeds = self.encoder_conv(x)
-        features = self.encoder_forward(x)
+        features = self.encoder_forward(chunks[0])
         # x = self.decoder_upernet(features, conv_embeds)
         # x = self.encoder_forward(x)
         # print(x.shape, features[0].shape, conv_embeds.shape)

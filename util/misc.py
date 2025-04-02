@@ -389,6 +389,30 @@ def save_model(args, epoch, model, model_without_ddp, optimizer, loss_scaler):
         )
 
 
+def save_best_model(args, epoch, model, model_without_ddp, optimizer, loss_scaler):
+    output_dir = Path(args.output_dir)
+    epoch_name = "best_model_checkpoint"
+    if loss_scaler is not None:
+        checkpoint_paths = [output_dir / ("%s.pth" % epoch_name)]
+        for checkpoint_path in checkpoint_paths:
+            to_save = {
+                "model": model_without_ddp.state_dict(),
+                "optimizer": optimizer.state_dict(),
+                "epoch": epoch,
+                "scaler": loss_scaler.state_dict(),
+                "args": args,
+            }
+
+            save_on_master(to_save, checkpoint_path)
+    else:
+        client_state = {"epoch": epoch}
+        model.save_checkpoint(
+            save_dir=args.output_dir,
+            tag="checkpoint-%s" % epoch_name,
+            client_state=client_state,
+        )
+
+
 def load_model(args, model_without_ddp, optimizer, loss_scaler):
     if args.resume:
         if args.resume.startswith("https"):
@@ -411,6 +435,15 @@ def load_model(args, model_without_ddp, optimizer, loss_scaler):
             if "scaler" in checkpoint:
                 loss_scaler.load_state_dict(checkpoint["scaler"])
             print("With optim & sched!")
+
+
+def load_best_model(args, model):
+
+    checkpoint = torch.load(
+        args.output_dir + "best_model_checkpoint.pth", map_location="cpu"
+    )
+
+    model.load_state_dict(checkpoint["model"], strict=False)
 
 
 def all_reduce_mean(x):

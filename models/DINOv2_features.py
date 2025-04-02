@@ -7,6 +7,10 @@ import torch.nn.functional as F
 from UPerNet.UPerNetHead import UperNetHead
 from functools import partial
 
+from transformers.models.mask2former.modeling_mask2former import (
+    Mask2FormerForUniversalSegmentation,
+)
+
 
 class DINOv2(nn.Module):
 
@@ -80,7 +84,7 @@ class DINOv2(nn.Module):
         self.feat_extr.eval()  # type: ignore
         self.feat_extr.to(device)  # type: ignore
         self.device = device
-        self.patch_size = 16
+        self.patch_size = 14
 
         # upernet stuff
         if self.model_size == "small":
@@ -93,6 +97,8 @@ class DINOv2(nn.Module):
             self.embed_dim = 768
             feature_channels = [
                 self.embed_dim + self.conv_size,
+                self.embed_dim,
+                self.embed_dim,
                 self.embed_dim,
             ]
         else:
@@ -176,11 +182,21 @@ class DINOv2(nn.Module):
         #     self.embed_dim, self.num_patches, self.num_patches, args.nb_classes
         # )
 
+        self.swin_encoder = Mask2FormerForUniversalSegmentation.from_pretrained(
+            "facebook/mask2former-swin-large-cityscapes-semantic"
+        ).model.pixel_level_module.encoder
+
+        self.swin_encoder.to(device)
+
+        self.linear_layer = nn.Linear(7, 3)
+
+        self.linear_layer.to(device)
+
         if self.conv_size == 32:
             self.conv_layers = nn.Sequential(
                 # Conv1: Input [B, 3, 224, 224] -> Output [B, 64, 112, 112]
                 nn.Conv2d(
-                    in_channels=3, out_channels=16, kernel_size=7, stride=2, padding=3
+                    in_channels=7, out_channels=16, kernel_size=7, stride=2, padding=3
                 ),  # Kernel size 7x7, stride 2, padding 3
                 nn.BatchNorm2d(16),
                 nn.ReLU(),
@@ -201,7 +217,7 @@ class DINOv2(nn.Module):
             self.conv_layers = nn.Sequential(
                 # Conv1: Input [B, 3, 224, 224] -> Output [B, 64, 112, 112]
                 nn.Conv2d(
-                    in_channels=3, out_channels=64, kernel_size=7, stride=2, padding=3
+                    in_channels=7, out_channels=64, kernel_size=7, stride=2, padding=3
                 ),  # Kernel size 7x7, stride 2, padding 3
                 nn.BatchNorm2d(64),
                 nn.ReLU(),
@@ -262,7 +278,7 @@ class DINOv2(nn.Module):
             else:
                 # if self.layer_num == "last":
                 if self.model_size == "base" or self.model_size == "small":
-                    patch = self.feat_extr.get_intermediate_layers(imgs, (3, 11))  # type: ignore
+                    patch = self.feat_extr.get_intermediate_layers(imgs, (3, 5, 8, 11))  # type: ignore
                 else:
                     patch = self.feat_extr.get_intermediate_layers(imgs, (3, 9, 17, 23))  # type: ignore
                 out = patch
@@ -296,29 +312,21 @@ class DINOv2(nn.Module):
         new_features.append(
             features[1].reshape(-1, self.num_patches, self.num_patches, self.embed_dim)
         )
-        if self.model_size == "large":
-            new_features.append(
-                features[2].reshape(
-                    -1, self.num_patches, self.num_patches, self.embed_dim
-                )
-            )
-            new_features.append(
-                features[3].reshape(
-                    -1, self.num_patches, self.num_patches, self.embed_dim
-                )
-            )
+        new_features.append(
+            features[2].reshape(-1, self.num_patches, self.num_patches, self.embed_dim)
+        )
+        new_features.append(
+            features[3].reshape(-1, self.num_patches, self.num_patches, self.embed_dim)
+        )
 
         new_features[0] = torch.permute(new_features[0], (0, 3, 1, 2))
         new_features[1] = torch.permute(new_features[1], (0, 3, 1, 2))
-        if self.model_size == "large":
-            new_features[2] = torch.permute(new_features[2], (0, 3, 1, 2))
-            new_features[3] = torch.permute(new_features[3], (0, 3, 1, 2))
-        # features[4] = torch.permute(features[4], (0, 3, 1, 2))
+        new_features[2] = torch.permute(new_features[2], (0, 3, 1, 2))
+        new_features[3] = torch.permute(new_features[3], (0, 3, 1, 2))
 
-        if self.model_size == "large":
-            new_features[-1] = F.interpolate(
-                new_features[-1], scale_factor=0.5, mode="bilinear", align_corners=True
-            )
+        new_features[-1] = F.interpolate(
+            new_features[-1], scale_factor=0.5, mode="bilinear", align_corners=True
+        )
         # features[2] = self.up_1(features[2])
         new_features[1] = self.up_1(new_features[1])
         new_features[0] = self.up_2(new_features[0])
@@ -345,14 +353,19 @@ class DINOv2(nn.Module):
         return x
 
     def forward(self, x):
-        conv_embeds = 0
-        if self.conv_size > 0:
-            conv_embeds = self.encoder_conv(x)
+
+        chunks = torch.split(x, [3, 7], dim=1)
+
+        swin_embeds = self.swin_encoder(self.linear_layer(chunks[1]))
+
+        # conv_embeds = 0
+        # if self.conv_size > 0:
+        #     conv_embeds = self.encoder_conv(chunks[1])
         # x = self.encoder_forward(x)
         # x = self.decoder_upernet(x, conv_embeds)
-        features = self.get_features(x)
+        features = self.get_features(chunks[0])
         # x = self.encoder_forward(x)
-        x = self.decoder_upernet(features, conv_embeds)
+        x = self.decoder_upernet(features, swin_embeds)
         # new_features = []
 
         # new_features.append(
