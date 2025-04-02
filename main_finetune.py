@@ -571,6 +571,8 @@ def main(args):
             global_pool=args.global_pool,
         )
 
+    model = torch.compile(model)
+
     if args.finetune and args.model_type != "swin" and "simdino" not in args.model_type:
         checkpoint = torch.load(args.finetune, map_location="cpu")
         # print(checkpoint_model)
