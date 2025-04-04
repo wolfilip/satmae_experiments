@@ -8,8 +8,19 @@ from UPerNet.UPerNetHead import UperNetHead
 from functools import partial
 
 from transformers.models.mask2former.modeling_mask2former import (
+    Mask2FormerConfig,
     Mask2FormerForUniversalSegmentation,
 )
+
+from transformers import (
+    AutoModelForImageClassification,
+    AutoFeatureExtractor,
+    AutoModel,
+)
+
+from torchvision import models as torchvision_models
+
+from util.LiFT_module import LiFT
 
 
 class DINOv2(nn.Module):
@@ -96,7 +107,7 @@ class DINOv2(nn.Module):
         elif self.model_size == "base":
             self.embed_dim = 768
             feature_channels = [
-                self.embed_dim + self.conv_size,
+                self.embed_dim + 96,
                 self.embed_dim,
                 self.embed_dim,
                 self.embed_dim,
@@ -143,27 +154,19 @@ class DINOv2(nn.Module):
 
         self.upernet_head = UperNetHead(config, feature_channels)
 
-        if self.conv_size > 0:
-            if args.dataset_type == "spacenet":
-                self.up = nn.Upsample(
-                    size=(64, 64), mode="bilinear", align_corners=True
-                )
-            elif (
-                args.dataset_type == "sen1floods11"
-                or args.dataset_type == "vaihingen"
-                or args.dataset_type == "potsdam"
-            ):
-                self.up = nn.Upsample(
-                    size=(144, 144), mode="bilinear", align_corners=True
-                )
-            elif args.dataset_type == "isaid":
-                self.up = nn.Upsample(
-                    size=(256, 256), mode="bilinear", align_corners=True
-                )
-            elif args.dataset_type == "mass_roads":
-                self.up = nn.Upsample(
-                    size=(428, 428), mode="bilinear", align_corners=True
-                )
+        # if self.conv_size > 0:
+        if args.dataset_type == "spacenet":
+            self.up = nn.Upsample(size=(64, 64), mode="bilinear", align_corners=True)
+        elif (
+            args.dataset_type == "sen1floods11"
+            or args.dataset_type == "vaihingen"
+            or args.dataset_type == "potsdam"
+        ):
+            self.up = nn.Upsample(size=(144, 144), mode="bilinear", align_corners=True)
+        elif args.dataset_type == "isaid":
+            self.up = nn.Upsample(size=(256, 256), mode="bilinear", align_corners=True)
+        elif args.dataset_type == "mass_roads":
+            self.up = nn.Upsample(size=(428, 428), mode="bilinear", align_corners=True)
             # elif  args.dataset_type == "rgb":
 
         # self.conv = nn.Conv2d(
@@ -182,15 +185,44 @@ class DINOv2(nn.Module):
         #     self.embed_dim, self.num_patches, self.num_patches, args.nb_classes
         # )
 
-        self.swin_encoder = Mask2FormerForUniversalSegmentation.from_pretrained(
-            "facebook/mask2former-swin-large-cityscapes-semantic"
-        ).model.pixel_level_module.encoder
+        # config = Mask2FormerConfig()
+        # mask2former_model = Mask2FormerForUniversalSegmentation(config)
+        # self.swin_encoder = mask2former_model.model.pixel_level_module.encoder
+
+        self.swin_encoder = AutoModel.from_pretrained(
+            "microsoft/swin-tiny-patch4-window7-224"
+        )
+
+        # print(sum(p.numel() for p in self.swin_encoder.parameters() if p.requires_grad))
+
+        # self.swin_encoder = Mask2FormerForUniversalSegmentation.from_pretrained(
+        #     "facebook/mask2former-swin-tiny-cityscapes-semantic"
+        # ).model.pixel_level_module.encoder
+
+        # self.swin_encoder = torchvision_models.__dict__["swin_t"]().features
 
         self.swin_encoder.to(device)
 
-        self.linear_layer = nn.Linear(7, 3)
+        self.linear_7_to_3 = nn.Conv2d(in_channels=7, out_channels=3, kernel_size=1)
 
-        self.linear_layer.to(device)
+        self.linear_7_to_3.to(device)
+
+        lift_path = "/home/filip/lift/output/lift_sen1floods11_ms/dino_vits16_0.001_cosine_aug_256/lift.pth"
+
+        self.lift = LiFT(384, 16)
+        state_dict = torch.load(lift_path)
+        self.lift.eval()
+
+        for k in list(state_dict.keys()):
+            if k.startswith("module."):
+                state_dict[k[7:]] = state_dict[k]
+                del state_dict[k]
+
+        self.lift.load_state_dict(state_dict)
+        self.lift.to("cuda")
+        print("Loaded LiFT module from: " + lift_path)
+
+        self.linear_transform = nn.Linear(768, 384)
 
         if self.conv_size == 32:
             self.conv_layers = nn.Sequential(
@@ -318,11 +350,13 @@ class DINOv2(nn.Module):
         new_features.append(
             features[3].reshape(-1, self.num_patches, self.num_patches, self.embed_dim)
         )
+        swin_embeds = conv_embeds[0].reshape(-1, 128, 128, 96)
 
         new_features[0] = torch.permute(new_features[0], (0, 3, 1, 2))
         new_features[1] = torch.permute(new_features[1], (0, 3, 1, 2))
         new_features[2] = torch.permute(new_features[2], (0, 3, 1, 2))
         new_features[3] = torch.permute(new_features[3], (0, 3, 1, 2))
+        swin_embeds = torch.permute(swin_embeds, (0, 3, 1, 2))
 
         new_features[-1] = F.interpolate(
             new_features[-1], scale_factor=0.5, mode="bilinear", align_corners=True
@@ -330,11 +364,14 @@ class DINOv2(nn.Module):
         # features[2] = self.up_1(features[2])
         new_features[1] = self.up_1(new_features[1])
         new_features[0] = self.up_2(new_features[0])
+
+        new_features[0] = torch.cat((new_features[0], self.up(swin_embeds)), 1)
+
         if self.conv_size > 0:
             new_features[0] = torch.cat((new_features[0], conv_embeds), 1)
-            # new_features[1] = torch.cat((new_features[1], conv_1), 1)
-            # new_features[2] = torch.cat((new_features[2], conv_2), 1)
-            # new_features[3] = torch.cat((new_features[3], conv_3), 1)
+        # new_features[1] = torch.cat((new_features[1], conv_1), 1)
+        # new_features[2] = torch.cat((new_features[2], conv_2), 1)
+        # new_features[3] = torch.cat((new_features[3], conv_3), 1)
 
         # features[0] = features[0] + conv_embeds
 
@@ -356,16 +393,23 @@ class DINOv2(nn.Module):
 
         chunks = torch.split(x, [3, 7], dim=1)
 
-        swin_embeds = self.swin_encoder(self.linear_layer(chunks[1]))
+        # bla = self.linear_layer(chunks[1])
 
-        # conv_embeds = 0
-        # if self.conv_size > 0:
-        #     conv_embeds = self.encoder_conv(chunks[1])
+        # swin_embeds = self.swin_encoder(
+        #     self.linear_7_to_3(chunks[1]), output_hidden_states=True
+        # ).hidden_states
+        # swin_embeds = 0
+
+        conv_embeds = 0
+        if self.conv_size > 0:
+            conv_embeds = self.encoder_conv(chunks[1])
         # x = self.encoder_forward(x)
         # x = self.decoder_upernet(x, conv_embeds)
         features = self.get_features(chunks[0])
+        with torch.no_grad():
+            features[0] = self.lift(chunks[1], self.linear_transform(features[0]))
         # x = self.encoder_forward(x)
-        x = self.decoder_upernet(features, swin_embeds)
+        x = self.decoder_upernet(features, features)
         # new_features = []
 
         # new_features.append(

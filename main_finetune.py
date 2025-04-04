@@ -571,7 +571,7 @@ def main(args):
             global_pool=args.global_pool,
         )
 
-    model = torch.compile(model)
+    # model = torch.compile(model, dynamic=False)
 
     if args.finetune and args.model_type != "swin" and "simdino" not in args.model_type:
         checkpoint = torch.load(args.finetune, map_location="cpu")
@@ -927,6 +927,8 @@ def main(args):
                     print("Invalid stats?")
 
     misc.load_best_model(args, model)
+
+    epoch = -1
 
     test_stats, max_iou = evaluate_segmentation(
         data_loader_test, model, device, epoch, max_iou, args

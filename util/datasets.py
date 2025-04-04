@@ -678,7 +678,9 @@ class Sen1Floods11Dataset(Dataset):
         # timestamp = self._get_date(index)
 
         # s2_image_rgb = torch.from_numpy(s2_image).float()[[3, 2, 7]]
-        s2_image = torch.from_numpy(s2_image).float()[[3, 2, 1, 4, 5, 6, 7, 8, 11, 12]]
+        s2_image_ms = torch.from_numpy(s2_image).float()[
+            [3, 2, 1, 4, 5, 6, 7, 8, 11, 12]
+        ]
         # s1_image = torch.from_numpy(s1_image).float()
         # ratio_band = s1_image[:1, :, :] / (s1_image[1:, :, :] + 1e-10)
         # ratio_band = torch.clamp(ratio_band, max=1e4, min=-1e4)
@@ -687,7 +689,7 @@ class Sen1Floods11Dataset(Dataset):
 
         output = {
             # "s2": s2_image_rgb,
-            "s2": s2_image,
+            "s2": s2_image_ms,
             # "s2_rest": s2_image_rest,
             # "s1": s1_image.unsqueeze(0),
             "label": target,
@@ -730,7 +732,7 @@ class Sen1Floods11Dataset(Dataset):
         return (
             output["s2"].squeeze(0),
             # output["s2"].squeeze(0)[4, 5, 6, 7, 8, 11, 12],
-            # torch.from_numpy(s2_image).float()[[3, 2, 1]],
+            torch.from_numpy(s2_image).float()[[3, 2, 1]],
             output["label"].squeeze(0).squeeze(0).long() + 1,
         )
 

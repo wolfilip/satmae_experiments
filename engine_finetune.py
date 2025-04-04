@@ -910,7 +910,7 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
     if args.save_images:
         cnt = 0
         if args.best_epoch:
-            if miou > max_iou and epoch > 10:
+            if (miou > max_iou and epoch > 10) or epoch == -1:
                 for batch in data_loader:
                     data = batch[0]
                     if args.dataset_type == "sen1floods11":
@@ -1006,7 +1006,7 @@ def save_results(mask, pred, device, epoch, cnt, miou_test, args):
     if args.dataset_type == "spacenet":  # type: ignore
         miou_temp = JaccardIndex(task="multiclass", num_classes=args.nb_classes)  # type: ignore
     elif args.dataset_type == "sen1floods11":  # type: ignore
-        miou_temp = JaccardIndex(task="multiclass", num_classes=args.nb_classes, average="micro")  # type: ignore
+        miou_temp = JaccardIndex(task="multiclass", num_classes=args.nb_classes, average="micro", ignore_index=0)  # type: ignore
     else:
         miou_temp = JaccardIndex(
             task="multiclass", num_classes=args.nb_classes, average="micro"

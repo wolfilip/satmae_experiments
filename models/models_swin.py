@@ -17,7 +17,7 @@ class SwinModel(nn.Module):
         super().__init__()
 
         self.swin_backbone = Mask2FormerForUniversalSegmentation.from_pretrained(
-            "facebook/mask2former-swin-large-cityscapes-semantic"
+            "facebook/mask2former-swin-tiny-cityscapes-semantic"
         ).model.pixel_level_module.encoder
 
         self.swin_backbone.to(device)

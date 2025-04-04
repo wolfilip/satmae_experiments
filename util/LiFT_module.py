@@ -1,5 +1,12 @@
+"""
+LiFT Module for ViT feature upsampling.
+
+Code by: Saksham Suri and Matthew Walmer
+"""
+
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 
 class DoubleConv(nn.Module):
@@ -37,6 +44,21 @@ class Up(nn.Module):
         return x
 
 
+"""
+in_channels: number of channels in the features from the ViT backbone
+
+patch_size: size of patches used by the ViT backbone
+
+pre_shape: enable/disable reshaping of feature inputs, altering the expected input shape 
+    True - will accept input shape [B, T, C] (ViT standard), which it will convert to [B, C, H, W]
+    False - will accept input shape [B, C, H, W], conversion already performed
+
+post_shape: enable/disable reshaping of feature outputs
+    True - will return output in shape [B, T, C] (ViT standard)
+    False - will return output in shape [B, C, H, W]
+"""
+
+
 class LiFT(nn.Module):
     def __init__(self, in_channels, patch_size, pre_shape=True, post_shape=True):
         super(LiFT, self).__init__()
@@ -47,7 +69,7 @@ class LiFT(nn.Module):
         self.up1 = Up(in_channels + 32, in_channels)
         self.outc = nn.Conv2d(in_channels // 2, in_channels, kernel_size=1)
         self.image_convs_1 = nn.Sequential(
-            nn.Conv2d(3, 32, kernel_size=3, padding=1, stride=2),
+            nn.Conv2d(7, 32, kernel_size=3, padding=1, stride=2),
             nn.BatchNorm2d(32),
             nn.ReLU(inplace=True),
             nn.Conv2d(32, 32, kernel_size=3, padding=1, stride=2),
