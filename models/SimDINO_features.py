@@ -9,6 +9,7 @@ from functools import partial
 
 from models.simdino_models.utils import load_pretrained_weights
 from .simdino_models import vision_transformer as vits
+from torchvision import models as torchvision_models
 
 
 class SimDINO(nn.Module):
@@ -19,26 +20,28 @@ class SimDINO(nn.Module):
         self.model_size = args.model.split("_")[1]
         self.conv_size = 0
 
-        self.feat_extr = vits.__dict__[args.model](
-            patch_size=args.patch_size, num_classes=0
-        )
+        # self.feat_extr = vits.__dict__[args.model](
+        #     patch_size=args.patch_size, num_classes=0
+        # )
+        self.feat_extr = torchvision_models.__dict__[args.model]()
+
         load_pretrained_weights(
             self.feat_extr, args.finetune, "teacher", args.model, 16
         )
 
-        self.feat_extr.eval()  # type: ignore
+        # self.feat_extr.eval()  # type: ignore
         self.feat_extr.to(device)  # type: ignore
         self.device = device
         self.patch_size = 16
 
         # upernet stuff
-        if self.model_size == "small":
+        if self.model_size == "small" or self.model_size == "s":
             self.embed_dim = 384
             feature_channels = [
                 self.embed_dim + self.conv_size,
                 self.embed_dim,
             ]
-        elif self.model_size == "base":
+        elif self.model_size == "base" or self.model_size == "b":
             self.embed_dim = 768
             feature_channels = [
                 self.embed_dim + self.conv_size,
@@ -52,6 +55,9 @@ class SimDINO(nn.Module):
                 self.embed_dim,
                 self.embed_dim,
             ]
+
+        if "swin" in args.model:
+            feature_channels = [128, 256, 512, 1024]
 
         fpn_out = self.embed_dim + self.conv_size
         self.input_size = (args.input_size, args.input_size)
@@ -126,31 +132,48 @@ class SimDINO(nn.Module):
         # )
 
         if self.conv_size == 32:
+            # Commenting out the original self.conv_layers definition
             self.conv_layers = nn.Sequential(
-                # Conv1: Input [B, 3, 224, 224] -> Output [B, 64, 112, 112]
                 nn.Conv2d(
-                    in_channels=3, out_channels=16, kernel_size=7, stride=2, padding=3
-                ),  # Kernel size 7x7, stride 2, padding 3
+                    in_channels=7, out_channels=16, kernel_size=7, stride=2, padding=3
+                ),
                 nn.BatchNorm2d(16),
                 nn.ReLU(),
-                # Conv2: Input [B, 64, 112, 112] -> Output [B, 128, 56, 56]
                 nn.Conv2d(
                     in_channels=16, out_channels=32, kernel_size=3, stride=2, padding=1
-                ),  # Kernel size 3x3, stride 2, padding 1
+                ),
                 nn.BatchNorm2d(32),
                 nn.ReLU(),
-                # nn.Conv2d(
-                #     in_channels=32, out_channels=64, kernel_size=3, stride=2, padding=1
-                # ),  # Kernel size 3x3, stride 2, padding 1
-                # nn.BatchNorm2d(64),
-                # nn.ReLU(),
-                # nn.Upsample(size=(144, 144), mode="bilinear", align_corners=False),
             )
+
+            # Adding the new function to reduce image size by four
+            # self.conv_layers = nn.Sequential(
+            #     nn.Conv2d(
+            #         in_channels=7, out_channels=16, kernel_size=3, stride=2, padding=1
+            #     ),
+            #     nn.BatchNorm2d(16),
+            #     nn.ReLU(),
+            #     nn.Conv2d(
+            #         in_channels=16, out_channels=32, kernel_size=3, stride=2, padding=1
+            #     ),
+            #     nn.BatchNorm2d(32),
+            #     nn.ReLU(),
+            #     nn.Conv2d(
+            #         in_channels=32, out_channels=64, kernel_size=3, stride=2, padding=1
+            #     ),
+            #     nn.BatchNorm2d(64),
+            #     nn.ReLU(),
+            #     nn.Conv2d(
+            #         in_channels=64, out_channels=128, kernel_size=3, stride=2, padding=1
+            #     ),
+            #     nn.BatchNorm2d(128),
+            #     nn.ReLU(),
+            # )
         elif self.conv_size == 256:
             self.conv_layers = nn.Sequential(
                 # Conv1: Input [B, 3, 224, 224] -> Output [B, 64, 112, 112]
                 nn.Conv2d(
-                    in_channels=3, out_channels=64, kernel_size=7, stride=2, padding=3
+                    in_channels=7, out_channels=64, kernel_size=7, stride=2, padding=3
                 ),  # Kernel size 7x7, stride 2, padding 3
                 nn.BatchNorm2d(64),
                 nn.ReLU(),
@@ -225,12 +248,29 @@ class SimDINO(nn.Module):
         #     pass
         return out
 
+    def forward_swin(self, x):
+        # with torch.no_grad():
+        features = []
+        for i, layer in enumerate(self.feat_extr.features):
+            x = layer(x)
+            if i in [1, 3, 5, 7]:  # Specify the layers you want to extract
+                features.append(x)
+        return features
+
     def encoder_conv(self, x):
 
         conv_embeds = self.conv_layers(x)
-        conv_embeds = self.up(conv_embeds)
+        # conv_embeds = self.up(conv_embeds)
 
         return conv_embeds
+
+    def decoder_upernet_swin(self, swin_embeds, conv_embeds=None):
+
+        x = self.upernet_head(swin_embeds)
+
+        x = F.interpolate(x, size=self.input_size, mode="bilinear", align_corners=False)
+
+        return x
 
     def decoder_upernet(self, features, conv_embeds):
 
@@ -286,14 +326,26 @@ class SimDINO(nn.Module):
         return x
 
     def forward(self, x):
+
+        # chunks = torch.split(x, [3, 7], dim=1)
         conv_embeds = 0
         if self.conv_size > 0:
-            conv_embeds = self.encoder_conv(x)
+            conv_embeds = self.encoder_conv(chunks[1])
         # x = self.encoder_forward(x)
         # x = self.decoder_upernet(x, conv_embeds)
-        features = self.get_features(x)
+        swin_features = self.forward_swin(x)  # type: ignore
+
+        swin_features[0] = torch.permute(swin_features[0], (0, 3, 1, 2))
+        swin_features[1] = torch.permute(swin_features[1], (0, 3, 1, 2))
+        swin_features[2] = torch.permute(swin_features[2], (0, 3, 1, 2))
+        swin_features[3] = torch.permute(swin_features[3], (0, 3, 1, 2))
+
+        if self.conv_size > 0:
+            swin_features[0] = torch.cat((swin_features[0], conv_embeds), 1)
+        # features = self.get_features(x)
         # x = self.encoder_forward(x)
-        x = self.decoder_upernet(features, conv_embeds)
+        # x = self.decoder_upernet(swin_features, conv_embeds)
+        x = self.decoder_upernet_swin(swin_features, conv_embeds)
         # new_features = []
 
         # new_features.append(
@@ -321,4 +373,4 @@ class SimDINO(nn.Module):
 
         # x = self.decoder_upernet(x[1])
 
-        return x, (conv_embeds, features[-1])
+        return x, (conv_embeds, swin_features[-1])

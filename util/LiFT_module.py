@@ -69,7 +69,7 @@ class LiFT(nn.Module):
         self.up1 = Up(in_channels + 32, in_channels)
         self.outc = nn.Conv2d(in_channels // 2, in_channels, kernel_size=1)
         self.image_convs_1 = nn.Sequential(
-            nn.Conv2d(7, 32, kernel_size=3, padding=1, stride=2),
+            nn.Conv2d(3, 32, kernel_size=3, padding=1, stride=2),
             nn.BatchNorm2d(32),
             nn.ReLU(inplace=True),
             nn.Conv2d(32, 32, kernel_size=3, padding=1, stride=2),
@@ -91,8 +91,8 @@ class LiFT(nn.Module):
 
     # [B, T, C] --> [B, C, H, W]
     def run_pre_shape(self, imgs, x):
-        H = int(imgs.shape[2] / self.patch_size)
-        W = int(imgs.shape[3] / self.patch_size)
+        H = int(imgs.shape[2] / 14)
+        W = int(imgs.shape[3] / 14)
         x = x.permute(0, 2, 1)
         x = x.reshape(x.shape[0], -1, H, W)
         return x
@@ -105,7 +105,13 @@ class LiFT(nn.Module):
 
     def forward(self, imgs, x):
         if self.pre_shape:
-            x = self.run_pre_shape(imgs, x)
+            x = F.interpolate(
+                self.run_pre_shape(imgs, x),
+                size=(32, 32),
+                mode="bilinear",
+                align_corners=False,
+            )
+        x = F.interpolate(x, size=(32, 32), mode="bilinear", align_corners=False)
         imgs_1 = self.image_convs_1(imgs)
         imgs_1 = self.scale_adapter(imgs_1)
         imgs_2 = self.image_convs_2(imgs_1)

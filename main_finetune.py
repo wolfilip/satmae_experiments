@@ -292,6 +292,7 @@ def get_args_parser():
             "sen1floods11",
             "isaid",
             "mass_roads",
+            "dior",
         ],
         help="Whether to use fmow rgb, sentinel, or other dataset.",
     )
@@ -886,6 +887,7 @@ def main(args):
                     and args.dataset_type != "mass_roads"
                 ):
                     log_writer.add_scalar("perf/val_f1", test_stats["f1"], epoch)
+
         else:
             print(
                 f"Accuracy of the network on the {len(dataset_val)} val images: {test_stats['acc1']:.1f}%"  # type: ignore

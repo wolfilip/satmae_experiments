@@ -19,6 +19,9 @@ from transformers import (
 )
 
 from torchvision import models as torchvision_models
+import torchvision
+from torchvision.models.detection import FasterRCNN
+from torchvision.models.detection.rpn import AnchorGenerator
 
 from util.LiFT_module import LiFT
 
@@ -107,7 +110,7 @@ class DINOv2(nn.Module):
         elif self.model_size == "base":
             self.embed_dim = 768
             feature_channels = [
-                self.embed_dim + 96,
+                self.embed_dim + self.conv_size,
                 self.embed_dim,
                 self.embed_dim,
                 self.embed_dim,
@@ -115,7 +118,7 @@ class DINOv2(nn.Module):
         else:
             self.embed_dim = 1024
             feature_channels = [
-                self.embed_dim + self.conv_size,
+                384 + 32,
                 self.embed_dim,
                 self.embed_dim,
                 self.embed_dim,
@@ -189,9 +192,15 @@ class DINOv2(nn.Module):
         # mask2former_model = Mask2FormerForUniversalSegmentation(config)
         # self.swin_encoder = mask2former_model.model.pixel_level_module.encoder
 
-        self.swin_encoder = AutoModel.from_pretrained(
-            "microsoft/swin-tiny-patch4-window7-224"
-        )
+        ############# SWIN
+
+        # self.swin_encoder = AutoModel.from_pretrained(
+        #     "microsoft/swin-tiny-patch4-window7-224"
+        # )
+
+        # self.swin_encoder.to(device)
+
+        ############# SWIN
 
         # print(sum(p.numel() for p in self.swin_encoder.parameters() if p.requires_grad))
 
@@ -201,28 +210,40 @@ class DINOv2(nn.Module):
 
         # self.swin_encoder = torchvision_models.__dict__["swin_t"]().features
 
-        self.swin_encoder.to(device)
+        ############# MS to 3 channels
 
-        self.linear_7_to_3 = nn.Conv2d(in_channels=7, out_channels=3, kernel_size=1)
+        # self.linear_7_to_3 = nn.Conv2d(in_channels=7, out_channels=3, kernel_size=1)
 
-        self.linear_7_to_3.to(device)
+        # self.linear_7_to_3.to(device)
 
-        lift_path = "/home/filip/lift/output/lift_sen1floods11_ms/dino_vits16_0.001_cosine_aug_256/lift.pth"
+        ############# MS to 3 channels
 
-        self.lift = LiFT(384, 16)
-        state_dict = torch.load(lift_path)
-        self.lift.eval()
+        ############# LiFT
 
-        for k in list(state_dict.keys()):
-            if k.startswith("module."):
-                state_dict[k[7:]] = state_dict[k]
-                del state_dict[k]
+        # lift_path = "/home/filip/lift/output/lift_fmow_rgb/dino_vits16_0.001_cosine_aug_448/lift.pth"
 
-        self.lift.load_state_dict(state_dict)
-        self.lift.to("cuda")
-        print("Loaded LiFT module from: " + lift_path)
+        # self.lift = LiFT(384, 16, pre_shape=False)
+        # state_dict = torch.load(lift_path)
 
-        self.linear_transform = nn.Linear(768, 384)
+        # for k in list(state_dict.keys()):
+        #     if k.startswith("module."):
+        #         state_dict[k[7:]] = state_dict[k]
+        #         del state_dict[k]
+
+        # self.lift.load_state_dict(state_dict)
+        # self.lift.to(device)
+        # print("Loaded LiFT module from: " + lift_path)
+
+        # self.lift.eval()
+
+        # self.linear_transform_down = nn.Linear(768, 384)
+        # self.linear_transform_up = nn.Linear(384, 768)
+
+        ############# LiFT
+
+        self.detection_head = FasterRCNNHead(
+            self.feat_extr, args.nb_classes, self.embed_dim
+        )
 
         if self.conv_size == 32:
             self.conv_layers = nn.Sequential(
@@ -350,13 +371,13 @@ class DINOv2(nn.Module):
         new_features.append(
             features[3].reshape(-1, self.num_patches, self.num_patches, self.embed_dim)
         )
-        swin_embeds = conv_embeds[0].reshape(-1, 128, 128, 96)
+        # swin_embeds = conv_embeds[0].reshape(-1, 128, 128, 96)
 
         new_features[0] = torch.permute(new_features[0], (0, 3, 1, 2))
         new_features[1] = torch.permute(new_features[1], (0, 3, 1, 2))
         new_features[2] = torch.permute(new_features[2], (0, 3, 1, 2))
         new_features[3] = torch.permute(new_features[3], (0, 3, 1, 2))
-        swin_embeds = torch.permute(swin_embeds, (0, 3, 1, 2))
+        # swin_embeds = torch.permute(swin_embeds, (0, 3, 1, 2))
 
         new_features[-1] = F.interpolate(
             new_features[-1], scale_factor=0.5, mode="bilinear", align_corners=True
@@ -365,7 +386,7 @@ class DINOv2(nn.Module):
         new_features[1] = self.up_1(new_features[1])
         new_features[0] = self.up_2(new_features[0])
 
-        new_features[0] = torch.cat((new_features[0], self.up(swin_embeds)), 1)
+        # new_features[0] = torch.cat((new_features[0], self.up(swin_embeds)), 1)
 
         if self.conv_size > 0:
             new_features[0] = torch.cat((new_features[0], conv_embeds), 1)
@@ -391,7 +412,7 @@ class DINOv2(nn.Module):
 
     def forward(self, x):
 
-        chunks = torch.split(x, [3, 7], dim=1)
+        # chunks = torch.split(x, [3, 7], dim=1)
 
         # bla = self.linear_layer(chunks[1])
 
@@ -402,14 +423,49 @@ class DINOv2(nn.Module):
 
         conv_embeds = 0
         if self.conv_size > 0:
-            conv_embeds = self.encoder_conv(chunks[1])
+            conv_embeds = self.encoder_conv(x)
         # x = self.encoder_forward(x)
         # x = self.decoder_upernet(x, conv_embeds)
-        features = self.get_features(chunks[0])
-        with torch.no_grad():
-            features[0] = self.lift(chunks[1], self.linear_transform(features[0]))
+        features = self.get_features(x)
+
+        ######## LIFT ###########
+
+        # new_features = []
+
+        # new_features.append(
+        #     self.linear_transform_down(
+        #         features[0].reshape(
+        #             -1, self.num_patches, self.num_patches, self.embed_dim
+        #         )
+        #     )
+        # )
+        # new_features.append(
+        #     features[1].reshape(-1, self.num_patches, self.num_patches, self.embed_dim)
+        # )
+        # new_features.append(
+        #     features[2].reshape(-1, self.num_patches, self.num_patches, self.embed_dim)
+        # )
+        # new_features.append(
+        #     features[3].reshape(-1, self.num_patches, self.num_patches, self.embed_dim)
+        # )
+
+        # new_features[0] = torch.permute(new_features[0], (0, 3, 1, 2))
+        # new_features[1] = torch.permute(new_features[1], (0, 3, 1, 2))
+        # new_features[2] = torch.permute(new_features[2], (0, 3, 1, 2))
+        # new_features[3] = torch.permute(new_features[3], (0, 3, 1, 2))
+
+        # with torch.no_grad():
+        #     new_features[0] = torch.permute(
+        #         self.linear_transform_up(
+        #             self.lift(chunks[0], new_features[0]).reshape(-1, 64, 64, 384)
+        #         ),
+        #         (0, 3, 1, 2),
+        #     )
+
+        ######## LIFT ###########
+
         # x = self.encoder_forward(x)
-        x = self.decoder_upernet(features, features)
+        # x = self.decoder_upernet(features, conv_embeds)
         # new_features = []
 
         # new_features.append(
@@ -429,6 +485,13 @@ class DINOv2(nn.Module):
         # new_features[1] = torch.permute(new_features[1], (0, 3, 1, 2))
         # new_features[2] = torch.permute(new_features[2], (0, 3, 1, 2))
         # new_features[3] = torch.permute(new_features[3], (0, 3, 1, 2))
+
+        # new_features[-1] = F.interpolate(
+        #     new_features[-1], scale_factor=0.5, mode="bilinear", align_corners=True
+        # )
+        # features[2] = self.up_1(features[2])
+        # new_features[1] = self.up_1(new_features[1])
+
         # x = self.upernet_head(new_features)
         # x = F.interpolate(x, size=self.input_size, mode="bilinear", align_corners=False)
 
@@ -437,4 +500,84 @@ class DINOv2(nn.Module):
 
         # x = self.decoder_upernet(x[1])
 
+        x = self.detection_head(features, targets=None)
+
         return x, (conv_embeds, features[-1])
+
+
+class BackboneWithFPN(nn.Module):
+    def __init__(self, backbone, out_channels):
+        super(BackboneWithFPN, self).__init__()
+        self.backbone = backbone
+        self.out_channels = out_channels
+
+    def forward(self, imgs):
+        # Extract multiple feature maps from the backbone
+
+        if self.model_size == "base" or self.model_size == "small":
+            features = self.feat_ebackbonextr.get_intermediate_layers(imgs, (3, 5, 8, 11))  # type: ignore
+        else:
+            features = self.backbone.get_intermediate_layers(imgs, (3, 9, 17, 23))  # type: ignore
+        # features = self.backbone.get_features(x)
+        return {
+            "0": features[0],  # First feature map
+            "1": features[1],  # Second feature map
+            "2": features[2],  # Third feature map
+            "3": features[3],  # Fourth feature map
+        }  # Use all feature maps for multi-scale detection
+
+
+class FasterRCNNHead(nn.Module):
+    def __init__(self, backbone, num_classes, embed_dim):
+        super(FasterRCNNHead, self).__init__()
+        """
+        Initializes the Faster R-CNN head with the given backbone and number of classes.
+
+        Args:
+            backbone (nn.Module): The feature extractor backbone (e.g., DINOv2).
+            num_classes (int): The number of classes for object detection.
+        """
+        # Wrap the backbone to include out_channels and format the output
+        out_channels = (
+            embed_dim  # Set this to match the output channels of your backbone
+        )
+        self.backbone = BackboneWithFPN(backbone, out_channels)
+
+        # Define the anchor generator with sizes and aspect ratios
+        anchor_generator = AnchorGenerator(
+            sizes=((32, 64, 128, 256, 512),),
+            aspect_ratios=((0.5, 1.0, 2.0),),
+        )
+
+        # Define the region of interest (RoI) aligner
+        roi_pooler = torchvision.ops.MultiScaleRoIAlign(
+            featmap_names=[
+                "0",
+                "1",
+                "2",
+                "3",
+            ],  # Use all feature maps from the backbone
+            output_size=7,
+            sampling_ratio=2,
+        )
+
+        # Build the Faster R-CNN model
+        self.model = FasterRCNN(
+            self.backbone,
+            num_classes=num_classes,
+            rpn_anchor_generator=anchor_generator,
+            box_roi_pool=roi_pooler,
+        )
+
+    def forward(self, features, targets=None):
+        """
+        Forward pass for the Faster R-CNN head.
+
+        Args:
+            features (torch.Tensor): Backbone features to be processed.
+            targets (Optional[List[Dict[str, torch.Tensor]]]): Ground truth boxes and labels for training.
+
+        Returns:
+            Dict[str, torch.Tensor] or List[Dict[str, torch.Tensor]]: The output of the Faster R-CNN head.
+        """
+        return self.model(features, targets)

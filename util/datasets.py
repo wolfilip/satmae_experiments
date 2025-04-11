@@ -17,6 +17,9 @@ from PIL import Image
 from rasterio import logging
 from rasterio.enums import Resampling
 from torch.utils.data import Dataset
+import xml.etree.ElementTree as ET
+import albumentations as A
+from albumentations.pytorch import ToTensorV2
 
 import geopandas
 from tqdm import tqdm
@@ -179,6 +182,155 @@ class SatelliteDataset(Dataset):
 
         # t.append(transforms.Normalize(mean, std))
         return transforms.Compose(t)
+
+
+class DIORDataset(Dataset):
+    def __init__(self, root, split="train", transform=None):
+        self.root = root
+        self.split = split
+        self.transform = transform
+
+        self.image_dir = os.path.join(root, "JPEGImages")
+        self.split_file = os.path.join(root, f"{split}.txt")
+        self.ann_dir = os.path.join(root, "Annotations")
+
+        if not os.path.exists(self.image_dir):
+            raise FileNotFoundError(f"Image folder not found: {self.image_dir}")
+        if not os.path.exists(self.split_file):
+            raise FileNotFoundError(f"Image splits not found: {self.split_file}")
+        if not os.path.exists(self.ann_dir):
+            raise FileNotFoundError(f"Annotation folder not found: {self.ann_dir}")
+
+        self.image_filenames = [line.strip() for line in open(self.split_file)]
+
+        # self.image_filenames = [
+        #     f.split(".")[0] for f in os.listdir(self.image_dir) if f.endswith(".jpg")
+        # ]
+        self.annotation_filenames = [
+            f.split(".")[0].lstrip("0")
+            for f in os.listdir(self.ann_dir)
+            if f.endswith(".xml")
+        ]
+
+        self.image_filenames = sorted(
+            list(set(self.image_filenames) & set(self.annotation_filenames))
+        )
+
+        # 🔹 Define class mapping (Ensure it matches your dataset)
+        self.CLASS_MAPPING = {
+            "airplane": 0,
+            "airport": 1,
+            "baseballfield": 2,
+            "basketballcourt": 3,
+            "bridge": 4,
+            "chimney": 5,
+            "dam": 6,
+            "Expressway-Service-area": 7,
+            "Expressway-toll-station": 8,
+            "golffield": 9,
+            "groundtrackfield": 10,
+            "harbor": 11,
+            "overpass": 12,
+            "ship": 13,
+            "stadium": 14,
+            "storagetank": 15,
+            "tenniscourt": 16,
+            "trainstation": 17,
+            "vehicle": 18,
+            "windmill": 19,
+        }
+
+    def __getitem__(self, idx):
+        image_id = self.image_filenames[idx]
+        img_path = os.path.join(self.image_dir, f"{image_id.zfill(5)}.jpg")
+        xml_path = os.path.join(self.ann_dir, f"{image_id.zfill(5)}.xml")
+
+        image = Image.open(img_path).convert("RGB")
+
+        target_data = self.parse_voc_xml(xml_path)
+        boxes = target_data["boxes"]  # Pascal VOC format
+        labels = target_data["labels"]
+
+        # Apply transformations
+        if self.transform is not None:
+            transformed = self.transform(
+                image=image,
+                bboxes=boxes,
+                labels=labels,
+            )
+            image = transformed["image"]
+            boxes = transformed["bboxes"]
+            labels = transformed["labels"]
+
+        # Convert to PyTorch tensors
+        boxes = torch.tensor(boxes, dtype=torch.float32)
+        labels = torch.tensor(labels, dtype=torch.int64)
+        target = {"boxes": boxes, "labels": labels, "image_id": torch.tensor([idx])}
+
+        # Filter out invalid boxes (zero width/height)
+        if boxes.shape[0] > 0:
+            widths = boxes[:, 2] - boxes[:, 0]
+            heights = boxes[:, 3] - boxes[:, 1]
+            keep = (widths > 0) & (heights > 0)
+            boxes = boxes[keep]
+            labels = labels[keep]
+
+        if self.transform is not None:
+            multi_hot = torch.zeros(21, dtype=torch.float32)
+            for label in labels:
+                multi_hot[label] = 1.0
+            target = {"labels": multi_hot, "image_id": torch.tensor([idx])}
+
+        else:
+            target = {"boxes": boxes, "labels": labels, "image_id": torch.tensor([idx])}
+
+        return image, target
+
+    def parse_voc_xml(self, xml_path):
+        """Parses a Pascal VOC XML file and extracts bounding box & label information."""
+        tree = ET.parse(xml_path)
+        root = tree.getroot()
+        boxes = []
+        labels = []
+
+        for obj in root.findall("object"):
+            bbox = obj.find("bndbox")
+            xmin = int(bbox.find("xmin").text)
+            ymin = int(bbox.find("ymin").text)
+            xmax = int(bbox.find("xmax").text)
+            ymax = int(bbox.find("ymax").text)
+            boxes.append([xmin, ymin, xmax, ymax])
+
+            # 🔹 Get label as a string and convert it to an integer index
+            label_str = obj.find("name").text
+            if label_str in self.CLASS_MAPPING:
+                labels.append(self.CLASS_MAPPING[label_str])
+            else:
+                raise ValueError(f"Unknown class label '{label_str}' in {xml_path}")
+
+        return {"boxes": boxes, "labels": labels}
+
+    def transform_image_and_boxes(self, image, boxes, orig_w, orig_h):
+        """Resizes image & bounding boxes while maintaining aspect ratio."""
+        # 🔹 Resize image
+        transformed_image = F.resize(image, (224, 224))  # Ensure consistent resizing
+        transformed_image = F.to_tensor(transformed_image)  # Convert to tensor
+
+        # 🔹 Rescale bounding boxes
+        scale_x = 224 / orig_w
+        scale_y = 224 / orig_h
+        transformed_boxes = torch.tensor(
+            [
+                [x1 * scale_x, y1 * scale_y, x2 * scale_x, y2 * scale_y]
+                for x1, y1, x2, y2 in boxes
+            ],
+            dtype=torch.float32,
+        )
+
+        return transformed_image, transformed_boxes
+
+    def __len__(self):
+        return len(self.image_filenames)
 
 
 class iSAIDDataset(SatelliteDataset):
@@ -513,7 +665,7 @@ class Sen1Floods11Dataset(Dataset):
         transform,
         split: str = "train",
         partition: float = 1.0,
-        norm_path="/home/filip/sen1floods11/v1.1/norms",
+        norm_path="/home/filip/datasets/sen1floods11/v1.1/norms",
         ignore_index: int = -1,
         num_classes: int = 2,
     ):
@@ -1829,7 +1981,7 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
         )
     elif args.dataset_type == "spacenet":
         # DataFolder = "/storage/local/ssd/filipwolf-workspace/SpaceNetV1/"
-        DataFolder = "/home/filip/SpaceNetV1/"
+        DataFolder = "/home/filip/datasets/SpaceNetV1/"
         raster_rgb = DataFolder + "3band/"
         raster_depth = DataFolder + "depth/"
         mask = DataFolder + "mask/"
@@ -1876,19 +2028,34 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
                     args,
                 )
         else:
-            val_raster_list_rgb = raster_list_rgb[4999:]
-            val_raster_list_depth = raster_list_depth[4999:]
-            val_mask_list = mask_list[4999:]
-            dataset = SpaceNetDataset(
-                raster_rgb,
-                raster_depth,
-                mask,
-                val_raster_list_rgb,
-                val_raster_list_depth,
-                val_mask_list,
-                is_train,
-                args,
-            )
+            if data_split == "val":
+                val_raster_list_rgb = raster_list_rgb[4999:5999]
+                val_raster_list_depth = raster_list_depth[4999:5999]
+                val_mask_list = mask_list[4999:5999]
+                dataset = SpaceNetDataset(
+                    raster_rgb,
+                    raster_depth,
+                    mask,
+                    val_raster_list_rgb,
+                    val_raster_list_depth,
+                    val_mask_list,
+                    is_train,
+                    args,
+                )
+            else:
+                val_raster_list_rgb = raster_list_rgb[5999:]
+                val_raster_list_depth = raster_list_depth[5999:]
+                val_mask_list = mask_list[5999:]
+                dataset = SpaceNetDataset(
+                    raster_rgb,
+                    raster_depth,
+                    mask,
+                    val_raster_list_rgb,
+                    val_raster_list_depth,
+                    val_mask_list,
+                    is_train,
+                    args,
+                )
     elif args.dataset_type == "loveda":
         if is_train:
             data_paths_rural = "/home/filip/LoveDA/Train/Train/Rural"
@@ -1925,6 +2092,8 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
                 data_paths_imgs_train, data_paths_ann_train, is_train, args
             )
     elif args.dataset_type == "sen1floods11":
+        path = "/home/filip/datasets/sen1floods11"
+
         transforms_train = K.AugmentationSequential(
             K.RandomResizedCrop(size=(512, 512), scale=(0.5, 1.0)),
             K.RandomHorizontalFlip(p=0.5),
@@ -1935,17 +2104,11 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
             data_keys=["input", "mask"],
         )
         if data_split == "train":
-            dataset = Sen1Floods11Dataset(
-                "/home/filip/sen1floods11", ["s2"], transforms_train, "train"
-            )
+            dataset = Sen1Floods11Dataset(path, ["s2"], transforms_train, "train")
         elif data_split == "val":
-            dataset = Sen1Floods11Dataset(
-                "/home/filip/sen1floods11", ["s2"], transforms_test, "val"
-            )
+            dataset = Sen1Floods11Dataset(path, ["s2"], transforms_test, "val")
         elif data_split == "test":
-            dataset = Sen1Floods11Dataset(
-                "/home/filip/sen1floods11", ["s2"], transforms_test, "test"
-            )
+            dataset = Sen1Floods11Dataset(path, ["s2"], transforms_test, "test")
     elif args.dataset_type == "isaid":
 
         if is_train:
@@ -1974,6 +2137,34 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
             dataset = MassachusettsRoadsDataset(
                 data_paths_imgs_train, data_paths_ann_train, is_train, args
             )
+    elif args.dataset_type == "dior":
+        dataset_root = "/home/filip/datasets/DIOR"
+
+        transforms_train = A.Compose(
+            [
+                A.RandomResizedCrop(height=512, width=512, scale=(0.5, 1.0)),
+                A.HorizontalFlip(p=0.5),
+                A.VerticalFlip(p=0.5),
+                A.RandomBrightnessContrast(p=0.2),
+                A.HueSaturationValue(p=0.2),
+                A.Rotate(limit=15, p=0.5),
+                ToTensorV2(),
+            ],
+            bbox_params=A.BboxParams(format="pascal_voc", label_fields=["labels"]),
+        )
+        transforms_test = A.Compose(
+            [
+                A.Resize(height=512, width=512),
+                ToTensorV2(),
+            ],
+            bbox_params=A.BboxParams(format="pascal_voc", label_fields=["labels"]),
+        )
+        if data_split == "train":
+            dataset = DIORDataset(dataset_root, data_split, transforms_train)
+        elif data_split == "val":
+            dataset = DIORDataset(dataset_root, data_split, transforms_test)
+        else:
+            dataset = DIORDataset(dataset_root, data_split, transforms_test)
     else:
         raise ValueError(f"Invalid dataset type: {args.dataset_type}")
 
