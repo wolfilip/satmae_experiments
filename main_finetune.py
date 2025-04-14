@@ -413,9 +413,9 @@ def main(args):
 
     cudnn.benchmark = True
 
-    dataset_train = build_fmow_dataset(is_train=True, data_split="train", args=args)
-    dataset_val = build_fmow_dataset(is_train=False, data_split="val", args=args)
-    dataset_test = build_fmow_dataset(is_train=False, data_split="test", args=args)
+    dataset_train = build_fmow_dataset(is_train=True, data_split="trainval", args=args)
+    dataset_val = build_fmow_dataset(is_train=False, data_split="test", args=args)
+    # dataset_test = build_fmow_dataset(is_train=False, data_split="test", args=args)
 
     num_tasks = misc.get_world_size()
     global_rank = misc.get_rank()

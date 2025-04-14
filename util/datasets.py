@@ -190,7 +190,7 @@ class DIORDataset(Dataset):
         self.split = split
         self.transform = transform
 
-        self.image_dir = os.path.join(root, "JPEGImages")
+        self.image_dir = os.path.join(root, "JPEGImages-", split)
         self.split_file = os.path.join(root, f"{split}.txt")
         self.ann_dir = os.path.join(root, "Annotations")
 
@@ -2142,26 +2142,33 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
 
         transforms_train = A.Compose(
             [
-                A.RandomResizedCrop(height=512, width=512, scale=(0.5, 1.0)),
+                A.RandomResizedCrop((512, 512), scale=(0.5, 1.0), interpolation=1),
                 A.HorizontalFlip(p=0.5),
                 A.VerticalFlip(p=0.5),
-                A.RandomBrightnessContrast(p=0.2),
-                A.HueSaturationValue(p=0.2),
-                A.Rotate(limit=15, p=0.5),
+                # A.RandomBrightnessContrast(p=0.2),
+                # A.HueSaturationValue(p=0.2),
+                # A.Rotate(limit=15, p=0.5),
                 ToTensorV2(),
             ],
-            bbox_params=A.BboxParams(format="pascal_voc", label_fields=["labels"]),
+            bbox_params=A.BboxParams(
+                format="pascal_voc",  # Format of bounding boxes (Pascal VOC in this case)
+                label_fields=["labels"],  # Field containing labels for bounding boxes
+            ),
         )
+
         transforms_test = A.Compose(
             [
-                A.Resize(height=512, width=512),
+                A.Resize(height=512, width=512, interpolation=1),
                 ToTensorV2(),
             ],
-            bbox_params=A.BboxParams(format="pascal_voc", label_fields=["labels"]),
+            bbox_params=A.BboxParams(
+                format="pascal_voc",
+                label_fields=["labels"],
+            ),
         )
-        if data_split == "train":
+        if data_split == "trainval":
             dataset = DIORDataset(dataset_root, data_split, transforms_train)
-        elif data_split == "val":
+        elif data_split == "test":
             dataset = DIORDataset(dataset_root, data_split, transforms_test)
         else:
             dataset = DIORDataset(dataset_root, data_split, transforms_test)
