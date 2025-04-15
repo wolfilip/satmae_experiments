@@ -20,6 +20,8 @@ from torch.utils.data import Dataset
 import xml.etree.ElementTree as ET
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
+from torchvision.models.detection.transform import GeneralizedRCNNTransform
+
 
 import geopandas
 from tqdm import tqdm
@@ -31,6 +33,12 @@ log = logging.getLogger()
 log.setLevel(logging.ERROR)
 
 warnings.simplefilter("ignore", Image.DecompressionBombWarning)
+
+
+def collate_fn_dior(batch):
+    images = torch.stack([item[0] for item in batch], 0)
+    targets = [item[1] for item in batch]
+    return images, targets
 
 
 def collate_fn(batch):
@@ -191,7 +199,7 @@ class DIORDataset(Dataset):
         self.transform = transform
 
         self.image_dir = os.path.join(root, "JPEGImages")
-        self.split_file = os.path.join(root, f"{split}.txt")
+        self.split_file = os.path.join(root, "ImageSets", f"{split}.txt")
         self.ann_dir = os.path.join(root, "Annotations")
 
         if not os.path.exists(self.image_dir):
@@ -207,9 +215,7 @@ class DIORDataset(Dataset):
         #     f.split(".")[0] for f in os.listdir(self.image_dir) if f.endswith(".jpg")
         # ]
         self.annotation_filenames = [
-            f.split(".")[0].lstrip("0")
-            for f in os.listdir(self.ann_dir)
-            if f.endswith(".xml")
+            f.split(".")[0] for f in os.listdir(self.ann_dir) if f.endswith(".xml")
         ]
 
         self.image_filenames = sorted(
@@ -240,50 +246,58 @@ class DIORDataset(Dataset):
             "windmill": 19,
         }
 
+        # self.final_transform = GeneralizedRCNNTransform(
+        #     min_size=512,
+        #     max_size=512,
+        #     image_mean=[0.485, 0.456, 0.406],
+        #     image_std=[0.229, 0.224, 0.225],
+        # )
+
     def __getitem__(self, idx):
         image_id = self.image_filenames[idx]
         img_path = os.path.join(self.image_dir, f"{image_id.zfill(5)}.jpg")
         xml_path = os.path.join(self.ann_dir, f"{image_id.zfill(5)}.xml")
 
-        image = Image.open(img_path).convert("RGB")
+        image = np.array(Image.open(img_path).convert("RGB"))
 
         target_data = self.parse_voc_xml(xml_path)
         boxes = target_data["boxes"]  # Pascal VOC format
         labels = target_data["labels"]
 
         # Apply transformations
-        if self.transform is not None:
-            transformed = self.transform(
-                image=image,
-                bboxes=boxes,
-                labels=labels,
-            )
-            image = transformed["image"]
-            boxes = transformed["bboxes"]
-            labels = transformed["labels"]
+        transformed = self.transform(
+            image=image,
+            bboxes=boxes,
+            labels=labels,
+        )
+        image = transformed["image"]
+        boxes = torch.tensor(transformed["bboxes"], dtype=torch.float32)
+        labels = torch.tensor(transformed["labels"], dtype=torch.int64)
 
-        # Convert to PyTorch tensors
-        boxes = torch.tensor(boxes, dtype=torch.float32)
-        labels = torch.tensor(labels, dtype=torch.int64)
-        target = {"boxes": boxes, "labels": labels, "image_id": torch.tensor([idx])}
+        # image_list, target = self.final_transform(
+        #     [image], [{"boxes": boxes, "labels": labels}]
+        # )
+
+        # target = {"boxes": boxes, "labels": labels, "image_id": torch.tensor([idx])}
 
         # Filter out invalid boxes (zero width/height)
-        if boxes.shape[0] > 0:
-            widths = boxes[:, 2] - boxes[:, 0]
-            heights = boxes[:, 3] - boxes[:, 1]
-            keep = (widths > 0) & (heights > 0)
-            boxes = boxes[keep]
-            labels = labels[keep]
+        # if boxes.shape[0] > 0:
+        #     widths = boxes[:, 2] - boxes[:, 0]
+        #     heights = boxes[:, 3] - boxes[:, 1]
+        #     keep = (widths > 0) & (heights > 0)
+        #     boxes = boxes[keep]
+        #     labels = labels[keep]
 
-        if self.transform is not None:
-            multi_hot = torch.zeros(21, dtype=torch.float32)
-            for label in labels:
-                multi_hot[label] = 1.0
-            target = {"labels": multi_hot, "image_id": torch.tensor([idx])}
+        # if self.transform is not None:
+        #     multi_hot = torch.zeros(21, dtype=torch.float32)
+        #     for label in labels:
+        #         multi_hot[label] = 1.0
+        #     target = {"labels": multi_hot, "image_id": torch.tensor([idx])}
 
-        else:
-            target = {"boxes": boxes, "labels": labels, "image_id": torch.tensor([idx])}
+        # else:
+        #     target = {"boxes": boxes, "labels": labels, "image_id": torch.tensor([idx])}
 
+        target = {"boxes": boxes, "labels": labels}
         return image, target
 
     def parse_voc_xml(self, xml_path):
@@ -2138,27 +2152,37 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
                 data_paths_imgs_train, data_paths_ann_train, is_train, args
             )
     elif args.dataset_type == "dior":
-        dataset_root = "/home/filip/datasets/DIOR"
+        dataset_root = "/mnt/c/Users/filip.wolf/Datasets/DIOR-VOC/DIOR-VOC/VOC2007"
 
         transforms_train = A.Compose(
             [
-                A.RandomResizedCrop(height=512, width=512, scale=(0.5, 1.0)),
+                A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+                A.RandomResizedCrop((512, 512), scale=(0.5, 1.0), interpolation=1),
                 A.HorizontalFlip(p=0.5),
                 A.VerticalFlip(p=0.5),
-                A.RandomBrightnessContrast(p=0.2),
-                A.HueSaturationValue(p=0.2),
-                A.Rotate(limit=15, p=0.5),
+                A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
+                # A.RandomBrightnessContrast(p=0.2),
+                # A.HueSaturationValue(p=0.2),
+                # A.Rotate(limit=15, p=0.5),
                 ToTensorV2(),
             ],
-            bbox_params=A.BboxParams(format="pascal_voc", label_fields=["labels"]),
+            bbox_params=A.BboxParams(
+                format="pascal_voc",  # Format of bounding boxes (Pascal VOC in this case)
+                label_fields=["labels"],  # Field containing labels for bounding boxes
+            ),
         )
         transforms_test = A.Compose(
             [
-                A.Resize(height=512, width=512),
+                A.Resize(height=512, width=512, interpolation=1),
+                A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
                 ToTensorV2(),
             ],
-            bbox_params=A.BboxParams(format="pascal_voc", label_fields=["labels"]),
+            bbox_params=A.BboxParams(
+                format="pascal_voc",
+                label_fields=["labels"],
+            ),
         )
+
         if data_split == "train":
             dataset = DIORDataset(dataset_root, data_split, transforms_train)
         elif data_split == "val":

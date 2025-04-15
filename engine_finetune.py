@@ -13,6 +13,8 @@ from typing import Iterable, Optional
 
 import matplotlib
 import matplotlib.pyplot as plt
+
+matplotlib.use("Agg")
 import numpy as np
 import torch
 import torch.nn as nn
@@ -1165,3 +1167,135 @@ def save_images(data, mask, pred, features, cnt, args):
                 dpi=600,
             )
         plt.close()
+
+
+def train_one_epoch_frcnn(
+    model, data_loader, optimizer, device, epoch, log_writer=None, args=None
+):
+    model.train()
+    total_loss = 0.0
+
+    for images, targets in data_loader:
+        # images = list(img.to(device) for img in images)
+        targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
+
+        optimizer.zero_grad()
+
+        # Pass resized images and transformed ta0rgets
+        loss_dict = model(images, targets)
+
+        losses = sum(loss for loss in loss_dict.values())
+        losses.backward()
+        optimizer.step()
+        total_loss += losses.item()
+
+        # print(f"Epoch [{epoch}] - Loss: {losses:.4f}")
+
+    avg_loss = total_loss / len(data_loader)
+    return {"loss": avg_loss}
+
+
+@torch.no_grad()
+def evaluate_frcnn(data_loader, model, device, class_names=None):
+    model.eval()
+
+    total_loss = {
+        "loss_classifier": 0.0,
+        "loss_box_reg": 0.0,
+        "loss_objectness": 0.0,
+        "loss_rpn_box_reg": 0.0,
+    }
+    num_samples = 0
+    coco_predictions = []
+
+    # For each batch
+    for images, targets in tqdm(data_loader, desc="Evaluating"):
+        images = [img.to(device) for img in images]
+        targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
+
+        # Temporarily switch to train to get loss (eval doesn't compute it)
+        model.train()
+        loss_dict = model(images, targets)
+        for k in total_loss:
+            total_loss[k] += loss_dict[k].item()
+        num_samples += 1
+
+        # Switch back to eval for predictions
+        model.eval()
+        predictions = model(images)
+
+        for i, pred in enumerate(predictions):
+            image_id = int(targets[i]["image_id"].item())  # must match GT JSON
+            boxes = pred["boxes"].cpu()
+            scores = pred["scores"].cpu()
+            labels = pred["labels"].cpu()
+
+            for box, score, label in zip(boxes, scores, labels):
+                if score < 0.05:
+                    continue
+                x1, y1, x2, y2 = box.tolist()
+                coco_predictions.append(
+                    {
+                        "image_id": image_id,
+                        "category_id": int(label),
+                        "bbox": [x1, y1, x2 - x1, y2 - y1],
+                        "score": float(score),
+                    }
+                )
+
+    # Generate COCO-style GT annotations
+    from torch import distributed as dist
+
+    # Only rank 0 creates the JSON
+    if misc.is_main_process():
+        coco_gt_path = create_coco_json_from_dataset(
+            data_loader.dataset, save_dir=tempfile.gettempdir()
+        )
+        dist.barrier()  # Let other processes wait
+    else:
+        dist.barrier()  # Wait for rank 0
+        coco_gt_path = os.path.join(tempfile.gettempdir(), "coco_gt.json")
+    if len(coco_predictions) == 0:
+        print("[❗] No predictions made — coco_predictions is empty.")
+        return {
+            "loss_classifier": 0.0,
+            "loss_box_reg": 0.0,
+            "loss_objectness": 0.0,
+            "loss_rpn_box_reg": 0.0,
+            "mAP_50": 0.0,
+            "mAP_50_95": 0.0,
+            "per_class_ap": {},
+        }
+    coco_gt = COCO(coco_gt_path)
+    coco_gt = COCO(coco_gt_path)
+    coco_dt = coco_gt.loadRes(coco_predictions)
+
+    # Run evaluation
+    coco_eval = COCOeval(coco_gt, coco_dt, iouType="bbox")
+    coco_eval.evaluate()
+    coco_eval.accumulate()
+    coco_eval.summarize()
+
+    # Extract metrics
+    mAP_50_95 = coco_eval.stats[0] * 100
+    mAP_50 = coco_eval.stats[1] * 100
+
+    # Per-class AP
+    per_class_ap = {}
+    if class_names:
+        precisions = coco_eval.eval["precision"]  # [T, R, K, A, M]
+        for idx, class_name in enumerate(class_names):
+            cls_prec = precisions[:, :, idx, 0, 0]
+            cls_prec = cls_prec[cls_prec > -1]
+            ap = cls_prec.mean() if cls_prec.size > 0 else float("nan")
+            per_class_ap[class_name] = round(ap * 100, 2)
+
+    # Final loss averages
+    avg_losses = {k: v / num_samples for k, v in total_loss.items()}
+
+    return {
+        **avg_losses,
+        "mAP_50": mAP_50,
+        "mAP_50_95": mAP_50_95,
+        "per_class_ap": per_class_ap,
+    }

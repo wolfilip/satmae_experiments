@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
-from pytorch_lightning.utilities.migration.utils import pl_legacy_patch
+
+# from pytorch_lightning.utilities.migration.utils import pl_legacy_patch
 
 
 class Fine(nn.Module):
@@ -20,20 +21,22 @@ class Fine(nn.Module):
         last_block (bool): if True freeze all encoder except last block of transformer
         proj_only (bool): if True, load only weights from projectors
     """
-    def __init__(self,
-                 encoder: torch.nn.Module,
-                 path: str = '',
-                 output_size: int = 256,
-                 inter_dim: list = [],
-                 p_drop: float = 0.3,
-                 name: str = 'encoder',
-                 freeze: bool = True,
-                 n_class: int = 15,
-                 pooling_method: str = 'token',
-                 modalities: list = [],
-                 last_block: bool = False,
-                 proj_only: bool = False,
-                ):
+
+    def __init__(
+        self,
+        encoder: torch.nn.Module,
+        path: str = "",
+        output_size: int = 256,
+        inter_dim: list = [],
+        p_drop: float = 0.3,
+        name: str = "encoder",
+        freeze: bool = True,
+        n_class: int = 15,
+        pooling_method: str = "token",
+        modalities: list = [],
+        last_block: bool = False,
+        proj_only: bool = False,
+    ):
         super().__init__()
 
         self.size = output_size
@@ -41,15 +44,17 @@ class Fine(nn.Module):
         self.global_pool = pooling_method
 
         for i in range(len(modalities)):
-            if modalities[i].split('-')[-1] == 'mono':
-                modalities[i] = '-'.join(modalities[i].split('-')[:-1])
+            if modalities[i].split("-")[-1] == "mono":
+                modalities[i] = "-".join(modalities[i].split("-")[:-1])
 
         u = torch.load(path, weights_only=False)
         d = {}
         for key in u.keys():
-            if 'projector_s2' in key:
-                d[key.split('.')[0] + '.encoder.' + '.'.join(key.split('.')[1:])] = u[key]
-            elif 'projector_aerial' in key:
+            if "projector_s2" in key:
+                d[key.split(".")[0] + ".encoder." + ".".join(key.split(".")[1:])] = u[
+                    key
+                ]
+            elif "projector_aerial" in key:
                 continue
             else:
                 d[key] = u[key]
@@ -63,7 +68,7 @@ class Fine(nn.Module):
         #             if not(proj_only):
         #                 d['.'.join(key.split('.')[2:])] = u["state_dict"][key]
 
-        if not(proj_only):
+        if not (proj_only):
             encoder.load_state_dict(d)
         else:
             encoder.load_state_dict(d, strict=False)
@@ -83,7 +88,7 @@ class Fine(nn.Module):
 
         if self.freeze:
             for param in self.model.parameters():
-                    param.requires_grad = False
+                param.requires_grad = False
 
         # set n_class to 0 if we want headless model
         self.n_class = n_class
@@ -91,29 +96,29 @@ class Fine(nn.Module):
             if len(inter_dim) > 0:
                 layers = [nn.Linear(self.size, inter_dim[0])]
                 layers.append(nn.BatchNorm1d(inter_dim[0]))
-                layers.append(nn.Dropout(p = p_drop))
+                layers.append(nn.Dropout(p=p_drop))
                 layers.append(nn.ReLU())
                 for i in range(len(inter_dim) - 1):
                     layers.append(nn.Linear(inter_dim[i], inter_dim[i + 1]))
                     layers.append(nn.BatchNorm1d(inter_dim[i + 1]))
-                    layers.append(nn.Dropout(p = p_drop))
+                    layers.append(nn.Dropout(p=p_drop))
                     layers.append(nn.ReLU())
                 layers.append(nn.Linear(inter_dim[-1], n_class))
             else:
                 layers = [nn.Linear(self.size, n_class)]
             self.head = nn.Sequential(*layers)
 
-    def forward(self,x):
+    def forward(self, x):
         """
         Forward pass of the network. Perform pooling of tokens after transformer
         according to global_pool argument.
         """
         x = self.model(x)
         if self.global_pool:
-            if self.global_pool == 'avg':
+            if self.global_pool == "avg":
                 x = x[:, 1:].mean(dim=1)
-            elif self.global_pool == 'max':
-                x ,_ = torch.max(x[:, 1:],1)
+            elif self.global_pool == "max":
+                x, _ = torch.max(x[:, 1:], 1)
             else:
                 x = x[:, 0]
         if self.n_class:
