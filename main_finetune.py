@@ -22,6 +22,8 @@ from torch.optim.adamw import AdamW
 from torch.utils.data import DataLoader, DistributedSampler, SequentialSampler
 from torch.utils.tensorboard.writer import SummaryWriter
 
+from models.DINOv2_detection import DINOv2Detector
+from models.DINOv2_segmentation import DINOv2Segmenter
 from models.OmniSat import LTAE, Omni, OmniSat
 from models.SimDINO_features import SimDINO
 from models.SimDINOv2_features import SimDINOv2
@@ -43,13 +45,13 @@ from engine_finetune import (
     evaluate_segmentation,
     evaluate_temporal,
     train_one_epoch,
+    train_one_epoch_frcnn,
     train_one_epoch_segmentation,
     train_one_epoch_temporal,
 )
 from models import MAE_LiFT_model
-from models.DINOv2_features import DINOv2
 from models.SAMHQ_model import SAMHQ
-from util.datasets import build_fmow_dataset
+from util.datasets import build_fmow_dataset, collate_fn_dior
 from util.misc import NativeScalerWithGradNormCount as NativeScaler
 from util.pos_embed import interpolate_pos_embed
 from util.utils_swin import remap_pretrained_keys_swin
@@ -93,6 +95,7 @@ def get_args_parser():
             "vanilla",
             "segmentation",
             "dinov2_segmentation",
+            "dinov2_detection",
             "samhq_segmentation",
             "lift_segmentation",
             "dinov2_classification",
@@ -454,6 +457,7 @@ def main(args):
         num_workers=args.num_workers,
         pin_memory=args.pin_mem,
         drop_last=True,
+        collate_fn=collate_fn_dior,
     )
 
     data_loader_val = DataLoader(
@@ -463,6 +467,7 @@ def main(args):
         num_workers=args.num_workers,
         pin_memory=args.pin_mem,
         drop_last=False,
+        collate_fn=collate_fn_dior,
     )
 
     data_loader_test = DataLoader(
@@ -472,6 +477,7 @@ def main(args):
         num_workers=args.num_workers,
         pin_memory=args.pin_mem,
         drop_last=False,
+        collate_fn=collate_fn_dior,
     )
 
     mixup_fn = None
@@ -535,7 +541,9 @@ def main(args):
         args.model_type == "dinov2_segmentation"
         or args.model_type == "dinov2_classification"
     ):
-        model = DINOv2(args, "cuda")
+        model = DINOv2Segmenter(args, "cuda")
+    elif args.model_type == "dinov2_detection":
+        model = DINOv2Detector(args, "cuda")
     elif args.model_type == "samhq_segmentation":
         model = SAMHQ(args, "cuda")
     elif args.model_type == "omnisat":
@@ -678,6 +686,7 @@ def main(args):
         args.model_type.startswith("resnet")
         or args.model_type == "dinov2_classification"
         or args.model_type == "dinov2_segmentation"
+        or args.model_type == "dinov2_detection"
         or args.model_type == "samhq_segmentation"
         or args.model_type == "lift_segmentation"
         or args.model_type == "swin"
@@ -778,6 +787,16 @@ def main(args):
                     args,
                     mixup_fn,
                 )
+            elif args.model_type == "dinov2_detection":
+                train_stats = train_one_epoch_frcnn(
+                    model,
+                    data_loader_train,
+                    optimizer,
+                    device,
+                    epoch,
+                    log_writer=log_writer,
+                    args=args,
+                )
             elif (
                 args.model_type == "segmentation"
                 or args.model_type == "dinov2_segmentation"
@@ -862,6 +881,8 @@ def main(args):
                     loss_scaler=loss_scaler,
                     epoch=epoch,
                 )
+        elif args.model_type == "dinov2_detection":
+            print(train_stats)
         else:
             test_stats = evaluate(data_loader_val, model, device)
 

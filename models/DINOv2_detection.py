@@ -1,4 +1,5 @@
 import re
+from collections import OrderedDict
 import timm
 import torch
 import torch.nn as nn
@@ -21,12 +22,71 @@ from transformers import (
 from torchvision import models as torchvision_models
 import torchvision
 from torchvision.models.detection import FasterRCNN
-from torchvision.models.detection.rpn import AnchorGenerator
+from torchvision.models.detection.rpn import (
+    AnchorGenerator,
+    RegionProposalNetwork,
+    RPNHead,
+)
+from torchvision.models.detection.roi_heads import RoIHeads
+from torchvision.models.detection.image_list import ImageList
+
 
 from util.LiFT_module import LiFT
 
 
-class DINOv2(nn.Module):
+class TwoMLPHead(nn.Module):
+    """
+    Standard heads for FPN-based models
+
+    Args:
+        in_channels (int): number of input channels
+        representation_size (int): size of the intermediate representation
+    """
+
+    def __init__(self, in_channels, representation_size):
+        super().__init__()
+
+        self.fc6 = nn.Linear(in_channels, representation_size)
+        self.fc7 = nn.Linear(representation_size, representation_size)
+
+    def forward(self, x):
+        x = x.flatten(start_dim=1)
+
+        x = F.relu(self.fc6(x))
+        x = F.relu(self.fc7(x))
+
+        return x
+
+
+class FastRCNNPredictor(nn.Module):
+    """
+    Standard classification + bounding box regression layers
+    for Fast R-CNN.
+
+    Args:
+        in_channels (int): number of input channels
+        num_classes (int): number of output classes (including background)
+    """
+
+    def __init__(self, in_channels, num_classes):
+        super().__init__()
+        self.cls_score = nn.Linear(in_channels, num_classes)
+        self.bbox_pred = nn.Linear(in_channels, num_classes * 4)
+
+    def forward(self, x):
+        if x.dim() == 4:
+            torch._assert(
+                list(x.shape[2:]) == [1, 1],
+                f"x has the wrong shape, expecting the last two dimensions to be [1,1] instead of {list(x.shape[2:])}",
+            )
+        x = x.flatten(start_dim=1)
+        scores = self.cls_score(x)
+        bbox_deltas = self.bbox_pred(x)
+
+        return scores, bbox_deltas
+
+
+class DINOv2Detector(nn.Module):
 
     def __init__(self, args, device) -> None:
         super().__init__()
@@ -100,149 +160,110 @@ class DINOv2(nn.Module):
         self.device = device
         self.patch_size = 14
 
-        # upernet stuff
         if self.model_size == "small":
             self.embed_dim = 384
-            feature_channels = [
-                self.embed_dim + self.conv_size,
-                self.embed_dim,
-            ]
         elif self.model_size == "base":
             self.embed_dim = 768
-            feature_channels = [
-                self.embed_dim + self.conv_size,
-                self.embed_dim,
-                self.embed_dim,
-                self.embed_dim,
-            ]
         else:
             self.embed_dim = 1024
-            feature_channels = [
-                384 + 32,
-                self.embed_dim,
-                self.embed_dim,
-                self.embed_dim,
-            ]
 
-        fpn_out = self.embed_dim + self.conv_size
+        # self.detection_head = FasterRCNNHead(
+        #     self.feat_extr, args.nb_classes, self.embed_dim
+        # )
         self.input_size = (args.input_size, args.input_size)
         self.num_patches = int(self.input_size[0] / self.patch_size)
 
-        self.do_interpolation = False
-
-        if args.input_size % 14 != 0:
-            self.do_interpolation = True
-
-        if args.dataset_type == "euro_sat" or args.dataset_type == "rgb":
-            self.task = "classification"
-            # self.classifier = LinearClassifier(
-            #     self.embed_dim, self.num_patches, self.num_patches, args.nb_classes
-            # )
-            self.classification_head = nn.Linear(self.embed_dim, args.nb_classes)
-        else:
-            self.task = "segmentation"
-
-        # self.PPN = PSPModule(feature_channels[-1])
-        # self.FPN = FPN_fuse(feature_channels, fpn_out=fpn_out)
-        # self.head = nn.Conv2d(fpn_out, args.nb_classes, kernel_size=3, padding=1)
         self.up_1 = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
         self.up_2 = nn.Upsample(scale_factor=4, mode="bilinear", align_corners=True)
 
-        config = {
-            "pool_scales": [1, 2, 3, 6],
-            "hidden_size": 512,
-            "num_labels": args.nb_classes,
-            "initializer_range": 0.02,
-        }
+        anchor_generator = AnchorGenerator(
+            sizes=(
+                (32,),  # Feature map "0"
+                (64,),  # Feature map "1"
+                (128,),  # Feature map "2"
+                (256,),  # Feature map "3"
+            ),
+            aspect_ratios=(
+                (0.5, 1.0, 2.0),  # Feature map "0"
+                (0.5, 1.0, 2.0),  # Feature map "1"
+                (0.5, 1.0, 2.0),  # Feature map "2"
+                (0.5, 1.0, 2.0),  # Feature map "3"
+            ),
+        )
+        rpn_head = RPNHead(
+            self.embed_dim, anchor_generator.num_anchors_per_location()[0]
+        )
 
-        self.upernet_head = UperNetHead(config, feature_channels)
+        rpn_nms_thresh = 0.7
+        rpn_fg_iou_thresh = 0.7
+        rpn_bg_iou_thresh = 0.3
+        rpn_batch_size_per_image = 256
+        rpn_positive_fraction = 0.5
+        rpn_score_thresh = 0.0
+        rpn_pre_nms_top_n_train = 2000
+        rpn_pre_nms_top_n_test = 1000
+        rpn_post_nms_top_n_train = 2000
+        rpn_post_nms_top_n_test = 1000
+        rpn_pre_nms_top_n = dict(
+            training=rpn_pre_nms_top_n_train, testing=rpn_pre_nms_top_n_test
+        )
+        rpn_post_nms_top_n = dict(
+            training=rpn_post_nms_top_n_train, testing=rpn_post_nms_top_n_test
+        )
 
-        # if self.conv_size > 0:
-        if args.dataset_type == "spacenet":
-            self.up = nn.Upsample(size=(64, 64), mode="bilinear", align_corners=True)
-        elif (
-            args.dataset_type == "sen1floods11"
-            or args.dataset_type == "vaihingen"
-            or args.dataset_type == "potsdam"
-        ):
-            self.up = nn.Upsample(size=(144, 144), mode="bilinear", align_corners=True)
-        elif args.dataset_type == "isaid":
-            self.up = nn.Upsample(size=(256, 256), mode="bilinear", align_corners=True)
-        elif args.dataset_type == "mass_roads":
-            self.up = nn.Upsample(size=(428, 428), mode="bilinear", align_corners=True)
-            # elif  args.dataset_type == "rgb":
+        self.rpn = RegionProposalNetwork(
+            anchor_generator,
+            rpn_head,
+            rpn_fg_iou_thresh,
+            rpn_bg_iou_thresh,
+            rpn_batch_size_per_image,
+            rpn_positive_fraction,
+            rpn_pre_nms_top_n,
+            rpn_post_nms_top_n,
+            rpn_nms_thresh,
+            score_thresh=rpn_score_thresh,
+        )
 
-        # self.conv = nn.Conv2d(
-        #     in_channels=256, out_channels=256, kernel_size=3, stride=2, padding=1
-        # )  # 3x3 kernel, stride 2, padding 1
-        # self.bn = nn.BatchNorm2d(256)
-        # self.relu = nn.ReLU()
+        roi_pooler = torchvision.ops.MultiScaleRoIAlign(
+            featmap_names=[
+                "0",
+                "1",
+                "2",
+                "3",
+            ],  # Use all feature maps from the backbone
+            output_size=7,
+            sampling_ratio=2,
+        )
 
-        # self.conv = nn.Conv2d(
-        #     in_channels=32, out_channels=32, kernel_size=3, stride=2, padding=1
-        # )
-        # self.bn = nn.BatchNorm2d(32)
-        # self.relu = nn.ReLU()
+        resolution = roi_pooler.output_size[0]
+        representation_size = 1024
+        box_head = TwoMLPHead(self.embed_dim * resolution**2, representation_size)
 
-        # self.classifier = LinearClassifier(
-        #     self.embed_dim, self.num_patches, self.num_patches, args.nb_classes
-        # )
+        representation_size = 1024
+        box_predictor = FastRCNNPredictor(representation_size, args.nb_classes)
 
-        # config = Mask2FormerConfig()
-        # mask2former_model = Mask2FormerForUniversalSegmentation(config)
-        # self.swin_encoder = mask2former_model.model.pixel_level_module.encoder
+        box_score_thresh = 0.05
+        box_nms_thresh = 0.5
+        box_detections_per_img = 100
+        box_fg_iou_thresh = 0.5
+        box_bg_iou_thresh = 0.5
+        box_batch_size_per_image = 512
+        box_positive_fraction = 0.25
+        bbox_reg_weights = None
 
-        ############# SWIN
-
-        # self.swin_encoder = AutoModel.from_pretrained(
-        #     "microsoft/swin-tiny-patch4-window7-224"
-        # )
-
-        # self.swin_encoder.to(device)
-
-        ############# SWIN
-
-        # print(sum(p.numel() for p in self.swin_encoder.parameters() if p.requires_grad))
-
-        # self.swin_encoder = Mask2FormerForUniversalSegmentation.from_pretrained(
-        #     "facebook/mask2former-swin-tiny-cityscapes-semantic"
-        # ).model.pixel_level_module.encoder
-
-        # self.swin_encoder = torchvision_models.__dict__["swin_t"]().features
-
-        ############# MS to 3 channels
-
-        # self.linear_7_to_3 = nn.Conv2d(in_channels=7, out_channels=3, kernel_size=1)
-
-        # self.linear_7_to_3.to(device)
-
-        ############# MS to 3 channels
-
-        ############# LiFT
-
-        # lift_path = "/home/filip/lift/output/lift_fmow_rgb/dino_vits16_0.001_cosine_aug_448/lift.pth"
-
-        # self.lift = LiFT(384, 16, pre_shape=False)
-        # state_dict = torch.load(lift_path)
-
-        # for k in list(state_dict.keys()):
-        #     if k.startswith("module."):
-        #         state_dict[k[7:]] = state_dict[k]
-        #         del state_dict[k]
-
-        # self.lift.load_state_dict(state_dict)
-        # self.lift.to(device)
-        # print("Loaded LiFT module from: " + lift_path)
-
-        # self.lift.eval()
-
-        # self.linear_transform_down = nn.Linear(768, 384)
-        # self.linear_transform_up = nn.Linear(384, 768)
-
-        ############# LiFT
-
-        self.detection_head = FasterRCNNHead(
-            self.feat_extr, args.nb_classes, self.embed_dim
+        self.roi_heads = RoIHeads(
+            # Box
+            roi_pooler,
+            box_head,
+            box_predictor,
+            box_fg_iou_thresh,
+            box_bg_iou_thresh,
+            box_batch_size_per_image,
+            box_positive_fraction,
+            bbox_reg_weights,
+            box_score_thresh,
+            box_nms_thresh,
+            box_detections_per_img,
         )
 
         if self.conv_size == 32:
@@ -304,55 +325,7 @@ class DINOv2(nn.Module):
                 # nn.ReLU(),
             )
 
-    def get_features(self, imgs):
-        # layer = self.layer_num[0] # TODO: make it a list
-        # layers = []
-        if self.do_interpolation:
-            if imgs.shape[-1] == 512:
-                imgs = F.interpolate(
-                    imgs, size=504, mode="bilinear", align_corners=True
-                )
-            elif imgs.shape[-1] == 64:
-                imgs = F.interpolate(imgs, size=56, mode="bilinear", align_corners=True)
-            elif imgs.shape[-1] == 256:
-                imgs = F.interpolate(
-                    imgs, size=252, mode="bilinear", align_corners=True
-                )
-            elif imgs.shape[-1] == 1500:
-                imgs = F.interpolate(
-                    imgs, size=1498, mode="bilinear", align_corners=True
-                )
-
-        with torch.no_grad():
-            if self.task == "classification":
-                out = self.feat_extr.forward_features(imgs)  # type: ignore
-                cls = out["x_norm_clstoken"]
-                out = cls
-            else:
-                # if self.layer_num == "last":
-                if self.model_size == "base" or self.model_size == "small":
-                    patch = self.feat_extr.get_intermediate_layers(imgs, (3, 5, 8, 11))  # type: ignore
-                else:
-                    patch = self.feat_extr.get_intermediate_layers(imgs, (3, 9, 17, 23))  # type: ignore
-                out = patch
-
-            # layers.append(patch)
-            # layers.append(patch)
-            # cls = out["x_norm_clstoken"]
-            # elif self.layer_num == "first":
-
-        # elif self.layer_num == "avg":
-        #     pass
-        return out
-
-    def encoder_conv(self, x):
-
-        conv_embeds = self.conv_layers(x)
-        conv_embeds = self.up(conv_embeds)
-
-        return conv_embeds
-
-    def decoder_upernet(self, features, conv_embeds):
+    def decoder_fasterrcnn(self, images, features, targets, conv_embeds):
 
         # conv_1 = self.relu(self.bn(self.conv(conv_embeds)))
         # conv_2 = self.relu(self.bn(self.conv(conv_1)))
@@ -382,14 +355,14 @@ class DINOv2(nn.Module):
         new_features[-1] = F.interpolate(
             new_features[-1], scale_factor=0.5, mode="bilinear", align_corners=True
         )
-        # features[2] = self.up_1(features[2])
+        # # features[2] = self.up_1(features[2])
         new_features[1] = self.up_1(new_features[1])
         new_features[0] = self.up_2(new_features[0])
 
         # new_features[0] = torch.cat((new_features[0], self.up(swin_embeds)), 1)
 
-        if self.conv_size > 0:
-            new_features[0] = torch.cat((new_features[0], conv_embeds), 1)
+        # if self.conv_size > 0:
+        #     new_features[0] = torch.cat((new_features[0], conv_embeds), 1)
         # new_features[1] = torch.cat((new_features[1], conv_1), 1)
         # new_features[2] = torch.cat((new_features[2], conv_2), 1)
         # new_features[3] = torch.cat((new_features[3], conv_3), 1)
@@ -400,17 +373,50 @@ class DINOv2(nn.Module):
         # x = self.head(features[-1])
         # x = self.head(self.FPN(new_features))
 
-        x = self.upernet_head(new_features)
+        images = ImageList(images, [(512, 512) for _ in range(len(images))])
 
-        x = F.interpolate(x, size=self.input_size, mode="bilinear", align_corners=False)
-        return x
+        features = OrderedDict(
+            {str(i): new_features[i] for i in range(len(new_features))}
+        )
 
-    def decoder_linear(self, x, conv_embeds):
-        x = self.classifier(x)
-        x = F.interpolate(x, size=self.input_size, mode="bilinear", align_corners=False)
-        return x
+        proposals, proposal_losses = self.rpn(images, features, targets)
+        detections, detector_losses = self.roi_heads(
+            features, proposals, images.image_sizes, targets
+        )
 
-    def forward(self, x):
+        # x = F.interpolate(x, size=self.input_size, mode="bilinear", align_corners=False)
+        return detector_losses
+
+    def get_features(self, imgs):
+        # layer = self.layer_num[0] # TODO: make it a list
+        # layers = []
+        if imgs.shape[-1] == 512:
+            imgs = F.interpolate(imgs, size=504, mode="bilinear", align_corners=True)
+
+        with torch.no_grad():
+            if self.model_size == "base" or self.model_size == "small":
+                patch = self.feat_extr.get_intermediate_layers(imgs, (3, 5, 8, 11))  # type: ignore
+            else:
+                patch = self.feat_extr.get_intermediate_layers(imgs, (3, 9, 17, 23))  # type: ignore
+            out = patch
+
+            # layers.append(patch)
+            # layers.append(patch)
+            # cls = out["x_norm_clstoken"]
+            # elif self.layer_num == "first":
+
+        # elif self.layer_num == "avg":
+        #     pass
+        return out
+
+    def encoder_conv(self, x):
+
+        conv_embeds = self.conv_layers(x)
+        conv_embeds = self.up(conv_embeds)
+
+        return conv_embeds
+
+    def forward(self, x, targets):
 
         # chunks = torch.split(x, [3, 7], dim=1)
 
@@ -427,6 +433,10 @@ class DINOv2(nn.Module):
         # x = self.encoder_forward(x)
         # x = self.decoder_upernet(x, conv_embeds)
         features = self.get_features(x)
+
+        x = self.decoder_fasterrcnn(x, features, targets, conv_embeds)
+
+        # detections = self.transform.postprocess(detections, images.image_sizes, original_image_sizes)  # type: ignore[operator]
 
         ######## LIFT ###########
 
@@ -500,9 +510,10 @@ class DINOv2(nn.Module):
 
         # x = self.decoder_upernet(x[1])
 
-        x = self.detection_head(features, targets=None)
+        # x = self.detection_head(x, targets)
 
-        return x, (conv_embeds, features[-1])
+        # return x, (conv_embeds, features[-1])
+        return x
 
 
 class BackboneWithFPN(nn.Module):
@@ -514,10 +525,10 @@ class BackboneWithFPN(nn.Module):
     def forward(self, imgs):
         # Extract multiple feature maps from the backbone
 
-        if self.model_size == "base" or self.model_size == "small":
-            features = self.feat_ebackbonextr.get_intermediate_layers(imgs, (3, 5, 8, 11))  # type: ignore
-        else:
-            features = self.backbone.get_intermediate_layers(imgs, (3, 9, 17, 23))  # type: ignore
+        # if self.backbone.model_size == "base" or self.backbone.model_size == "small":
+        features = self.backbone.get_intermediate_layers(imgs, (3, 5, 8, 11))  # type: ignore
+        # else:
+        #     features = self.backbone.get_intermediate_layers(imgs, (3, 9, 17, 23))  # type: ignore
         # features = self.backbone.get_features(x)
         return {
             "0": features[0],  # First feature map
@@ -538,10 +549,10 @@ class FasterRCNNHead(nn.Module):
             num_classes (int): The number of classes for object detection.
         """
         # Wrap the backbone to include out_channels and format the output
-        out_channels = (
+        self.out_channels = (
             embed_dim  # Set this to match the output channels of your backbone
         )
-        self.backbone = BackboneWithFPN(backbone, out_channels)
+        self.backbone = BackboneWithFPN(backbone, self.out_channels)
 
         # Define the anchor generator with sizes and aspect ratios
         anchor_generator = AnchorGenerator(
@@ -563,7 +574,7 @@ class FasterRCNNHead(nn.Module):
 
         # Build the Faster R-CNN model
         self.model = FasterRCNN(
-            self.backbone,
+            backbone=self.backbone,
             num_classes=num_classes,
             rpn_anchor_generator=anchor_generator,
             box_roi_pool=roi_pooler,

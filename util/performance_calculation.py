@@ -8,7 +8,7 @@ from argparse import ArgumentParser
 
 sys.path.append(".")
 
-from models.DINOv2_features import DINOv2
+from models.DINOv2_segmentation import DINOv2
 from models import models_vit_segmentation
 import torch
 
