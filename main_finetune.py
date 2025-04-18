@@ -416,9 +416,9 @@ def main(args):
 
     cudnn.benchmark = True
 
-    dataset_train = build_fmow_dataset(is_train=True, data_split="trainval", args=args)
-    dataset_val = build_fmow_dataset(is_train=False, data_split="test", args=args)
-    # dataset_test = build_fmow_dataset(is_train=False, data_split="test", args=args)
+    dataset_train = build_fmow_dataset(is_train=True, data_split="train", args=args)
+    dataset_val = build_fmow_dataset(is_train=False, data_split="val", args=args)
+    dataset_test = build_fmow_dataset(is_train=False, data_split="test", args=args)
 
     num_tasks = misc.get_world_size()
     global_rank = misc.get_rank()
@@ -457,7 +457,7 @@ def main(args):
         num_workers=args.num_workers,
         pin_memory=args.pin_mem,
         drop_last=True,
-        collate_fn=collate_fn_dior,
+        # collate_fn=collate_fn_dior,
     )
 
     data_loader_val = DataLoader(
@@ -467,7 +467,7 @@ def main(args):
         num_workers=args.num_workers,
         pin_memory=args.pin_mem,
         drop_last=False,
-        collate_fn=collate_fn_dior,
+        # collate_fn=collate_fn_dior,
     )
 
     data_loader_test = DataLoader(
@@ -477,7 +477,7 @@ def main(args):
         num_workers=args.num_workers,
         pin_memory=args.pin_mem,
         drop_last=False,
-        collate_fn=collate_fn_dior,
+        # collate_fn=collate_fn_dior,
     )
 
     mixup_fn = None

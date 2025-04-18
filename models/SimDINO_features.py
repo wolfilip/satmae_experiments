@@ -29,7 +29,7 @@ class SimDINO(nn.Module):
             self.feat_extr, args.finetune, "teacher", args.model, 16
         )
 
-        # self.feat_extr.eval()  # type: ignore
+        self.feat_extr.eval()  # type: ignore
         self.feat_extr.to(device)  # type: ignore
         self.device = device
         self.patch_size = 16
@@ -249,12 +249,12 @@ class SimDINO(nn.Module):
         return out
 
     def forward_swin(self, x):
-        # with torch.no_grad():
-        features = []
-        for i, layer in enumerate(self.feat_extr.features):
-            x = layer(x)
-            if i in [1, 3, 5, 7]:  # Specify the layers you want to extract
-                features.append(x)
+        with torch.no_grad():
+            features = []
+            for i, layer in enumerate(self.feat_extr.features):
+                x = layer(x)
+                if i in [1, 3, 5, 7]:  # Specify the layers you want to extract
+                    features.append(x)
         return features
 
     def encoder_conv(self, x):
@@ -327,13 +327,13 @@ class SimDINO(nn.Module):
 
     def forward(self, x):
 
-        # chunks = torch.split(x, [3, 7], dim=1)
+        chunks = torch.split(x, [3, 7], dim=1)
         conv_embeds = 0
         if self.conv_size > 0:
             conv_embeds = self.encoder_conv(chunks[1])
         # x = self.encoder_forward(x)
         # x = self.decoder_upernet(x, conv_embeds)
-        swin_features = self.forward_swin(x)  # type: ignore
+        swin_features = self.forward_swin(chunks[0])  # type: ignore
 
         swin_features[0] = torch.permute(swin_features[0], (0, 3, 1, 2))
         swin_features[1] = torch.permute(swin_features[1], (0, 3, 1, 2))

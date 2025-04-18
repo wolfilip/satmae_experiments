@@ -241,10 +241,6 @@ class DINOv2Segmenter(nn.Module):
 
         ############# LiFT
 
-        self.detection_head = FasterRCNNHead(
-            self.feat_extr, args.nb_classes, self.embed_dim
-        )
-
         if self.conv_size == 32:
             self.conv_layers = nn.Sequential(
                 # Conv1: Input [B, 3, 224, 224] -> Output [B, 64, 112, 112]
@@ -499,8 +495,6 @@ class DINOv2Segmenter(nn.Module):
         # x = self.decoder_linear(features[-1], conv_embeds)
 
         # x = self.decoder_upernet(x[1])
-
-        x = self.detection_head(features, targets)
 
         # return x, (conv_embeds, features[-1])
         return x
