@@ -34,6 +34,9 @@ class SimDINO(nn.Module):
         self.device = device
         self.patch_size = 16
 
+        for p in self.feat_extr.parameters():
+            p.requires_grad = False
+
         # upernet stuff
         if self.model_size == "small" or self.model_size == "s":
             self.embed_dim = 384

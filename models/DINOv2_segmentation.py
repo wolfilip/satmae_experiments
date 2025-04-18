@@ -100,6 +100,9 @@ class DINOv2Segmenter(nn.Module):
         self.device = device
         self.patch_size = 14
 
+        for p in self.feat_extr.parameters():
+            p.requires_grad = False
+
         # upernet stuff
         if self.model_size == "small":
             self.embed_dim = 384
@@ -219,6 +222,21 @@ class DINOv2Segmenter(nn.Module):
         ############# MS to 3 channels
 
         ############# LiFT
+
+        lift_path = "/home/filip/lift/output/lift_fmow_trains_layer_3/vit_base_patch16_224_0.001_cosine_aug_256/lift_10.pth"
+
+        self.lift = LiFT(1024, 16)
+        state_dict = torch.load(lift_path)
+        self.lift.eval()
+
+        for k in list(state_dict.keys()):
+            if k.startswith("module."):
+                state_dict[k[7:]] = state_dict[k]
+                del state_dict[k]
+
+        self.lift.load_state_dict(state_dict)
+        self.lift.to("cuda")
+        print("Loaded LiFT module from: " + lift_path)
 
         # lift_path = "/home/filip/lift/output/lift_fmow_rgb/dino_vits16_0.001_cosine_aug_448/lift.pth"
 
@@ -406,7 +424,7 @@ class DINOv2Segmenter(nn.Module):
         x = F.interpolate(x, size=self.input_size, mode="bilinear", align_corners=False)
         return x
 
-    def forward(self, x, targets):
+    def forward(self, x):
 
         # chunks = torch.split(x, [3, 7], dim=1)
 
@@ -458,10 +476,13 @@ class DINOv2Segmenter(nn.Module):
         #         (0, 3, 1, 2),
         #     )
 
+        # with torch.no_grad():
+        #     features[0] = self.lift(x, features[0])
+
         ######## LIFT ###########
 
         # x = self.encoder_forward(x)
-        # x = self.decoder_upernet(features, conv_embeds)
+        x = self.decoder_upernet(features, conv_embeds)
         # new_features = []
 
         # new_features.append(
