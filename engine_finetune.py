@@ -825,6 +825,9 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
             #     pred, _ = model((data_rgb, data_depth))
             # else:
             pred, _ = model(data)
+            # pred = torch.full_like(
+            #     mask, fill_value=mask.flatten().mode().values.item(), device=device
+            # )  # Predict the majority class
 
             # _, axarr = plt.subplots(3)
 
@@ -860,9 +863,11 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
             )
 
             loss = get_bce_loss(pred, mask_one_hot.float())
+            # loss = 2
             # dice_loss = DiceLoss()
             # loss_2 = dice_loss(pred, mask_one_hot.float())
             miou_metric.update(pred.argmax(1), mask)
+            # miou_metric.update(pred, mask)
             if (
                 args.dataset_type != "spacenet"
                 and args.dataset_type != "sen1floods11"

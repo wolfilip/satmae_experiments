@@ -739,7 +739,7 @@ def main(args):
             or "simdino" in args.model_type
         ):
             test_stats, max_iou = evaluate_segmentation(
-                data_loader_val, model, device, 0, 0, args
+                data_loader_test, model, device, 0, 0, args
             )
         else:
             test_stats = evaluate(data_loader_val, model, device)
@@ -754,7 +754,7 @@ def main(args):
             or "simdino" in args.model_type
         ):
             print(
-                f"mIoU of the network on the {len(dataset_val)} test images: {test_stats['IoU']:.4f}"  # type: ignore
+                f"mIoU of the network on the {len(dataset_test)} test images: {test_stats['IoU']:.4f}"  # type: ignore
             )
         else:
             print(

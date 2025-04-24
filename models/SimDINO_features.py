@@ -333,7 +333,7 @@ class SimDINO(nn.Module):
         chunks = torch.split(x, [3, 7], dim=1)
         conv_embeds = 0
         if self.conv_size > 0:
-            conv_embeds = self.encoder_conv(chunks[1])
+            conv_embeds = self.encoder_conv(x)
         # x = self.encoder_forward(x)
         # x = self.decoder_upernet(x, conv_embeds)
         swin_features = self.forward_swin(chunks[0])  # type: ignore

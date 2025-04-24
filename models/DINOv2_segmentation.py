@@ -234,6 +234,9 @@ class DINOv2Segmenter(nn.Module):
                 state_dict[k[7:]] = state_dict[k]
                 del state_dict[k]
 
+        for p in self.lift.parameters():
+            p.requires_grad = False
+
         self.lift.load_state_dict(state_dict)
         self.lift.to("cuda")
         print("Loaded LiFT module from: " + lift_path)
@@ -517,83 +520,5 @@ class DINOv2Segmenter(nn.Module):
 
         # x = self.decoder_upernet(x[1])
 
-        # return x, (conv_embeds, features[-1])
-        return x
-
-
-class BackboneWithFPN(nn.Module):
-    def __init__(self, backbone, out_channels):
-        super(BackboneWithFPN, self).__init__()
-        self.backbone = backbone
-        self.out_channels = out_channels
-
-    def forward(self, imgs):
-        # Extract multiple feature maps from the backbone
-
-        if self.model_size == "base" or self.model_size == "small":
-            features = self.feat_ebackbonextr.get_intermediate_layers(imgs, (3, 5, 8, 11))  # type: ignore
-        else:
-            features = self.backbone.get_intermediate_layers(imgs, (3, 9, 17, 23))  # type: ignore
-        # features = self.backbone.get_features(x)
-        return {
-            "0": features[0],  # First feature map
-            "1": features[1],  # Second feature map
-            "2": features[2],  # Third feature map
-            "3": features[3],  # Fourth feature map
-        }  # Use all feature maps for multi-scale detection
-
-
-class FasterRCNNHead(nn.Module):
-    def __init__(self, backbone, num_classes, embed_dim):
-        super(FasterRCNNHead, self).__init__()
-        """
-        Initializes the Faster R-CNN head with the given backbone and number of classes.
-
-        Args:
-            backbone (nn.Module): The feature extractor backbone (e.g., DINOv2).
-            num_classes (int): The number of classes for object detection.
-        """
-        # Wrap the backbone to include out_channels and format the output
-        out_channels = (
-            embed_dim  # Set this to match the output channels of your backbone
-        )
-        self.backbone = BackboneWithFPN(backbone, out_channels)
-
-        # Define the anchor generator with sizes and aspect ratios
-        anchor_generator = AnchorGenerator(
-            sizes=((32, 64, 128, 256, 512),),
-            aspect_ratios=((0.5, 1.0, 2.0),),
-        )
-
-        # Define the region of interest (RoI) aligner
-        roi_pooler = torchvision.ops.MultiScaleRoIAlign(
-            featmap_names=[
-                "0",
-                "1",
-                "2",
-                "3",
-            ],  # Use all feature maps from the backbone
-            output_size=7,
-            sampling_ratio=2,
-        )
-
-        # Build the Faster R-CNN model
-        self.model = FasterRCNN(
-            self.backbone,
-            num_classes=num_classes,
-            rpn_anchor_generator=anchor_generator,
-            box_roi_pool=roi_pooler,
-        )
-
-    def forward(self, features, targets=None):
-        """
-        Forward pass for the Faster R-CNN head.
-
-        Args:
-            features (torch.Tensor): Backbone features to be processed.
-            targets (Optional[List[Dict[str, torch.Tensor]]]): Ground truth boxes and labels for training.
-
-        Returns:
-            Dict[str, torch.Tensor] or List[Dict[str, torch.Tensor]]: The output of the Faster R-CNN head.
-        """
-        return self.model(features, targets)
+        return x, (conv_embeds, features[-1])
+        # return x
