@@ -436,7 +436,7 @@ def train_one_epoch_segmentation(
             "satmae_experiments/"
             + args.dataset_type  # type: ignore
             + "_"
-            + args.dataset_split  # type: ignore
+            + str(args.dataset_split)  # type: ignore
             + "pc_results/images/"
             + args.method_name  # type: ignore
         ):
@@ -444,7 +444,7 @@ def train_one_epoch_segmentation(
                 "satmae_experiments/"
                 + args.dataset_type  # type: ignore
                 + "_"
-                + args.dataset_split  # type: ignore
+                + str(args.dataset_split)  # type: ignore
                 + "pc_results/images/"
                 + args.method_name  # type: ignore
             )
@@ -452,7 +452,7 @@ def train_one_epoch_segmentation(
             "satmae_experiments/"
             + args.dataset_type  # type: ignore
             + "_"
-            + args.dataset_split  # type: ignore
+            + str(args.dataset_split)  # type: ignore
             + "pc_results/per_image/"
             + args.method_name  # type: ignore
         ):
@@ -460,7 +460,7 @@ def train_one_epoch_segmentation(
                 "satmae_experiments/"
                 + args.dataset_type  # type: ignore
                 + "_"
-                + args.dataset_split  # type: ignore
+                + str(args.dataset_split)  # type: ignore
                 + "pc_results/per_image/"
                 + args.method_name  # type: ignore
             )
@@ -708,7 +708,7 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
             "satmae_experiments/"
             + args.dataset_type
             + "_"
-            + args.dataset_split
+            + str(args.dataset_split)
             + "pc_results/images/"
             + args.method_name
         ):
@@ -716,7 +716,7 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
                 "satmae_experiments/"
                 + args.dataset_type
                 + "_"
-                + args.dataset_split
+                + str(args.dataset_split)
                 + "pc_results/images/"
                 + args.method_name
             )
@@ -724,7 +724,7 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
             "satmae_experiments/"
             + args.dataset_type
             + "_"
-            + args.dataset_split
+            + str(args.dataset_split)
             + "pc_results/per_image/"
             + args.method_name
         ):
@@ -732,7 +732,7 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
                 "satmae_experiments/"
                 + args.dataset_type
                 + "_"
-                + args.dataset_split
+                + str(args.dataset_split)
                 + "pc_results/per_image/"
                 + args.method_name
             )
@@ -839,7 +839,7 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
             #     "satmae_experiments/"
             #     + args.dataset_type
             #     + "_"
-            #     + args.dataset_split
+            #     + str(args.dataset_split)
             #     + "pc_results/images/"
             #     + args.method_name
             #     + "/img_"
@@ -1024,7 +1024,7 @@ def save_results(mask, pred, device, epoch, cnt, miou_test, args):
         "satmae_experiments/"
         + args.dataset_type
         + "_"
-        + args.dataset_split
+        + str(args.dataset_split)
         + "pc_results/per_image/"
         + args.method_name
         + "/image_results_iou_"
@@ -1127,7 +1127,7 @@ def save_images(data, mask, pred, features, cnt, args):
                     "satmae_experiments/"
                     + args.dataset_type
                     + "_"
-                    + args.dataset_split
+                    + str(args.dataset_split)
                     + "pc_results/images/"
                     + args.method_name
                     + "/img_"
@@ -1143,7 +1143,7 @@ def save_images(data, mask, pred, features, cnt, args):
                     "satmae_experiments/"
                     + args.dataset_type
                     + "_"
-                    + args.dataset_split
+                    + str(args.dataset_split)
                     + "pc_results/images/"
                     + args.method_name
                     + "/img_"
@@ -1160,7 +1160,7 @@ def save_images(data, mask, pred, features, cnt, args):
                 "satmae_experiments/"
                 + args.dataset_type
                 + "_"
-                + args.dataset_split
+                + str(args.dataset_split)
                 + "pc_results/images/"
                 + args.method_name
                 + "/img_"

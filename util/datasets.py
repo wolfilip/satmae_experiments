@@ -2013,7 +2013,7 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
             # train_mask_list = mask_list[: int(0.1 * len(mask_list))]
             # train_raster_list = raster_list[: int(r * len(raster_list))]
             # train_mask_list = mask_list[: int(r * len(mask_list))]
-            if args.dataset_split == "100":
+            if args.dataset_split == 100:
                 train_raster_list_rgb = raster_list_rgb[:4999]
                 train_raster_list_depth = raster_list_depth[:4999]
                 train_mask_list = mask_list[:4999]
@@ -2027,7 +2027,7 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
                     is_train,
                     args,
                 )
-            elif args.dataset_split == "10":
+            elif args.dataset_split == 10:
                 train_raster_list_rgb = raster_list_rgb[:499]
                 train_raster_list_depth = raster_list_depth[:499]
                 train_mask_list = mask_list[:499]

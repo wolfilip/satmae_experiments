@@ -55,6 +55,13 @@ from util.datasets import build_fmow_dataset, collate_fn_dior
 from util.misc import NativeScalerWithGradNormCount as NativeScaler
 from util.pos_embed import interpolate_pos_embed
 from util.utils_swin import remap_pretrained_keys_swin
+import yaml
+
+
+def load_config(config_path):
+    """Load a YAML configuration file."""
+    with open(config_path, "r") as file:
+        return yaml.safe_load(file)
 
 
 def get_args_parser():
@@ -396,6 +403,11 @@ def get_args_parser():
     parser.add_argument("--dist_on_itp", action="store_true")
     parser.add_argument(
         "--dist_url", default="env://", help="url used to set up distributed training"
+    )
+
+    # Adding the --config argument to the argument parser
+    parser.add_argument(
+        "--config", type=str, help="Path to the configuration file (YAML format)"
     )
 
     return parser
@@ -1001,8 +1013,20 @@ def main(args):
 
 
 if __name__ == "__main__":
-    args = get_args_parser()
-    args = args.parse_args()
+    # Preserve the --local-rank argument when loading the configuration file
+    parser = get_args_parser()
+    args = parser.parse_args()
+
+    # Load the configuration file
+    config = load_config(args.config)
+
+    # Update args with values from the configuration file, overriding defaults but preserving command-line arguments
+    if args.config:
+        config = load_config(args.config)
+        for key, value in config.items():
+            if not hasattr(args, key) or getattr(args, key) == parser.get_default(key):
+                setattr(args, key, value)
+
     if args.output_dir:
         Path(args.output_dir).mkdir(parents=True, exist_ok=True)
     main(args)
