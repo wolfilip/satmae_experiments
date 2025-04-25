@@ -25,46 +25,51 @@ class SimDINO(nn.Module):
         # )
         self.feat_extr = torchvision_models.__dict__[args.model]()
 
-        load_pretrained_weights(
-            self.feat_extr, args.finetune, "teacher", args.model, 16
-        )
+        if args.finetune:
+            load_pretrained_weights(
+                self.feat_extr, args.finetune, "teacher", args.model, 16
+            )
 
         self.feat_extr.eval()  # type: ignore
         self.feat_extr.to(device)  # type: ignore
-        self.device = device
-        self.patch_size = 16
+        # self.device = device
+        # self.patch_size = 16
 
         for p in self.feat_extr.parameters():
             p.requires_grad = False
 
         # upernet stuff
-        if self.model_size == "small" or self.model_size == "s":
-            self.embed_dim = 384
-            feature_channels = [
-                self.embed_dim + self.conv_size,
-                self.embed_dim,
-            ]
-        elif self.model_size == "base" or self.model_size == "b":
-            self.embed_dim = 768
-            feature_channels = [
-                self.embed_dim + self.conv_size,
-                self.embed_dim,
-            ]
-        else:
-            self.embed_dim = 1024
-            feature_channels = [
-                self.embed_dim + self.conv_size,
-                self.embed_dim,
-                self.embed_dim,
-                self.embed_dim,
-            ]
+        # if self.model_size == "small" or self.model_size == "s":
+        #     self.embed_dim = 384
+        #     feature_channels = [
+        #         self.embed_dim + self.conv_size,
+        #         self.embed_dim,
+        #     ]
+        # elif self.model_size == "base" or self.model_size == "b":
+        #     self.embed_dim = 768
+        #     feature_channels = [
+        #         self.embed_dim + self.conv_size,
+        #         self.embed_dim,
+        #     ]
+        # else:
+        #     self.embed_dim = 1024
+        #     feature_channels = [
+        #         self.embed_dim + self.conv_size,
+        #         self.embed_dim,
+        #         self.embed_dim,
+        #         self.embed_dim,
+        #     ]
 
-        if "swin" in args.model:
+        if args.model == "swin_b":
             feature_channels = [128, 256, 512, 1024]
+        elif args.model == "swin_s":
+            feature_channels = [96, 192, 384, 768]
+        elif args.model == "swin_t":
+            feature_channels = [96, 192, 384, 768]
 
-        fpn_out = self.embed_dim + self.conv_size
+        # fpn_out = self.embed_dim + self.conv_size
         self.input_size = (args.input_size, args.input_size)
-        self.num_patches = int(self.input_size[0] / self.patch_size)
+        # self.num_patches = int(self.input_size[0] / self.patch_size)
 
         self.do_interpolation = False
 
@@ -83,8 +88,8 @@ class SimDINO(nn.Module):
         # self.PPN = PSPModule(feature_channels[-1])
         # self.FPN = FPN_fuse(feature_channels, fpn_out=fpn_out)
         # self.head = nn.Conv2d(fpn_out, args.nb_classes, kernel_size=3, padding=1)
-        self.up_1 = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
-        self.up_2 = nn.Upsample(scale_factor=4, mode="bilinear", align_corners=True)
+        # self.up_1 = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
+        # self.up_2 = nn.Upsample(scale_factor=4, mode="bilinear", align_corners=True)
 
         config = {
             "pool_scales": [1, 2, 3, 6],

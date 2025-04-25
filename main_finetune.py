@@ -734,7 +734,10 @@ def main(args):
 
     # Set up wandb
     if global_rank == 0 and args.wandb is not None:
-        wandb.init(project=args.wandb)
+        wandb.init(
+            project=args.wandb,
+            name="segment-" + args.method_name + "-" + str(args.dataset_type),
+        )
         wandb.config.update(args)
         wandb.watch(model)
 
