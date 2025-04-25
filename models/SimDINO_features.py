@@ -25,6 +25,17 @@ class SimDINO(nn.Module):
         # )
         self.feat_extr = torchvision_models.__dict__[args.model]()
 
+        self.ms_backbone = False
+
+        if "ms" in args.finetune:
+            self.feat_extr.features[0][0] = nn.Conv2d(
+                10,
+                self.feat_extr.features[0][0].out_channels,
+                kernel_size=(4, 4),
+                stride=(4, 4),
+            )
+            self.ms_backbone = True
+
         if args.finetune:
             load_pretrained_weights(
                 self.feat_extr, args.finetune, "teacher", args.model, 16
@@ -335,13 +346,17 @@ class SimDINO(nn.Module):
 
     def forward(self, x):
 
-        chunks = torch.split(x, [3, 7], dim=1)
+        if not self.ms_backbone:
+            chunks = torch.split(x, [3, 7], dim=1)
         conv_embeds = 0
         if self.conv_size > 0:
             conv_embeds = self.encoder_conv(x)
         # x = self.encoder_forward(x)
         # x = self.decoder_upernet(x, conv_embeds)
-        swin_features = self.forward_swin(chunks[0])  # type: ignore
+        if self.ms_backbone:
+            swin_features = self.forward_swin(x)
+        else:
+            swin_features = self.forward_swin(chunks[0])  # type: ignore
 
         swin_features[0] = torch.permute(swin_features[0], (0, 3, 1, 2))
         swin_features[1] = torch.permute(swin_features[1], (0, 3, 1, 2))
