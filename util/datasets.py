@@ -845,7 +845,7 @@ class Sen1Floods11Dataset(Dataset):
 
         # s2_image_rgb = torch.from_numpy(s2_image).float()[[3, 2, 7]]
         s2_image_ms = torch.from_numpy(s2_image).float()[
-            [3, 2, 1, 4, 5, 6, 7, 8, 11, 12]
+            [0, 3, 2, 1, 4, 5, 6, 7, 8, 9, 11, 12]
         ]
         # s1_image = torch.from_numpy(s1_image).float()
         # ratio_band = s1_image[:1, :, :] / (s1_image[1:, :, :] + 1e-10)
@@ -2109,12 +2109,14 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
         path = "/home/filip/datasets/sen1floods11"
 
         transforms_train = K.AugmentationSequential(
-            K.RandomResizedCrop(size=(512, 512), scale=(0.5, 1.0)),
+            # K.RandomResizedCrop(size=(args.input_size, args.input_size), scale=(0.5, 1.0)),
+            K.RandomCrop(size=(args.input_size, args.input_size)),
             K.RandomHorizontalFlip(p=0.5),
             K.RandomVerticalFlip(p=0.5),
             data_keys=["input", "mask"],
         )
         transforms_test = K.AugmentationSequential(
+            K.Resize(size=(args.input_size, args.input_size)),
             data_keys=["input", "mask"],
         )
         if data_split == "train":

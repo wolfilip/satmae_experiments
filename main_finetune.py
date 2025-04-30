@@ -56,6 +56,7 @@ from util.misc import NativeScalerWithGradNormCount as NativeScaler
 from util.pos_embed import interpolate_pos_embed
 from util.utils_swin import remap_pretrained_keys_swin
 import yaml
+from models.use_croma import PretrainedCROMA
 
 
 def load_config(config_path):
@@ -111,6 +112,7 @@ def get_args_parser():
             "swin",
             "simdinov2",
             "simdino",
+            "croma",
         ],
         help="Use channel model",
     )
@@ -148,7 +150,7 @@ def get_args_parser():
     parser.add_argument(
         "--lr",
         type=float,
-        default=None,
+        default=1e-4,
         metavar="LR",
         help="learning rate (absolute lr)",
     )
@@ -582,6 +584,13 @@ def main(args):
             num_classes=args.nb_classes,
             drop_path_rate=args.drop_path,
         )
+    elif args.model_type == "croma":
+        model = PretrainedCROMA(
+            pretrained_path=args.finetune,
+            size="base",
+            modality="optical",
+            image_resolution=args.input_size,
+        ).to(device)
     else:
         model = models_vit.__dict__[args.model](
             patch_size=args.patch_size,
@@ -594,7 +603,12 @@ def main(args):
 
     # model = torch.compile(model, dynamic=False)
 
-    if args.finetune and args.model_type != "swin" and "simdino" not in args.model_type:
+    if (
+        args.finetune
+        and args.model_type != "swin"
+        and args.model_type != "croma"
+        and "simdino" not in args.model_type
+    ):
         checkpoint = torch.load(args.finetune, map_location="cpu")
         # print(checkpoint_model)
 
@@ -702,6 +716,7 @@ def main(args):
         or args.model_type == "samhq_segmentation"
         or args.model_type == "lift_segmentation"
         or args.model_type == "swin"
+        or args.model_type == "croma"
         or "simdino" in args.model_type
     ):
         param_groups = model_without_ddp.parameters()
@@ -819,6 +834,7 @@ def main(args):
                 or args.model_type == "lift_segmentation"
                 or args.model_type == "dinov2_vit"
                 or args.model_type == "swin"
+                or args.model_type == "croma"
                 or "simdino" in args.model_type
             ):
                 # test_stats = evaluate_segmentation(data_loader_val, model, device)
@@ -879,6 +895,7 @@ def main(args):
             or args.model_type == "lift_segmentation"
             or args.model_type == "dinov2_vit"
             or args.model_type == "swin"
+            or args.model_type == "croma"
             or "simdino" in args.model_type
         ):
             test_stats, max_iou = evaluate_segmentation(
@@ -908,6 +925,7 @@ def main(args):
             or args.model_type == "lift_segmentation"
             or args.model_type == "dinov2_vit"
             or args.model_type == "swin"
+            or args.model_type == "croma"
             or "simdino" in args.model_type
         ):
             # print(

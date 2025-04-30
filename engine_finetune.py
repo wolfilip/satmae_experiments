@@ -490,7 +490,10 @@ def train_one_epoch_segmentation(
             # if len(data) == 2:
             #     pred, _ = model((data_rgb, data_depth))
             # else:
-            pred, _ = model(data)
+            if args.model_type == "croma":
+                pred = model(data)
+            else:
+                pred, _ = model(data)
             # if args.dataset_type == "sen1floods11":
             #     pred_ms, _ = model(data, data_ms)
 
@@ -824,7 +827,10 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
             # if len(data) == 2:
             #     pred, _ = model((data_rgb, data_depth))
             # else:
-            pred, _ = model(data)
+            if args.model_type == "croma":
+                pred = model(data)
+            else:
+                pred, _ = model(data)
             # pred = torch.full_like(
             #     mask, fill_value=mask.flatten().mode().values.item(), device=device
             # )  # Predict the majority class

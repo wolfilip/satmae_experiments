@@ -10,3 +10,5 @@ images
 *.csv
 *.ckpt
 *.pth
+*.log
+wandb/
