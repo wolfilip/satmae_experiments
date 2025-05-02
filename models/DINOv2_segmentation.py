@@ -1,28 +1,7 @@
-import re
-import timm
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
 from UPerNet.UPerNetHead import UperNetHead
-from functools import partial
-
-from transformers.models.mask2former.modeling_mask2former import (
-    Mask2FormerConfig,
-    Mask2FormerForUniversalSegmentation,
-)
-
-from transformers import (
-    AutoModelForImageClassification,
-    AutoFeatureExtractor,
-    AutoModel,
-)
-
-from torchvision import models as torchvision_models
-import torchvision
-from torchvision.models.detection import FasterRCNN
-from torchvision.models.detection.rpn import AnchorGenerator
-
 from util.LiFT_module import LiFT
 
 
@@ -42,59 +21,13 @@ class DINOv2Segmenter(nn.Module):
             )
         if self.model_size == "base":
             self.feat_extr = torch.hub.load("facebookresearch/dinov2", "dinov2_vitb14")
-        # if self.model_size == "base":
-        #     self.feat_extr = torch.hub.load(
-        #         "/home/filip/pretrained_weights/", "vitl16_reg4_SimDINOv2_100ep.pth"
-        #     )
         if self.model_size == "base_reg":
             self.feat_extr = torch.hub.load(
                 "facebookresearch/dinov2", "dinov2_vitb14_reg"
             )
         if self.model_size == "large":
-
-            # def revert_block_chunk_weight(state_dict):
-            #     # convert blocks.chunkid.id.* to blocks.id.*: blocks.3.22. to blocks.22.
-            #     return {
-            #         re.sub(r"blocks\.(\d+)\.(\d+)\.", r"blocks.\2.", k): v
-            #         for k, v in state_dict.items()
-            #     }
-
-            # ckpt = torch.load(
-            #     "/home/filip/pretrained_weights/vitl16_reg4_SimDINOv2_100ep.pth",
-            #     map_location="cpu",
-            # )["teacher"]
-
-            # ckpt = {
-            #     k.removeprefix("backbone."): v
-            #     for k, v in ckpt.items()
-            #     if k.startswith("backbone")
-            # }
-            # ckpt = revert_block_chunk_weight(ckpt)
-            # # ckpt = timm.models.vision_transformer.checkpoint_filter_fn(ckpt, model)
-
-            # print(timm.list_models(pretrained=True))
-
-            # self.feat_extr = timm.models.vision_transformer.VisionTransformer(
-            #     embed_dim=1024,
-            #     depth=24,
-            #     num_heads=16,
-            #     mlp_ratio=4,
-            #     qkv_bias=True,
-            #     norm_layer=partial(nn.LayerNorm, eps=1e-6),
-            # )
-            # self.feat_extr.load_state_dict(ckpt)
             self.feat_extr = torch.hub.load("facebookresearch/dinov2", "dinov2_vitl14")
-            # self.feat_extr.load_state_dict(
-            #     torch.load(
-            #         "/home/filip/pretrained_weights/vitl16_reg4_SimDINOv2_100ep.pth"
-            #     )
-            # )
-        # f self.model_size == "large":
-        #     self.feat_extr = torch.hub.load(
-        #         "/home/filip/pretrained_weights/",
-        #         "vitl16_reg4_SimDINOv2_100ep.pth",
-        #         source="local",
-        #     )i
+
         self.feat_extr.eval()  # type: ignore
         self.feat_extr.to(device)  # type: ignore
         self.device = device
@@ -127,7 +60,6 @@ class DINOv2Segmenter(nn.Module):
                 self.embed_dim,
             ]
 
-        fpn_out = self.embed_dim + self.conv_size
         self.input_size = (args.input_size, args.input_size)
         self.num_patches = int(self.input_size[0] / self.patch_size)
 
@@ -145,9 +77,6 @@ class DINOv2Segmenter(nn.Module):
         else:
             self.task = "segmentation"
 
-        # self.PPN = PSPModule(feature_channels[-1])
-        # self.FPN = FPN_fuse(feature_channels, fpn_out=fpn_out)
-        # self.head = nn.Conv2d(fpn_out, args.nb_classes, kernel_size=3, padding=1)
         self.up_1 = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
         self.up_2 = nn.Upsample(scale_factor=4, mode="bilinear", align_corners=True)
 
@@ -191,55 +120,25 @@ class DINOv2Segmenter(nn.Module):
         #     self.embed_dim, self.num_patches, self.num_patches, args.nb_classes
         # )
 
-        # config = Mask2FormerConfig()
-        # mask2former_model = Mask2FormerForUniversalSegmentation(config)
-        # self.swin_encoder = mask2former_model.model.pixel_level_module.encoder
-
-        ############# SWIN
-
-        # self.swin_encoder = AutoModel.from_pretrained(
-        #     "microsoft/swin-tiny-patch4-window7-224"
-        # )
-
-        # self.swin_encoder.to(device)
-
-        ############# SWIN
-
-        # print(sum(p.numel() for p in self.swin_encoder.parameters() if p.requires_grad))
-
-        # self.swin_encoder = Mask2FormerForUniversalSegmentation.from_pretrained(
-        #     "facebook/mask2former-swin-tiny-cityscapes-semantic"
-        # ).model.pixel_level_module.encoder
-
-        # self.swin_encoder = torchvision_models.__dict__["swin_t"]().features
-
-        ############# MS to 3 channels
-
-        # self.linear_7_to_3 = nn.Conv2d(in_channels=7, out_channels=3, kernel_size=1)
-
-        # self.linear_7_to_3.to(device)
-
-        ############# MS to 3 channels
-
         ############# LiFT
 
-        lift_path = "/home/filip/lift/output/lift_fmow_trains_layer_3/vit_base_patch16_224_0.001_cosine_aug_256/lift_10.pth"
+        # lift_path = "/home/filip/lift/output/lift_fmow_trains_layer_3/vit_base_patch16_224_0.001_cosine_aug_256/lift_10.pth"
 
-        self.lift = LiFT(1024, 16)
-        state_dict = torch.load(lift_path)
-        self.lift.eval()
+        # self.lift = LiFT(1024, 16)
+        # state_dict = torch.load(lift_path)
+        # self.lift.eval()
 
-        for k in list(state_dict.keys()):
-            if k.startswith("module."):
-                state_dict[k[7:]] = state_dict[k]
-                del state_dict[k]
+        # for k in list(state_dict.keys()):
+        #     if k.startswith("module."):
+        #         state_dict[k[7:]] = state_dict[k]
+        #         del state_dict[k]
 
-        for p in self.lift.parameters():
-            p.requires_grad = False
+        # for p in self.lift.parameters():
+        #     p.requires_grad = False
 
-        self.lift.load_state_dict(state_dict)
-        self.lift.to("cuda")
-        print("Loaded LiFT module from: " + lift_path)
+        # self.lift.load_state_dict(state_dict)
+        # self.lift.to("cuda")
+        # print("Loaded LiFT module from: " + lift_path)
 
         # lift_path = "/home/filip/lift/output/lift_fmow_rgb/dino_vits16_0.001_cosine_aug_448/lift.pth"
 
@@ -429,21 +328,14 @@ class DINOv2Segmenter(nn.Module):
 
     def forward(self, x):
 
-        chunks = torch.split(x, [3, 7], dim=1)
-
-        # bla = self.linear_layer(chunks[1])
-
-        # swin_embeds = self.swin_encoder(
-        #     self.linear_7_to_3(chunks[1]), output_hidden_states=True
-        # ).hidden_states
-        # swin_embeds = 0
+        chunks = torch.split(x, [1, 3, x.shape[1] - 4], dim=1)
 
         conv_embeds = 0
         if self.conv_size > 0:
-            conv_embeds = self.encoder_conv(chunks[0])
+            conv_embeds = self.encoder_conv(chunks[1])
         # x = self.encoder_forward(x)
         # x = self.decoder_upernet(x, conv_embeds)
-        features = self.get_features(chunks[0])
+        features = self.get_features(chunks[1])
 
         ######## LIFT ###########
 

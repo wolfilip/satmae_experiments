@@ -1,12 +1,11 @@
-import enum
-from torch import nn, einsum
-from einops import rearrange
-import math
 import itertools
-import torch
-from collections import OrderedDict
+import math
 import warnings
+
+import torch
 import torch.nn.functional as F
+from einops import rearrange
+from torch import einsum, nn
 from UPerNet.UPerNetHead import UperNetHead
 
 
@@ -249,7 +248,7 @@ class PretrainedCROMA(nn.Module):
         features = self.forward_croma(optical_images=x)
         output = self.decoder_upernet(features)
 
-        return output
+        return output, features
 
 
 def get_2dalibi(num_heads, num_patches):

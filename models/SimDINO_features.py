@@ -1,15 +1,11 @@
-import re
-import timm
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
-from UPerNet.UPerNetHead import UperNetHead
-from functools import partial
-
 from models.simdino_models.utils import load_pretrained_weights
-from .simdino_models import vision_transformer as vits
 from torchvision import models as torchvision_models
+from UPerNet.UPerNetHead import UperNetHead
+
+from .simdino_models import vision_transformer as vits
 
 
 class SimDINO(nn.Module):
@@ -96,9 +92,6 @@ class SimDINO(nn.Module):
         else:
             self.task = "segmentation"
 
-        # self.PPN = PSPModule(feature_channels[-1])
-        # self.FPN = FPN_fuse(feature_channels, fpn_out=fpn_out)
-        # self.head = nn.Conv2d(fpn_out, args.nb_classes, kernel_size=3, padding=1)
         # self.up_1 = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
         # self.up_2 = nn.Upsample(scale_factor=4, mode="bilinear", align_corners=True)
 

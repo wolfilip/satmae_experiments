@@ -11,9 +11,7 @@ import timm
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-
-from UPerNet.FPN_fuse import FPN_fuse
-from UPerNet.PSPModule import PSPModule
+from UPerNet.UPerNetHead import UperNetHead
 from util.linear_calssifier import LinearClassifier
 from util.pos_embed import get_2d_sincos_pos_embed
 
@@ -54,20 +52,24 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         if self.input_size % 16 != 0:
             self.do_interpolation = True
 
-        fpn_out = self.embed_dim + self.conv_size
+        config = {
+            "pool_scales": [1, 2, 3, 6],
+            "hidden_size": 512,
+            "num_labels": kwargs["num_classes"],
+            "initializer_range": 0.02,
+        }
 
-        self.PPN = PSPModule(feature_channels[-1])
-        self.FPN = FPN_fuse(feature_channels, fpn_out=fpn_out)
-        self.head = nn.Conv2d(fpn_out, self.num_classes, kernel_size=3, padding=1)
+        self.upernet_head = UperNetHead(config, feature_channels)
+
         self.up_1 = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
         self.up_2 = nn.Upsample(scale_factor=4, mode="bilinear", align_corners=True)
         # self.up_3 = nn.Upsample(scale_factor=8, mode="bilinear", align_corners=True)
         # self.up_4 = nn.Upsample(scale_factor=16, mode="bilinear", align_corners=True)
         # self.sigmoid = nn.Sigmoid()
 
-        self.classifier = LinearClassifier(
-            self.embed_dim, self.num_patches, self.num_patches, self.num_classes
-        )
+        # self.classifier = LinearClassifier(
+        #     self.embed_dim, self.num_patches, self.num_patches, self.num_classes
+        # )
 
         if self.conv_size > 0:
             self.up = nn.Upsample(size=(372, 372), mode="bilinear", align_corners=True)
@@ -224,9 +226,7 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
 
         # features[0] = features[0] + conv_embeds
 
-        new_features[-1] = self.PPN(new_features[-1])
-        # x = self.head(features[-1])
-        x = self.head(self.FPN(new_features))
+        x = self.upernet_head(new_features)
 
         x = F.interpolate(x, size=self.input_size, mode="bilinear")
         return x
@@ -251,12 +251,12 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
 
     def forward(self, x):
 
-        chunks = torch.split(x, [3, 7], dim=1)
+        chunks = torch.split(x, [1, 3, x.shape[1] - 4], dim=1)
 
         conv_embeds = 0
         if self.conv_size > 0:
             conv_embeds = self.encoder_conv(x)
-        features = self.encoder_forward(chunks[0])
+        features = self.encoder_forward(chunks[1])
         # x = self.decoder_upernet(features, conv_embeds)
         # x = self.encoder_forward(x)
         # print(x.shape, features[0].shape, conv_embeds.shape)

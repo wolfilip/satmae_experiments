@@ -4,18 +4,18 @@ accum_iter: 1
 visualize_features: false
 lr: 0.0001
 save_images: falses
-model_type: simdino
+model_type: croma
 model: swin_s
-input_size: 512
+input_size: 120
 dataset_type: sen1floods11
 dataset_split: 100
-method_name: swin_s_ms_fmow_dinov2
+method_name: croma_b_frozen
 best_epoch: false
 nb_classes: 3
 output_dir: satmae_experiments/outputs/
 log_dir: satmae_experiments/logs/
-finetune: /home/filip/pretrained_weights/simdino_checkpoints/swin_s_ms_fmow_dinov2_checkpoint.pth
-wandb: dl4rs-experiments
+finetune: /home/filip/pretrained_weights/CROMA_base.pt
+# wandb: dl4rs-experiments
 eval: false
 dist_eval: true
 num_workers: 10
