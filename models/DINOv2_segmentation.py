@@ -33,7 +33,7 @@ class DINOv2Segmenter(nn.Module):
         self.device = device
         self.patch_size = 14
 
-        for p in self.feat_extr.parameters():
+        for p in self.feat_extr.parameters():  # type: ignore
             p.requires_grad = False
 
         # upernet stuff
