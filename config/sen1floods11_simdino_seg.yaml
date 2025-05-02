@@ -9,7 +9,7 @@ model: swin_s
 input_size: 120
 dataset_type: sen1floods11
 dataset_split: 100
-method_name: croma
+method_name: croma_b_frozen
 best_epoch: false
 nb_classes: 3
 output_dir: satmae_experiments/outputs/

@@ -72,33 +72,33 @@ class PretrainedCROMA(nn.Module):
         self.modality = modality
         self.num_patches = int((image_resolution / 8) ** 2)
         self.num_patches_unroll = int(image_resolution / 8)
-        self.s1_channels = 2  # fixed at 2 SAR backscatter channels
+        # self.s1_channels = 2  # fixed at 2 SAR backscatter channels
         self.s2_channels = 12  # fixed at 12 multispectral optical channels
         self.attn_bias = get_2dalibi(
             num_heads=self.num_heads, num_patches=self.num_patches
         )
 
-        if modality in ["SAR", "both"]:
-            print(f"Initializing SAR encoder")
-            self.s1_encoder = ViT(
-                dim=self.encoder_dim,
-                depth=int(self.encoder_depth / 2),
-                in_channels=self.s1_channels,
-            )
-            self.GAP_FFN_s1 = nn.Sequential(
-                nn.LayerNorm(self.encoder_dim),
-                nn.Linear(
-                    self.encoder_dim, int(4 * self.encoder_dim)
-                ),  # (BSZ, num_patches, inner_dim)
-                nn.GELU(),  # (BSZ, num_patches, inner_dim)
-                nn.Linear(
-                    int(4 * self.encoder_dim), self.encoder_dim
-                ),  # (BSZ, num_patches, dim)
-            )
+        # if modality in ["SAR", "both"]:
+        #     print(f"Initializing SAR encoder")
+        #     self.s1_encoder = ViT(
+        #         dim=self.encoder_dim,
+        #         depth=int(self.encoder_depth / 2),
+        #         in_channels=self.s1_channels,
+        #     )
+        #     self.GAP_FFN_s1 = nn.Sequential(
+        #         nn.LayerNorm(self.encoder_dim),
+        #         nn.Linear(
+        #             self.encoder_dim, int(4 * self.encoder_dim)
+        #         ),  # (BSZ, num_patches, inner_dim)
+        #         nn.GELU(),  # (BSZ, num_patches, inner_dim)
+        #         nn.Linear(
+        #             int(4 * self.encoder_dim), self.encoder_dim
+        #         ),  # (BSZ, num_patches, dim)
+        #     )
 
-            # load weights
-            self.s1_encoder.load_state_dict(torch.load(pretrained_path)["s1_encoder"])
-            self.GAP_FFN_s1.load_state_dict(torch.load(pretrained_path)["s1_GAP_FFN"])
+        # load weights
+        # self.s1_encoder.load_state_dict(torch.load(pretrained_path)["s1_encoder"])
+        # self.GAP_FFN_s1.load_state_dict(torch.load(pretrained_path)["s1_GAP_FFN"])
 
         if modality in ["optical", "both"]:
             print(f"Initializing optical encoder")
@@ -107,20 +107,23 @@ class PretrainedCROMA(nn.Module):
                 depth=self.encoder_depth,
                 in_channels=self.s2_channels,
             )
-            self.GAP_FFN_s2 = nn.Sequential(
-                nn.LayerNorm(self.encoder_dim),
-                nn.Linear(
-                    self.encoder_dim, int(4 * self.encoder_dim)
-                ),  # (BSZ, num_patches, inner_dim)
-                nn.GELU(),  # (BSZ, num_patches, inner_dim)
-                nn.Linear(
-                    int(4 * self.encoder_dim), self.encoder_dim
-                ),  # (BSZ, num_patches, dim)
-            )
+            # self.GAP_FFN_s2 = nn.Sequential(
+            #     nn.LayerNorm(self.encoder_dim),
+            #     nn.Linear(
+            #         self.encoder_dim, int(4 * self.encoder_dim)
+            #     ),  # (BSZ, num_patches, inner_dim)
+            #     nn.GELU(),  # (BSZ, num_patches, inner_dim)
+            #     nn.Linear(
+            #         int(4 * self.encoder_dim), self.encoder_dim
+            #     ),  # (BSZ, num_patches, dim)
+            # )
 
             # load weights
             self.s2_encoder.load_state_dict(torch.load(pretrained_path)["s2_encoder"])
-            self.GAP_FFN_s2.load_state_dict(torch.load(pretrained_path)["s2_GAP_FFN"])
+            # self.GAP_FFN_s2.load_state_dict(torch.load(pretrained_path)["s2_GAP_FFN"])
+            self.s2_encoder.eval()
+            for p in self.s2_encoder.parameters():
+                p.requires_grad = False
 
         config = {
             "pool_scales": [1, 2, 3, 6],
@@ -136,31 +139,31 @@ class PretrainedCROMA(nn.Module):
         self.up_1 = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
         self.up_2 = nn.Upsample(scale_factor=4, mode="bilinear", align_corners=True)
 
-        if modality == "both":
-            print(f"Initializing joint SAR-optical encoder")
-            self.cross_encoder = BaseTransformerCrossAttn(
-                dim=self.encoder_dim,
-                depth=int(self.encoder_depth / 2),
-                num_heads=self.num_heads,
-            )
+        # if modality == "both":
+        #     print(f"Initializing joint SAR-optical encoder")
+        #     self.cross_encoder = BaseTransformerCrossAttn(
+        #         dim=self.encoder_dim,
+        #         depth=int(self.encoder_depth / 2),
+        #         num_heads=self.num_heads,
+        #     )
 
-            # load weights
-            self.cross_encoder.load_state_dict(
-                torch.load(pretrained_path)["joint_encoder"]
-            )
+        #     # load weights
+        #     self.cross_encoder.load_state_dict(
+        #         torch.load(pretrained_path)["joint_encoder"]
+        #     )
 
     def forward_croma(self, SAR_images=None, optical_images=None):
-        return_dict = {}
-        if self.modality in ["SAR", "both"]:
-            assert (
-                SAR_images is not None
-            ), f"Modality is set to {self.modality}, but SAR_images are None"
-            SAR_encodings = self.s1_encoder(
-                imgs=SAR_images, attn_bias=self.attn_bias.to(SAR_images.device)
-            )  # (bsz, num_patches, encoder_dim)
-            SAR_GAP = self.GAP_FFN_s1(SAR_encodings.mean(dim=1))  # (bsz, encoder_dim)
-            return_dict["SAR_encodings"] = SAR_encodings
-            return_dict["SAR_GAP"] = SAR_GAP
+        # return_dict = {}
+        # if self.modality in ["SAR", "both"]:
+        #     assert (
+        #         SAR_images is not None
+        #     ), f"Modality is set to {self.modality}, but SAR_images are None"
+        #     SAR_encodings = self.s1_encoder(
+        #         imgs=SAR_images, attn_bias=self.attn_bias.to(SAR_images.device)
+        #     )  # (bsz, num_patches, encoder_dim)
+        #     SAR_GAP = self.GAP_FFN_s1(SAR_encodings.mean(dim=1))  # (bsz, encoder_dim)
+        #     return_dict["SAR_encodings"] = SAR_encodings
+        #     return_dict["SAR_GAP"] = SAR_GAP
 
         if self.modality in ["optical", "both"]:
             assert (
@@ -175,15 +178,15 @@ class PretrainedCROMA(nn.Module):
             # return_dict["optical_encodings"] = optical_encodings
             # return_dict["optical_GAP"] = optical_GAP
 
-        if self.modality == "both":
-            joint_encodings = self.cross_encoder(
-                x=SAR_encodings,
-                context=optical_encodings,
-                relative_position_bias=self.attn_bias.to(optical_images.device),
-            )  # (bsz, num_patches, encoder_dim)
-            joint_GAP = joint_encodings.mean(dim=1)  # (bsz, encoder_dim)
-            return_dict["joint_encodings"] = joint_encodings
-            return_dict["joint_GAP"] = joint_GAP
+        # if self.modality == "both":
+        #     joint_encodings = self.cross_encoder(
+        #         x=SAR_encodings,
+        #         context=optical_encodings,
+        #         relative_position_bias=self.attn_bias.to(optical_images.device),
+        #     )  # (bsz, num_patches, encoder_dim)
+        #     joint_GAP = joint_encodings.mean(dim=1)  # (bsz, encoder_dim)
+        #     return_dict["joint_encodings"] = joint_encodings
+        #     return_dict["joint_GAP"] = joint_GAP
 
         return optical_encodings
 
