@@ -6,12 +6,12 @@ lr: 0.0001
 save_images: false
 model_type: simdino
 model: swin_s
-input_size: 512
-dataset_type: sen1floods11
+input_size: 224
+dataset_type: spacenet
 dataset_split: 100
 method_name: swin_s_ms_fmow_ms_bs64
 best_epoch: false
-nb_classes: 3
+nb_classes: 2
 output_dir: satmae_experiments/outputs/
 log_dir: satmae_experiments/logs/
 finetune: /home/filip/pretrained_weights/simdino_checkpoints/output/swin_s_ms_fmow_ms_bs64/checkpoint.pth
