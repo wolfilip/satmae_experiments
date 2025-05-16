@@ -37,6 +37,9 @@ class SimDINO(nn.Module):
                 self.feat_extr, args.finetune, "teacher", args.model, 16
             )
 
+        conv1_weights = self.feat_extr.features[0][0].weight
+        self.feat_extr.features[0][0].weight = nn.Parameter(conv1_weights[:, :3, :, :])
+
         self.feat_extr.eval()  # type: ignore
         self.feat_extr.to(device)  # type: ignore
         # self.device = device
@@ -343,11 +346,11 @@ class SimDINO(nn.Module):
 
         if not self.ms_backbone and x.shape[1] != 3:
             chunks = torch.split(x, [3, 7], dim=1)
-        elif self.ms_backbone and x.shape[1] == 3:
-            x = F.pad(x, (0, 0, 0, 0, 0, 7), "constant", 0)  # Pad to 10 channels
-            # x = x.permute(0, 2, 3, 1)
-            # x = self.channel_project(x)
-            # x = x.permute(0, 3, 1, 2)
+        # elif self.ms_backbone and x.shape[1] == 3:
+        #     x = F.pad(x, (0, 0, 0, 0, 0, 7), "constant", 0)  # Pad to 10 channels
+        # x = x.permute(0, 2, 3, 1)
+        # x = self.channel_project(x)
+        # x = x.permute(0, 3, 1, 2)
         conv_embeds = 0
         if self.conv_size > 0:
             conv_embeds = self.encoder_conv(x)
