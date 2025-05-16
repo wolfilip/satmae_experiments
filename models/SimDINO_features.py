@@ -104,6 +104,8 @@ class SimDINO(nn.Module):
 
         self.upernet_head = UperNetHead(config, feature_channels)
 
+        self.channel_project = nn.Linear(3, 10)  # Define a learnable linear layer
+
         if self.conv_size > 0:
             if args.dataset_type == "spacenet":
                 self.up = nn.Upsample(
@@ -341,6 +343,11 @@ class SimDINO(nn.Module):
 
         if not self.ms_backbone:
             chunks = torch.split(x, [3, 7], dim=1)
+        if x.shape[1] == 3:
+            x = F.pad(x, (0, 0, 0, 0, 0, 7), "constant", 0)  # Pad to 10 channels
+            # x = x.permute(0, 2, 3, 1)
+            # x = self.channel_project(x)
+            # x = x.permute(0, 3, 1, 2)
         conv_embeds = 0
         if self.conv_size > 0:
             conv_embeds = self.encoder_conv(x)

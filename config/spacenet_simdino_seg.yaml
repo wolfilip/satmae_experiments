@@ -9,12 +9,12 @@ model: swin_s
 input_size: 224
 dataset_type: spacenet
 dataset_split: 100
-method_name: swin_s_ms_fmow_ms_bs64
+method_name: swin_s_ms_fmow_dinov2
 best_epoch: false
 nb_classes: 2
 output_dir: satmae_experiments/outputs/
 log_dir: satmae_experiments/logs/
-finetune: /home/filip/pretrained_weights/simdino_checkpoints/output/swin_s_ms_fmow_ms_bs64/checkpoint.pth
+finetune: /home/filip/pretrained_weights/simdino_checkpoints/swin_s_ms_fmow_dinov2_checkpoint.pth
 wandb: dl4rs-experiments
 eval: false
 dist_eval: true
