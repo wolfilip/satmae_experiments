@@ -37,8 +37,11 @@ class SimDINO(nn.Module):
                 self.feat_extr, args.finetune, "teacher", args.model, 16
             )
 
-        conv1_weights = self.feat_extr.features[0][0].weight
-        self.feat_extr.features[0][0].weight = nn.Parameter(conv1_weights[:, :3, :, :])
+        if args.dataset_type == "spacenet":
+            conv1_weights = self.feat_extr.features[0][0].weight
+            self.feat_extr.features[0][0].weight = nn.Parameter(
+                conv1_weights[:, :3, :, :]
+            )
 
         self.feat_extr.eval()  # type: ignore
         self.feat_extr.to(device)  # type: ignore
