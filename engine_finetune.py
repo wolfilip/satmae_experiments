@@ -503,7 +503,7 @@ def train_one_epoch_segmentation(
                 )
             # print(mask_one_hot.unique())
 
-            if args.dataset_type == "sen1floods11" or args.dataset_type == "isaid":  # type: ignore
+            if args.dataset_type == "sen1floods11" or args.dataset_type == "isaid" or "geobench" in args.dataset_type:  # type: ignore
                 loss_value = get_bce_loss_ignore(pred, mask)
             else:
                 loss_value = get_bce_loss(pred, mask_one_hot.float())
@@ -511,7 +511,7 @@ def train_one_epoch_segmentation(
             # dice_loss = DiceLoss()
             # loss_2 = dice_loss(pred, mask_one_hot.float())
             # miou_metric.update(pred.argmax(1), mask)
-            if args.dataset_type != "spacenet" and args.dataset_type != "sen1floods11" and args.dataset_type != "mass_roads" and args.dataset_type != "geobench_crop":  # type: ignore
+            if args.dataset_type != "spacenet" and args.dataset_type != "sen1floods11" and args.dataset_type != "mass_roads" and "geobench" not in args.dataset_type:  # type: ignore
                 miou_metric_2.update(pred.argmax(1), mask)
                 f1_score.update(pred.argmax(1), mask)
                 overall_accuracy.update(pred.argmax(1), mask)
@@ -566,7 +566,7 @@ def train_one_epoch_segmentation(
 
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
-    if args.dataset_type == "spacenet" or args.dataset_type == "sen1floods11" or args.dataset_type == "mass_roads" or args.dataset_type == "geobench_crop":  # type: ignore
+    if args.dataset_type == "spacenet" or args.dataset_type == "sen1floods11" or args.dataset_type == "mass_roads" or "geobench" in args.dataset_type:  # type: ignore
         print("* loss {losses.global_avg:.4f}".format(losses=metric_logger.loss))
     else:
         print(
@@ -783,18 +783,30 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
         # miou_metric_3 = miou_metric_2.to(device)
         # miou_metric_4 = miou_metric_2.to(device)
         overall_accuracy = overall_accuracy.to(device)
-    else:
+    elif "geobench" in args.dataset_type:
         miou_metric = JaccardIndex(
-            task="multiclass", num_classes=args.nb_classes, average="macro"
+            task="multiclass",
+            num_classes=args.nb_classes,
+            average="macro",
+            ignore_index=0,
         )
         miou_metric_2 = JaccardIndex(
-            task="multiclass", num_classes=args.nb_classes, average="micro"
+            task="multiclass",
+            num_classes=args.nb_classes,
+            average="micro",
+            ignore_index=0,
         )
         f1_score = F1Score(
-            task="multiclass", num_classes=args.nb_classes, average="micro"
+            task="multiclass",
+            num_classes=args.nb_classes,
+            average="micro",
+            ignore_index=0,
         )
         overall_accuracy = Accuracy(
-            task="multiclass", num_classes=args.nb_classes, average="weighted"
+            task="multiclass",
+            num_classes=args.nb_classes,
+            average="weighted",
+            ignore_index=0,
         )
 
         f1_score = f1_score.to(device)

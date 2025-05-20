@@ -9,13 +9,13 @@ model: swin_s
 input_size: 256
 dataset_type: geobench_crop
 dataset_split: 100
-method_name: swin_s_ms_fmow_dinov2_partial
+method_name: swin_s_ms_fmow_dinov2_partial_3
 best_epoch: false
 nb_classes: 10
 output_dir: satmae_experiments/outputs/
 log_dir: satmae_experiments/logs/
 finetune: /home/filip/pretrained_weights/simdino_checkpoints/swin_s_ms_fmow_dinov2_partial.pth
-wandb: dl4rs-experiments
+# wandb: dl4rs-experiments
 eval: false
 dist_eval: true
 num_workers: 10

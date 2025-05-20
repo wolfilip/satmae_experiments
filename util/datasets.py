@@ -567,7 +567,7 @@ class MassachusettsRoadsDataset(SatelliteDataset):
         return image.squeeze(0), mask.squeeze(0).squeeze(0).long()
 
 
-class GeoBenchCropDataset(Dataset):
+class GeoBenchDataset(Dataset):
     def __init__(self, dataset, transform):
         super().__init__()
 
@@ -2224,13 +2224,17 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
             dataset = DIORDataset(dataset_root, data_split, transforms_test)
         else:
             dataset = DIORDataset(dataset_root, data_split, transforms_test)
-    elif args.dataset_type == "geobench_crop":
+    elif "geobench" in args.dataset_type:
         if data_split == "val":
             data_split = "valid"
         for task in geobench.task_iterator(benchmark_name="segmentation_v1.0"):
             dataset = task.get_dataset(split=data_split)
-            if "m-SA-crop-type" in str(dataset.dataset_dir):
-                break
+            if args.dataset_type == "geobench_crop":
+                if "crop" in str(dataset.dataset_dir):
+                    break
+            elif args.dataset_type == "geobench_cashew":
+                if "cashew" in str(dataset.dataset_dir):
+                    break
         normalize = K.Normalize(
             (
                 1184.382,
@@ -2273,11 +2277,11 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
         )
 
         if data_split == "train":
-            dataset = GeoBenchCropDataset(dataset, transforms_train)
+            dataset = GeoBenchDataset(dataset, transforms_train)
         elif data_split == "val":
-            dataset = GeoBenchCropDataset(dataset, transforms_test)
+            dataset = GeoBenchDataset(dataset, transforms_test)
         else:
-            dataset = GeoBenchCropDataset(dataset, transforms_test)
+            dataset = GeoBenchDataset(dataset, transforms_test)
     else:
         raise ValueError(f"Invalid dataset type: {args.dataset_type}")
 
