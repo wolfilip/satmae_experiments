@@ -4,13 +4,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from UPerNet.FPN_fuse import FPN_fuse
-from UPerNet.PSPModule import PSPModule
 from UPerNet.UPerNetHead import UperNetHead
 
-from transformers.models.mask2former.modeling_mask2former import (
-    Mask2FormerForUniversalSegmentation,
-)
+# from transformers.models.mask2former.modeling_mask2former import (
+#     Mask2FormerForUniversalSegmentation,
+# )
 
 from torchvision import models as torchvision_models
 

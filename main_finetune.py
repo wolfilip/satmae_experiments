@@ -305,6 +305,8 @@ def get_args_parser():
             "isaid",
             "mass_roads",
             "dior",
+            "geobench_crop",
+            "geobench_plant",
         ],
         help="Whether to use fmow rgb, sentinel, or other dataset.",
     )
@@ -727,18 +729,16 @@ def main(args):
             no_weight_decay_list=model_without_ddp.no_weight_decay(),
             layer_decay=args.layer_decay,
         )
+        if mixup_fn is not None:
+            # smoothing is handled with mixup label transform
+            criterion = SoftTargetCrossEntropy()
+        elif args.smoothing > 0.0:
+            criterion = LabelSmoothingCrossEntropy(smoothing=args.smoothing)
+        else:
+            criterion = torch.nn.CrossEntropyLoss()
+
     optimizer = AdamW(param_groups, lr=args.lr)
     loss_scaler = NativeScaler()
-
-    if mixup_fn is not None:
-        # smoothing is handled with mixup label transform
-        criterion = SoftTargetCrossEntropy()
-    elif args.smoothing > 0.0:
-        criterion = LabelSmoothingCrossEntropy(smoothing=args.smoothing)
-    else:
-        criterion = torch.nn.CrossEntropyLoss()
-
-    print("criterion = %s" % str(criterion))
 
     misc.load_model(
         args=args,
@@ -1000,7 +1000,7 @@ def main(args):
             and args.dataset_type != "sen1floods11"
             and args.dataset_type != "mass_roads"
         ):
-            log_writer.add_scalar("perf/test_f1", test_stats["f1"], epoch)
+            log_writer.add_scalar("perf/test_miou2", test_stats["iou2"], epoch)
 
     if args.eval is False:
         log_stats = {

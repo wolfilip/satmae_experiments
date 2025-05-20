@@ -4,12 +4,14 @@ import warnings
 from glob import glob
 from typing import Any, List, Optional
 
+import geobench
 import kornia.augmentation as K
 from matplotlib import pyplot as plt
 import numpy as np
 import pandas as pd
 import rasterio
 import rasterio as rio
+from regex import T
 import torch
 import torchvision.transforms.v2 as transforms
 import torchvision.transforms.functional as F
@@ -561,6 +563,33 @@ class MassachusettsRoadsDataset(SatelliteDataset):
             # image, mask = self.transforms_test(image, mask)
 
         # mask = (mask * 256).to(torch.int64)
+
+        return image.squeeze(0), mask.squeeze(0).squeeze(0).long()
+
+
+class GeoBenchCropDataset(Dataset):
+    def __init__(self, dataset, transform):
+        super().__init__()
+
+        self.transform = transform
+        self.dataset = dataset
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def __getitem__(self, index):
+        sample = self.dataset[index]
+        image = []
+        for i, band in enumerate(sample.bands):
+            if i in [1, 2, 3, 4, 5, 6, 7, 8, 10, 11]:
+                image.append(torch.from_numpy(band.data))
+        image[:3] = [image[2], image[1], image[0]]
+        image = torch.stack(image, dim=0)
+        mask = torch.from_numpy(sample.label.data)
+
+        image, mask = self.transform(
+            image.float(), mask.unsqueeze(0).unsqueeze(0).float()
+        )
 
         return image.squeeze(0), mask.squeeze(0).squeeze(0).long()
 
@@ -2195,6 +2224,60 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
             dataset = DIORDataset(dataset_root, data_split, transforms_test)
         else:
             dataset = DIORDataset(dataset_root, data_split, transforms_test)
+    elif args.dataset_type == "geobench_crop":
+        if data_split == "val":
+            data_split = "valid"
+        for task in geobench.task_iterator(benchmark_name="segmentation_v1.0"):
+            dataset = task.get_dataset(split=data_split)
+            if "m-SA-crop-type" in str(dataset.dataset_dir):
+                break
+        normalize = K.Normalize(
+            (
+                1184.382,
+                1120.771,
+                1136.260,
+                1263.73947144,
+                1645.40315151,
+                1846.87040806,
+                1762.59530783,
+                1972.62420416,
+                1732.16362238,
+                1247.91870117,
+            ),
+            (
+                650.284,
+                712.125,
+                965.231,
+                948.9819932,
+                1108.06650639,
+                1258.36394548,
+                1233.1492281,
+                1364.38688993,
+                1310.36996126,
+                1087.6020813,
+            ),
+        )
+
+        transforms_train = K.AugmentationSequential(
+            # K.RandomResizedCrop(size=(args.input_size, args.input_size), scale=(0.5, 1.0)),
+            K.RandomCrop(size=(args.input_size, args.input_size)),
+            K.RandomHorizontalFlip(p=0.5),
+            K.RandomVerticalFlip(p=0.5),
+            normalize,
+            data_keys=["input", "mask"],
+        )
+        transforms_test = K.AugmentationSequential(
+            K.Resize(size=(args.input_size, args.input_size)),
+            normalize,
+            data_keys=["input", "mask"],
+        )
+
+        if data_split == "train":
+            dataset = GeoBenchCropDataset(dataset, transforms_train)
+        elif data_split == "val":
+            dataset = GeoBenchCropDataset(dataset, transforms_test)
+        else:
+            dataset = GeoBenchCropDataset(dataset, transforms_test)
     else:
         raise ValueError(f"Invalid dataset type: {args.dataset_type}")
 

@@ -379,57 +379,57 @@ def train_one_epoch_segmentation(
     if log_writer is not None:
         print("log_dir: {}".format(log_writer.log_dir))
 
-    if args.dataset_type == "spacenet" or args.dataset_type == "mass_roads":  # type: ignore
-        miou_metric = JaccardIndex(task="multiclass", num_classes=args.nb_classes)  # type: ignore
-    elif args.dataset_type == "sen1floods11":  # type: ignore
-        miou_metric = JaccardIndex(task="multiclass", num_classes=args.nb_classes, average="micro", ignore_index=0)  # type: ignore
-        # miou_metric = SegPangaea(num_classes=args.nb_classes, ignore_index=0)
-    elif args.dataset_type == "isaid":
-        miou_metric = JaccardIndex(
-            task="multiclass",
-            num_classes=args.nb_classes,
-            average="micro",
-            ignore_index=0,
-        )
-        miou_metric_2 = JaccardIndex(
-            task="multiclass",
-            num_classes=args.nb_classes,
-            average="weighted",
-            ignore_index=0,
-        )
-        f1_score = F1Score(
-            task="multiclass",
-            num_classes=args.nb_classes,
-            average="micro",
-            ignore_index=0,
-        )
-        overall_accuracy = Accuracy(
-            task="multiclass",
-            num_classes=args.nb_classes,
-            average="weighted",
-            ignore_index=0,
-        )
+    # if args.dataset_type == "spacenet" or args.dataset_type == "mass_roads":  # type: ignore
+    #     miou_metric = JaccardIndex(task="multiclass", num_classes=args.nb_classes)  # type: ignore
+    # elif args.dataset_type == "sen1floods11":  # type: ignore
+    #     miou_metric = JaccardIndex(task="multiclass", num_classes=args.nb_classes, average="micro", ignore_index=0)  # type: ignore
+    #     # miou_metric = SegPangaea(num_classes=args.nb_classes, ignore_index=0)
+    # elif args.dataset_type == "isaid":
+    #     miou_metric = JaccardIndex(
+    #         task="multiclass",
+    #         num_classes=args.nb_classes,
+    #         average="micro",
+    #         ignore_index=0,
+    #     )
+    #     miou_metric_2 = JaccardIndex(
+    #         task="multiclass",
+    #         num_classes=args.nb_classes,
+    #         average="weighted",
+    #         ignore_index=0,
+    #     )
+    #     f1_score = F1Score(
+    #         task="multiclass",
+    #         num_classes=args.nb_classes,
+    #         average="micro",
+    #         ignore_index=0,
+    #     )
+    #     overall_accuracy = Accuracy(
+    #         task="multiclass",
+    #         num_classes=args.nb_classes,
+    #         average="weighted",
+    #         ignore_index=0,
+    #     )
 
-        f1_score = f1_score.to(device)
-        miou_metric_2 = miou_metric_2.to(device)
-        overall_accuracy = overall_accuracy.to(device)
-    else:
-        miou_metric = JaccardIndex(
-            task="multiclass", num_classes=args.nb_classes, average="micro"  # type: ignore
-        )
-        miou_metric_2 = JaccardIndex(
-            task="multiclass", num_classes=args.nb_classes, average="weighted"  # type: ignore
-        )
-        f1_score = F1Score(
-            task="multiclass", num_classes=args.nb_classes, average="micro"  # type: ignore
-        )
-        overall_accuracy = Accuracy(
-            task="multiclass", num_classes=args.nb_classes, average="weighted"  # type: ignore
-        )
-        f1_score = f1_score.to(device)
-        miou_metric_2 = miou_metric_2.to(device)
-        overall_accuracy = overall_accuracy.to(device)
-    # miou_metric = miou_metric.to(device)
+    #     f1_score = f1_score.to(device)
+    #     miou_metric_2 = miou_metric_2.to(device)
+    #     overall_accuracy = overall_accuracy.to(device)
+    # else:
+    #     miou_metric = JaccardIndex(
+    #         task="multiclass", num_classes=args.nb_classes, average="micro"  # type: ignore
+    #     )
+    #     miou_metric_2 = JaccardIndex(
+    #         task="multiclass", num_classes=args.nb_classes, average="weighted"  # type: ignore
+    #     )
+    #     f1_score = F1Score(
+    #         task="multiclass", num_classes=args.nb_classes, average="micro"  # type: ignore
+    #     )
+    #     overall_accuracy = Accuracy(
+    #         task="multiclass", num_classes=args.nb_classes, average="weighted"  # type: ignore
+    #     )
+    #     f1_score = f1_score.to(device)
+    #     miou_metric_2 = miou_metric_2.to(device)
+    #     overall_accuracy = overall_accuracy.to(device)
+    #     miou_metric = miou_metric.to(device)
 
     if epoch == 0:
         if not os.path.exists(
@@ -511,7 +511,7 @@ def train_one_epoch_segmentation(
             # dice_loss = DiceLoss()
             # loss_2 = dice_loss(pred, mask_one_hot.float())
             # miou_metric.update(pred.argmax(1), mask)
-            if args.dataset_type != "spacenet" and args.dataset_type != "sen1floods11" and args.dataset_type != "mass_roads":  # type: ignore
+            if args.dataset_type != "spacenet" and args.dataset_type != "sen1floods11" and args.dataset_type != "mass_roads" and args.dataset_type != "geobench_crop":  # type: ignore
                 miou_metric_2.update(pred.argmax(1), mask)
                 f1_score.update(pred.argmax(1), mask)
                 overall_accuracy.update(pred.argmax(1), mask)
@@ -566,7 +566,7 @@ def train_one_epoch_segmentation(
 
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
-    if args.dataset_type == "spacenet" or args.dataset_type == "sen1floods11" or args.dataset_type == "mass_roads":  # type: ignore
+    if args.dataset_type == "spacenet" or args.dataset_type == "sen1floods11" or args.dataset_type == "mass_roads" or args.dataset_type == "geobench_crop":  # type: ignore
         print("* loss {losses.global_avg:.4f}".format(losses=metric_logger.loss))
     else:
         print(
@@ -785,10 +785,10 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
         overall_accuracy = overall_accuracy.to(device)
     else:
         miou_metric = JaccardIndex(
-            task="multiclass", num_classes=args.nb_classes, average="micro"
+            task="multiclass", num_classes=args.nb_classes, average="macro"
         )
         miou_metric_2 = JaccardIndex(
-            task="multiclass", num_classes=args.nb_classes, average="weighted"
+            task="multiclass", num_classes=args.nb_classes, average="micro"
         )
         f1_score = F1Score(
             task="multiclass", num_classes=args.nb_classes, average="micro"
@@ -995,6 +995,7 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
     else:
         metric_logger.update(f1=f1)
         metric_logger.update(oa=oa)
+        metric_logger.update(iou2=miou_2)
         print(
             "* IoU {iou:.4f} IoU 2 {iou2:.4f} F1 {f1:.4f} oa {oa:.4f} loss {losses.global_avg:.4f}".format(
                 iou=miou,

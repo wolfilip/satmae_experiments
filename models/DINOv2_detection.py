@@ -5,21 +5,21 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from UPerNet.UPerNetHead import UperNetHead
-from functools import partial
+# from UPerNet.UPerNetHead import UperNetHead
+# from functools import partial
 
-from transformers.models.mask2former.modeling_mask2former import (
-    Mask2FormerConfig,
-    Mask2FormerForUniversalSegmentation,
-)
+# from transformers.models.mask2former.modeling_mask2former import (
+#     Mask2FormerConfig,
+#     Mask2FormerForUniversalSegmentation,
+# )
 
-from transformers import (
-    AutoModelForImageClassification,
-    AutoFeatureExtractor,
-    AutoModel,
-)
+# from transformers import (
+#     AutoModelForImageClassification,
+#     AutoFeatureExtractor,
+#     AutoModel,
+# )
 
-from torchvision import models as torchvision_models
+# from torchvision import models as torchvision_models
 import torchvision
 from torchvision.models.detection import FasterRCNN
 from torchvision.models.detection.rpn import (
