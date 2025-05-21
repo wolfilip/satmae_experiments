@@ -502,8 +502,8 @@ def train_one_epoch_segmentation(
                     0, 3, 1, 2
                 )
             # print(mask_one_hot.unique())
-
-            if args.dataset_type == "sen1floods11" or args.dataset_type == "isaid" or "geobench" in args.dataset_type:  # type: ignore
+            # if args.dataset_type == "sen1floods11" or args.dataset_type == "isaid" or "geobench" in args.dataset_type
+            if args.dataset_type == "sen1floods11" or args.dataset_type == "isaid":  # type: ignore
                 loss_value = get_bce_loss_ignore(pred, mask)
             else:
                 loss_value = get_bce_loss(pred, mask_one_hot.float())
@@ -511,7 +511,12 @@ def train_one_epoch_segmentation(
             # dice_loss = DiceLoss()
             # loss_2 = dice_loss(pred, mask_one_hot.float())
             # miou_metric.update(pred.argmax(1), mask)
-            if args.dataset_type != "spacenet" and args.dataset_type != "sen1floods11" and args.dataset_type != "mass_roads" and "geobench" not in args.dataset_type:  # type: ignore
+            if (
+                args.dataset_type != "spacenet"
+                and args.dataset_type != "sen1floods11"
+                and args.dataset_type != "mass_roads"
+                and "geobench" not in args.dataset_type
+            ):
                 miou_metric_2.update(pred.argmax(1), mask)
                 f1_score.update(pred.argmax(1), mask)
                 overall_accuracy.update(pred.argmax(1), mask)
@@ -788,25 +793,25 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
             task="multiclass",
             num_classes=args.nb_classes,
             average="macro",
-            ignore_index=0,
+            # ignore_index=0,
         )
         miou_metric_2 = JaccardIndex(
             task="multiclass",
             num_classes=args.nb_classes,
             average="micro",
-            ignore_index=0,
+            # ignore_index=0,
         )
         f1_score = F1Score(
             task="multiclass",
             num_classes=args.nb_classes,
             average="micro",
-            ignore_index=0,
+            # ignore_index=0,
         )
         overall_accuracy = Accuracy(
             task="multiclass",
             num_classes=args.nb_classes,
             average="weighted",
-            ignore_index=0,
+            # ignore_index=0,
         )
 
         f1_score = f1_score.to(device)
