@@ -307,6 +307,7 @@ def get_args_parser():
             "dior",
             "geobench_crop",
             "geobench_cashew",
+            "geobench_chesapeake",
         ],
         help="Whether to use fmow rgb, sentinel, or other dataset.",
     )

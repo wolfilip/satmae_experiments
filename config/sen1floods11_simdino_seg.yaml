@@ -5,7 +5,7 @@ visualize_features: false
 lr: 0.0001
 save_images: false
 model_type: simdino
-model: swin_s
+model: swin_t
 input_size: 512
 dataset_type: sen1floods11
 dataset_split: 100
