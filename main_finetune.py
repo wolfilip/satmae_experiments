@@ -27,6 +27,7 @@ from models.DINOv2_segmentation import DINOv2Segmenter
 from models.OmniSat import LTAE, Omni, OmniSat
 from models.SimDINO_features import SimDINO
 from models.SimDINOv2_features import SimDINOv2
+from models.TerraFM_features import TerraFMModel
 import models.models_resnet as models_resnet
 
 # from models.models_swin import SwinModel
@@ -113,6 +114,7 @@ def get_args_parser():
             "simdinov2",
             "simdino",
             "croma",
+            "terrafm",
         ],
         help="Use channel model",
     )
@@ -594,6 +596,8 @@ def main(args):
             modality="optical",
             image_resolution=args.input_size,
         ).to(device)
+    elif args.model_type == "terrafm":
+        model = TerraFMModel(args, "cuda")
     else:
         model = models_vit.__dict__[args.model](
             patch_size=args.patch_size,
@@ -610,6 +614,7 @@ def main(args):
         args.finetune
         and args.model_type != "swin"
         and args.model_type != "croma"
+        and args.model_type != "terrafm"
         and "simdino" not in args.model_type
     ):
         checkpoint = torch.load(args.finetune, map_location="cpu")
@@ -720,6 +725,7 @@ def main(args):
         or args.model_type == "lift_segmentation"
         or args.model_type == "swin"
         or args.model_type == "croma"
+        or args.model_type == "terrafm"
         or "simdino" in args.model_type
     ):
         param_groups = model_without_ddp.parameters()
@@ -767,6 +773,7 @@ def main(args):
             or args.model_type == "lift_segmentation"
             or args.model_type == "dinov2_vit"
             or args.model_type == "swin"
+            or args.model_type == "terrafm"
             or "simdino" in args.model_type
         ):
             test_stats, max_iou = evaluate_segmentation(
@@ -782,6 +789,7 @@ def main(args):
             or args.model_type == "lift_segmentation"
             or args.model_type == "dinov2_vit"
             or args.model_type == "swin"
+            or args.model_type == "terrafm"
             or "simdino" in args.model_type
         ):
             print(
@@ -836,6 +844,7 @@ def main(args):
                 or args.model_type == "dinov2_vit"
                 or args.model_type == "swin"
                 or args.model_type == "croma"
+                or args.model_type == "terrafm"
                 or "simdino" in args.model_type
             ):
                 # test_stats = evaluate_segmentation(data_loader_val, model, device)
@@ -897,6 +906,7 @@ def main(args):
             or args.model_type == "dinov2_vit"
             or args.model_type == "swin"
             or args.model_type == "croma"
+            or args.model_type == "terrafm"
             or "simdino" in args.model_type
         ):
             test_stats, max_iou = evaluate_segmentation(
@@ -927,6 +937,7 @@ def main(args):
             or args.model_type == "dinov2_vit"
             or args.model_type == "swin"
             or args.model_type == "croma"
+            or args.model_type == "terrafm"
             or "simdino" in args.model_type
         ):
             # print(

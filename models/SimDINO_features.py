@@ -349,7 +349,7 @@ class SimDINO(nn.Module):
 
         if not self.ms_backbone and x.shape[1] != 3:
             chunks = torch.split(x, [3, 7], dim=1)
-        else: 
+        else:
             if x.shape[1] == 3:
                 x = F.pad(x, (0, 0, 0, 0, 0, 7), "constant", 0)  # Pad to 10 channels
             elif x.shape[1] == 4:

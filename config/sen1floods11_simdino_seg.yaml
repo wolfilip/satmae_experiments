@@ -1,6 +1,6 @@
-batch_size: 64
+batch_size: 32
 epochs: 128
-accum_iter: 1
+accum_iter: 2
 visualize_features: false
 lr: 0.0001
 save_images: false
@@ -9,12 +9,12 @@ model: swin_t
 input_size: 512
 dataset_type: sen1floods11
 dataset_split: 100
-method_name: swin_t_ms_fmow_25k_dinov2p_50e
+method_name: swin_t_ms_fmow_50k_mask_rgb_aug2_50e_dinov2
 best_epoch: false
 nb_classes: 3
 output_dir: satmae_experiments/outputs/
 log_dir: satmae_experiments/logs/
-finetune: /home/filip/pretrained_weights/simdino_checkpoints/swin_t_ms_fmow_25k_dinov2p_50e.pth
+finetune: /home/filip/pretrained_weights/simdino_checkpoints/swin_t_ms_fmow_50k_mask_rgb_aug2_50e_dinov2.pth
 wandb: dl4rs-experiments
 eval: false
 dist_eval: true

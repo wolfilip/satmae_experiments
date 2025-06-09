@@ -1,9 +1,11 @@
+from math import e
 import os
 import random
 import warnings
 from glob import glob
 from typing import Any, List, Optional
 
+from cv2 import norm
 import geobench
 import kornia.augmentation as K
 from matplotlib import pyplot as plt
@@ -580,11 +582,13 @@ class GeoBenchDataset(Dataset):
     def __getitem__(self, index):
         sample = self.dataset[index]
         image = []
-        
+
         if len(sample.bands) == 4:
             band_list = [0, 1, 2, 3]
         else:
             band_list = [1, 2, 3, 4, 5, 6, 7, 8, 10, 11]
+        # else:
+        #     band_list = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
 
         for i, band in enumerate(sample.bands):
             if i in band_list:
@@ -592,7 +596,7 @@ class GeoBenchDataset(Dataset):
 
         if len(image) > 4:
             image[:3] = [image[2], image[1], image[0]]
-            
+
         image = torch.stack(image, dim=0)
         mask = torch.from_numpy(sample.label.data)
 
@@ -2247,48 +2251,76 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
             elif args.dataset_type == "geobench_chesapeake":
                 if "chesapeake" in str(dataset.dataset_dir):
                     break
-        if args.dataset_type == "geobench_chesapeake":
-            normalize = K.Normalize(
-                (
-                    1184.382,
-                    1120.771,
-                    1136.260,
-                    1263.73947144,
-                ), # type: ignore
-                (
-                    650.284,
-                    712.125,
-                    965.231,
-                    948.9819932,
-                ), # type: ignore
-            )
-        else:
-            normalize = K.Normalize(
-                (
-                    1184.382,
-                    1120.771,
-                    1136.260,
-                    1263.73947144,
-                    1645.40315151,
-                    1846.87040806,
-                    1762.59530783,
-                    1972.62420416,
-                    1732.16362238,
-                    1247.91870117,
-                ), # type: ignore
-                (
-                    650.284,
-                    712.125,
-                    965.231,
-                    948.9819932,
-                    1108.06650639,
-                    1258.36394548,
-                    1233.1492281,
-                    1364.38688993,
-                    1310.36996126,
-                    1087.6020813,
-                ), # type: ignore
-            )
+
+        data_json = dataset.dataset_dir / "band_stats.json"
+        norms = []
+        stds = []
+        with open(data_json, "r") as f:
+            band_stats = json.load(f)
+            for band in band_stats:
+                if not band == "label":
+                    norms.append(band_stats[band]["mean"])
+                    stds.append(band_stats[band]["std"])
+
+        if args.model_type == "simdino":
+            norms_1, norms_3 = norms[1], norms[3]
+            norms[1], norms[3] = norms_3, norms_1
+            del norms[12]
+            del stds[12]
+            del norms[9]
+            del stds[9]
+            del norms[0]
+            del stds[0]
+        if args.model_type == "terrafm":
+            del norms[12]
+            del stds[12]
+
+        normalize = K.Normalize(tuple(norms), tuple(stds))
+        # if args.dataset_type == "geobench_chesapeake":
+        #     norms = []
+        #     normalize = K.Normalize(
+        #         (
+        #             1184.382,
+        #             1120.771,
+        #             1136.260,
+        #             1263.73947144,
+        #         ),  # type: ignore
+        #         (
+        #             650.284,
+        #             712.125,
+        #             965.231,
+        #             948.9819932,
+        #         ),  # type: ignore
+        #     )
+        # else:
+        #     normalize = K.Normalize(
+        #         (
+        #             520.1185302734375,
+        #             1184.382,
+        #             1120.771,
+        #             1136.260,
+        #             1263.73947144,
+        #             1645.40315151,
+        #             1846.87040806,
+        #             1762.59530783,
+        #             1972.62420416,
+        #             1732.16362238,
+        #             1247.91870117,
+        #         ),  # type: ignore
+        #         (
+        #             204.2023468017578,
+        #             650.284,
+        #             712.125,
+        #             965.231,
+        #             948.9819932,
+        #             1108.06650639,
+        #             1258.36394548,
+        #             1233.1492281,
+        #             1364.38688993,
+        #             1310.36996126,
+        #             1087.6020813,
+        #         ),  # type: ignore
+        #     )
 
         transforms_train = K.AugmentationSequential(
             # K.RandomResizedCrop(size=(args.input_size, args.input_size), scale=(0.5, 1.0)),
