@@ -1092,7 +1092,10 @@ def save_images(data, mask, pred, features, cnt, args):
         if args.dataset_type == "sen1floods11":
             axarr[0].imshow(sentinel2_l2a_to_rgb(data[i].cpu()).permute(1, 2, 0))
         elif "geobench" in args.dataset_type:
-            axarr[0].imshow(data[i][:3, ...].cpu().permute(1, 2, 0))
+            if "cashew" in args.dataset_type:
+                axarr[0].imshow(sentinel2_l2a_to_rgb(data[i][:3, ...].cpu()).permute(1, 2, 0))
+            else:
+                axarr[0].imshow(data[i][:3, ...].cpu().permute(1, 2, 0))
         else:
             axarr[0].imshow(data[i].cpu().permute(1, 2, 0))
 
