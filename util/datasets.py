@@ -596,15 +596,16 @@ class GeoBenchDataset(Dataset):
 
         if len(image) > 4:
             image[:3] = [image[2], image[1], image[0]]
-
+        
         image = torch.stack(image, dim=0)
+        image_rgb = image[:3]
         mask = torch.from_numpy(sample.label.data)
 
         image, mask = self.transform(
             image.float(), mask.unsqueeze(0).unsqueeze(0).float()
         )
 
-        return image.squeeze(0), mask.squeeze(0).squeeze(0).long()
+        return image.squeeze(0), image_rgb, mask.squeeze(0).squeeze(0).long()
 
 
 class SpaceNetDataset(SatelliteDataset):
@@ -710,6 +711,7 @@ class SpaceNetDataset(SatelliteDataset):
         #     mask = mask.to(torch.int64)
         # img, mask = torch.split(image_and_mask, [3, 1])
         # image_and_mask = self.transforms_val(image_and_mask)
+        # img_rgb = torch.flip(img_rgb, dims=[1])
         return img_rgb.squeeze(0), mask.squeeze(0).squeeze(0).long()
 
 
