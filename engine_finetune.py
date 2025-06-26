@@ -937,7 +937,10 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
             if (miou > max_iou and epoch > -1) or epoch == -1:
                 for batch in data_loader:
                     data = batch[0]
-                    if args.dataset_type == "sen1floods11" or "geobench" in args.dataset_type:
+                    if (
+                        args.dataset_type == "sen1floods11"
+                        or "geobench" in args.dataset_type
+                    ):
                         data_viz = batch[1]
                         data_viz = data_viz.to(device, non_blocking=True)
                     mask = batch[-1]
@@ -956,7 +959,10 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
                             or args.dataset_type == "potsdam"
                         ):
                             mask = mask.squeeze(1)
-                        if args.dataset_type == "sen1floods11" or "geobench" in args.dataset_type:
+                        if (
+                            args.dataset_type == "sen1floods11"
+                            or "geobench" in args.dataset_type
+                        ):
                             save_images(data_viz, mask, pred, features, cnt, args)
                         else:
                             save_images(data, mask, pred, features, cnt, args)
@@ -1093,7 +1099,9 @@ def save_images(data, mask, pred, features, cnt, args):
             axarr[0].imshow(sentinel2_l2a_to_rgb(data[i].cpu()).permute(1, 2, 0))
         elif "geobench" in args.dataset_type:
             if "cashew" in args.dataset_type:
-                axarr[0].imshow(sentinel2_l2a_to_rgb(data[i][:3, ...].cpu()).permute(1, 2, 0))
+                axarr[0].imshow(
+                    sentinel2_l2a_to_rgb(data[i][:3, ...].cpu()).permute(1, 2, 0)
+                )
             else:
                 axarr[0].imshow(data[i][:3, ...].cpu().permute(1, 2, 0))
         else:
@@ -1103,12 +1111,34 @@ def save_images(data, mask, pred, features, cnt, args):
             args.dataset_type == "spacenet"
             or args.dataset_type == "isaid"
             or args.dataset_type == "mass_roads"
-            or "geobench" in args.dataset_type
         ):
             axarr[1].imshow(mask[i].cpu(), interpolation="none")
             axarr[2].imshow(pred.argmax(1).cpu()[i], interpolation="none")
         elif args.dataset_type == "sen1floods11":
             color_list = ["white", "grey", "blue"]
+            mask_array_1 = np.array(mask[i].cpu())
+            mask_array_2 = np.array(pred.argmax(1).cpu()[i])
+            cmap_1 = matplotlib.colors.ListedColormap(
+                [color_list[j] for j in np.unique(mask_array_1)]
+            )
+            cmap_2 = matplotlib.colors.ListedColormap(
+                [color_list[j] for j in np.unique(mask_array_2)]
+            )
+            axarr[1].imshow(mask[i].cpu(), cmap=cmap_1, interpolation="none")
+            axarr[2].imshow(pred.argmax(1).cpu()[i], cmap=cmap_2, interpolation="none")
+        elif "geobench" in args.dataset_type:
+            color_list = [
+                "red",
+                "blue",
+                "green",
+                "yellow",
+                "purple",
+                "orange",
+                "pink",
+                "brown",
+                "black",
+                "white",
+            ]
             mask_array_1 = np.array(mask[i].cpu())
             mask_array_2 = np.array(pred.argmax(1).cpu()[i])
             cmap_1 = matplotlib.colors.ListedColormap(

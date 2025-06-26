@@ -381,13 +381,13 @@ class SimDINO(nn.Module):
 
     def forward(self, x):
 
-        # if not self.ms_backbone and x.shape[1] != 3:
-        #     chunks = torch.split(x, [3, 7], dim=1)
-        # else:
-        #     if x.shape[1] == 3:
-        #         x = F.pad(x, (0, 0, 0, 0, 0, 7), "constant", 0)  # Pad to 10 channels
-        #     elif x.shape[1] == 4:
-        #         x = F.pad(x, (0, 0, 0, 0, 0, 6), "constant", 0)
+        if not self.ms_backbone and x.shape[1] != 3:
+            chunks = torch.split(x, [3, 7], dim=1)
+        else:
+            if x.shape[1] == 3:
+                x = F.pad(x, (0, 0, 0, 0, 0, 7), "constant", 0)  # Pad to 10 channels
+            elif x.shape[1] == 4:
+                x = F.pad(x, (0, 0, 0, 0, 0, 6), "constant", 0)
         # x = x.permute(0, 2, 3, 1)
         # x = self.channel_project(x)
         # x = x.permute(0, 3, 1, 2)
