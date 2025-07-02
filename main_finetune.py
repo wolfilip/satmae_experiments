@@ -310,6 +310,7 @@ def get_args_parser():
             "geobench_crop",
             "geobench_cashew",
             "geobench_chesapeake",
+            "geobench_cattle",
         ],
         help="Whether to use fmow rgb, sentinel, or other dataset.",
     )

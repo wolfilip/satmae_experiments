@@ -585,6 +585,8 @@ class GeoBenchDataset(Dataset):
 
         if len(sample.bands) == 4:
             band_list = [0, 1, 2, 3]
+        elif len(sample.bands) == 3:
+            band_list = [0, 1, 2]
         else:
             band_list = [1, 2, 3, 4, 5, 6, 7, 8, 10, 11]
         # else:
@@ -596,7 +598,7 @@ class GeoBenchDataset(Dataset):
 
         if len(image) > 4:
             image[:3] = [image[2], image[1], image[0]]
-        
+
         image = torch.stack(image, dim=0)
         image_rgb = image[:3]
         mask = torch.from_numpy(sample.label.data)
@@ -2253,6 +2255,9 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
             elif args.dataset_type == "geobench_chesapeake":
                 if "chesapeake" in str(dataset.dataset_dir):
                     break
+            elif args.dataset_type == "geobench_cattle":
+                if "cattle" in str(dataset.dataset_dir):
+                    break
 
         data_json = dataset.dataset_dir / "band_stats.json"
         norms = []
@@ -2264,7 +2269,7 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
                     norms.append(band_stats[band]["mean"])
                     stds.append(band_stats[band]["std"])
 
-        if args.model_type == "simdino":
+        if args.model_type == "simdino" and args.dataset_type != "geobench_cattle":
             norms_1, norms_3 = norms[1], norms[3]
             norms[1], norms[3] = norms_3, norms_1
             del norms[12]

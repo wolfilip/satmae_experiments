@@ -28,13 +28,13 @@ class DINOv2Segmenter(nn.Module):
         if self.model_size == "large":
             self.feat_extr = torch.hub.load("facebookresearch/dinov2", "dinov2_vitl14")
 
-        self.feat_extr.eval()  # type: ignore
+        # self.feat_extr.eval()  # type: ignore
         self.feat_extr.to(device)  # type: ignore
         self.device = device
         self.patch_size = 14
 
-        for p in self.feat_extr.parameters():  # type: ignore
-            p.requires_grad = False
+        # for p in self.feat_extr.parameters():  # type: ignore
+        #     p.requires_grad = False
 
         # upernet stuff
         if self.model_size == "small":
@@ -54,7 +54,7 @@ class DINOv2Segmenter(nn.Module):
         else:
             self.embed_dim = 1024
             feature_channels = [
-                384 + 32,
+                self.embed_dim,
                 self.embed_dim,
                 self.embed_dim,
                 self.embed_dim,
@@ -224,7 +224,11 @@ class DINOv2Segmenter(nn.Module):
         # layer = self.layer_num[0] # TODO: make it a list
         # layers = []
         if self.do_interpolation:
-            if imgs.shape[-1] == 512:
+            if imgs.shape[-1] == 500:
+                imgs = F.interpolate(
+                    imgs, size=490, mode="bilinear", align_corners=True
+                )
+            if imgs.shape[-1] == 512 or imgs.shape[-1] == 500:
                 imgs = F.interpolate(
                     imgs, size=504, mode="bilinear", align_corners=True
                 )
@@ -239,18 +243,18 @@ class DINOv2Segmenter(nn.Module):
                     imgs, size=1498, mode="bilinear", align_corners=True
                 )
 
-        with torch.no_grad():
-            if self.task == "classification":
-                out = self.feat_extr.forward_features(imgs)  # type: ignore
-                cls = out["x_norm_clstoken"]
-                out = cls
+        # with torch.no_grad():
+        if self.task == "classification":
+            out = self.feat_extr.forward_features(imgs)  # type: ignore
+            cls = out["x_norm_clstoken"]
+            out = cls
+        else:
+            # if self.layer_num == "last":
+            if self.model_size == "base" or self.model_size == "small":
+                patch = self.feat_extr.get_intermediate_layers(imgs, (3, 5, 8, 11))  # type: ignore
             else:
-                # if self.layer_num == "last":
-                if self.model_size == "base" or self.model_size == "small":
-                    patch = self.feat_extr.get_intermediate_layers(imgs, (3, 5, 8, 11))  # type: ignore
-                else:
-                    patch = self.feat_extr.get_intermediate_layers(imgs, (3, 9, 17, 23))  # type: ignore
-                out = patch
+                patch = self.feat_extr.get_intermediate_layers(imgs, (3, 9, 17, 23))  # type: ignore
+            out = patch
 
             # layers.append(patch)
             # layers.append(patch)
@@ -328,14 +332,14 @@ class DINOv2Segmenter(nn.Module):
 
     def forward(self, x):
 
-        chunks = torch.split(x, [3, x.shape[1] - 3], dim=1)
+        # chunks = torch.split(x, [3, x.shape[1] - 3], dim=1)
 
         conv_embeds = 0
         if self.conv_size > 0:
-            conv_embeds = self.encoder_conv(chunks[1])
+            conv_embeds = self.encoder_conv(x)
         # x = self.encoder_forward(x)
         # x = self.decoder_upernet(x, conv_embeds)
-        features = self.get_features(chunks[0])
+        features = self.get_features(x)
 
         ######## LIFT ###########
 
