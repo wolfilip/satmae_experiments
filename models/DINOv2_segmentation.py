@@ -20,7 +20,10 @@ class DINOv2Segmenter(nn.Module):
                 "facebookresearch/dinov2", "dinov2_vits14_reg"
             )
         if self.model_size == "base":
-            self.feat_extr = torch.hub.load("facebookresearch/dinov2", "dinov2_vitb14")
+            # self.feat_extr = torch.hub.load("facebookresearch/dinov2", "dinov2_vitb14")
+            self.feat_extr = torch.hub.load(
+                "panopticon-FM/panopticon", "panopticon_vitb14"
+            )
         if self.model_size == "base_reg":
             self.feat_extr = torch.hub.load(
                 "facebookresearch/dinov2", "dinov2_vitb14_reg"
@@ -28,13 +31,13 @@ class DINOv2Segmenter(nn.Module):
         if self.model_size == "large":
             self.feat_extr = torch.hub.load("facebookresearch/dinov2", "dinov2_vitl14")
 
-        # self.feat_extr.eval()  # type: ignore
+        self.feat_extr.eval()  # type: ignore
         self.feat_extr.to(device)  # type: ignore
         self.device = device
         self.patch_size = 14
 
-        # for p in self.feat_extr.parameters():  # type: ignore
-        #     p.requires_grad = False
+        for p in self.feat_extr.parameters():  # type: ignore
+            p.requires_grad = False
 
         # upernet stuff
         if self.model_size == "small":
@@ -243,18 +246,18 @@ class DINOv2Segmenter(nn.Module):
                     imgs, size=1498, mode="bilinear", align_corners=True
                 )
 
-        # with torch.no_grad():
-        if self.task == "classification":
-            out = self.feat_extr.forward_features(imgs)  # type: ignore
-            cls = out["x_norm_clstoken"]
-            out = cls
-        else:
-            # if self.layer_num == "last":
-            if self.model_size == "base" or self.model_size == "small":
-                patch = self.feat_extr.get_intermediate_layers(imgs, (3, 5, 8, 11))  # type: ignore
+        with torch.no_grad():
+            if self.task == "classification":
+                out = self.feat_extr.forward_features(imgs)  # type: ignore
+                cls = out["x_norm_clstoken"]
+                out = cls
             else:
-                patch = self.feat_extr.get_intermediate_layers(imgs, (3, 9, 17, 23))  # type: ignore
-            out = patch
+                # if self.layer_num == "last":
+                if self.model_size == "base" or self.model_size == "small":
+                    patch = self.feat_extr.get_intermediate_layers(imgs, (3, 5, 8, 11))  # type: ignore
+                else:
+                    patch = self.feat_extr.get_intermediate_layers(imgs, (3, 9, 17, 23))  # type: ignore
+                out = patch
 
             # layers.append(patch)
             # layers.append(patch)
