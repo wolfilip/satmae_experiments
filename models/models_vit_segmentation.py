@@ -251,12 +251,12 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
 
     def forward(self, x):
 
-        chunks = torch.split(x, [1, 3, x.shape[1] - 4], dim=1)
+        # chunks = torch.split(x, [1, 3, x.shape[1] - 4], dim=1)
 
         conv_embeds = 0
         if self.conv_size > 0:
             conv_embeds = self.encoder_conv(x)
-        features = self.encoder_forward(chunks[1])
+        features = self.encoder_forward(x)
         # x = self.decoder_upernet(features, conv_embeds)
         # x = self.encoder_forward(x)
         # print(x.shape, features[0].shape, conv_embeds.shape)

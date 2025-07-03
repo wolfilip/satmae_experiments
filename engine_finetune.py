@@ -793,13 +793,13 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
             task="multiclass",
             num_classes=args.nb_classes,
             average="macro",
-            # ignore_index=0,
+            ignore_index=0,
         )
         miou_metric_2 = JaccardIndex(
             task="multiclass",
             num_classes=args.nb_classes,
             average="micro",
-            # ignore_index=0,
+            ignore_index=0,
         )
         f1_score = F1Score(
             task="multiclass",
