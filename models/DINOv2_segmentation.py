@@ -20,10 +20,10 @@ class DINOv2Segmenter(nn.Module):
                 "facebookresearch/dinov2", "dinov2_vits14_reg"
             )
         if self.model_size == "base":
-            # self.feat_extr = torch.hub.load("facebookresearch/dinov2", "dinov2_vitb14")
-            self.feat_extr = torch.hub.load(
-                "panopticon-FM/panopticon", "panopticon_vitb14"
-            )
+            self.feat_extr = torch.hub.load("facebookresearch/dinov2", "dinov2_vitb14")
+            # self.feat_extr = torch.hub.load(
+            #     "panopticon-FM/panopticon", "panopticon_vitb14"
+            # )
         if self.model_size == "base_reg":
             self.feat_extr = torch.hub.load(
                 "facebookresearch/dinov2", "dinov2_vitb14_reg"
