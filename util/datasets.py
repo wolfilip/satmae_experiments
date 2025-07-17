@@ -2130,14 +2130,18 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
             dataset = LoveDADataset((data_paths_rural, data_paths_urban), is_train)
     elif args.dataset_type == "vaihingen":
         if is_train:
-            data_paths_imgs_train = "/home/filip/vaihingen_dataset/img_dir/train"
-            data_paths_ann_train = "/home/filip/vaihingen_dataset/ann_dir/train"
+            data_paths_imgs_train = (
+                "/home/filip/datasets/vaihingen_dataset/img_dir/train"
+            )
+            data_paths_ann_train = (
+                "/home/filip/datasets/vaihingen_dataset/ann_dir/train"
+            )
             dataset = VaihingenPotsdamDataset(
                 data_paths_imgs_train, data_paths_ann_train, is_train, args
             )
         else:
-            data_paths_imgs_train = "/home/filip/vaihingen_dataset/img_dir/val"
-            data_paths_ann_train = "/home/filip/vaihingen_dataset/ann_dir/val"
+            data_paths_imgs_train = "/home/filip/datasets/vaihingen_dataset/img_dir/val"
+            data_paths_ann_train = "/home/filip/datasets/vaihingen_dataset/ann_dir/val"
             dataset = VaihingenPotsdamDataset(
                 data_paths_imgs_train, data_paths_ann_train, is_train, args
             )
