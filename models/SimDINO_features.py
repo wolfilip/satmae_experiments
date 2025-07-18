@@ -62,7 +62,7 @@ class SimDINO(nn.Module):
 
         if args.finetune:
             load_pretrained_weights(
-                self.feat_extr, args.finetune, "student", args.model, 16
+                self.feat_extr, args.finetune, "teacher", args.model, 16
             )
 
         # if args.dataset_type == "spacenet":
@@ -300,14 +300,14 @@ class SimDINO(nn.Module):
         with torch.no_grad():
             features = []
             for i, layer in enumerate(self.feat_extr.features):
-                if i == 0:
-                    if x.shape[1] == 10:
-                        x = self.feat_extr.conv_ms(x)
-                    else:
-                        x = self.feat_extr.conv_rgb(x)
+                # if i == 0:
+                #     if x.shape[1] == 10:
+                #         x = self.feat_extr.conv_ms(x)
+                #     else:
+                #         x = self.feat_extr.conv_rgb(x)
                 x = layer(x)
-                # if i in [1, 3, 5, 7]:
-                if i in [0, 2, 4, 6]:
+                if i in [1, 3, 5, 7]:
+                    # if i in [0, 2, 4, 6]:
                     features.append(x)
         return features
 
