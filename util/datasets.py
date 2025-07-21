@@ -2262,6 +2262,9 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
             elif args.dataset_type == "geobench_cattle":
                 if "cattle" in str(dataset.dataset_dir):
                     break
+            elif args.dataset_type == "geobench_pv":
+                if "pv" in str(dataset.dataset_dir):
+                    break
 
         data_json = dataset.dataset_dir / "band_stats.json"
         norms = []
@@ -2273,7 +2276,11 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
                     norms.append(band_stats[band]["mean"])
                     stds.append(band_stats[band]["std"])
 
-        if args.model_type == "simdino" and args.dataset_type != "geobench_cattle":
+        if (
+            args.model_type == "simdino"
+            and args.dataset_type != "geobench_cattle"
+            and args.dataset_type != "geobench_pv"
+        ):
             norms_1, norms_3 = norms[1], norms[3]
             norms[1], norms[3] = norms_3, norms_1
             del norms[12]
@@ -2282,7 +2289,11 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
             del stds[9]
             del norms[0]
             del stds[0]
-        if args.model_type == "terrafm":
+        if (
+            args.model_type == "terrafm"
+            and args.dataset_type != "geobench_cattle"
+            and args.dataset_type != "geobench_pv"
+        ):
             del norms[12]
             del stds[12]
 

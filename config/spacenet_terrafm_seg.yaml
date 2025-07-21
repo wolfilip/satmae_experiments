@@ -7,11 +7,11 @@ save_images: false
 model_type: terrafm
 model: vit_b
 input_size: 224
-dataset_type: geobench_crop
+dataset_type: spacenet
 dataset_split: 100
 method_name: terrafm_vit_b
 best_epoch: false
-nb_classes: 10
+nb_classes: 2
 output_dir: satmae_experiments/outputs/
 log_dir: satmae_experiments/logs/
 finetune: /home/filip/pretrained_weights/TerraFM-B.pth

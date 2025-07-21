@@ -30,12 +30,12 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
         )
         self.pos_embed.data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
 
-        # for block in self.blocks:
-        #     for param in block.parameters():
-        #         param.requires_grad = False
+        for block in self.blocks:
+            for param in block.parameters():
+                param.requires_grad = False
 
-        # for param in self.patch_embed.parameters():
-        #     param.requires_grad = False
+        for param in self.patch_embed.parameters():
+            param.requires_grad = False
 
         self.conv_size = 0
 
@@ -150,24 +150,25 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
 
     def encoder_forward(self, x):
 
-        B = x.shape[0]
-        x = self.patch_embed(x)
+        with torch.no_grad():
+            B = x.shape[0]
+            x = self.patch_embed(x)
 
-        cls_tokens = self.cls_token.expand(  # type: ignore
-            B, -1, -1
-        )  # stole cls_tokens impl from Phil Wang, thanks
-        x = torch.cat((cls_tokens, x), dim=1)
-        x = x + self.pos_embed
-        x = self.pos_drop(x)
-        x = x[:, 1:]
+            cls_tokens = self.cls_token.expand(  # type: ignore
+                B, -1, -1
+            )  # stole cls_tokens impl from Phil Wang, thanks
+            x = torch.cat((cls_tokens, x), dim=1)
+            x = x + self.pos_embed
+            x = self.pos_drop(x)
+            x = x[:, 1:]
 
-        outs = []
-        for i, blk in enumerate(self.blocks):
-            x = blk(x)
-            # if i in [3, 11]:
-            if i in [3, 9, 17, 23]:
-                # if i in [3, 8, 13, 18, 23]:
-                outs.append(x)
+            outs = []
+            for i, blk in enumerate(self.blocks):
+                x = blk(x)
+                # if i in [3, 11]:
+                if i in [3, 9, 17, 23]:
+                    # if i in [3, 8, 13, 18, 23]:
+                    outs.append(x)
 
         return outs
 

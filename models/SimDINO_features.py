@@ -32,22 +32,22 @@ class SimDINO(nn.Module):
             self.feat_extr.conv_ms = nn.Sequential(
                 nn.Conv2d(
                     10,
-                    96,
+                    self.feat_extr.features[0][0].norm1.normalized_shape[0],
                     kernel_size=(4, 4),
                     stride=(4, 4),
                 ),
                 Permute([0, 2, 3, 1]),
-                norm_layer_ms(96),
+                norm_layer_ms(self.feat_extr.features[0][0].norm1.normalized_shape[0]),
             )
             self.feat_extr.conv_rgb = nn.Sequential(
                 nn.Conv2d(
                     3,
-                    96,
+                    self.feat_extr.features[0][0].norm1.normalized_shape[0],
                     kernel_size=(4, 4),
                     stride=(4, 4),
                 ),
                 Permute([0, 2, 3, 1]),
-                norm_layer_rgb(96),
+                norm_layer_rgb(self.feat_extr.features[0][0].norm1.normalized_shape[0]),
             )
             self.ms_backbone = True
         else:
@@ -62,7 +62,7 @@ class SimDINO(nn.Module):
 
         if args.finetune:
             load_pretrained_weights(
-                self.feat_extr, args.finetune, "teacher", args.model, 16
+                self.feat_extr, args.finetune, "student", args.model, 16
             )
 
         # if args.dataset_type == "spacenet":
@@ -300,14 +300,14 @@ class SimDINO(nn.Module):
         with torch.no_grad():
             features = []
             for i, layer in enumerate(self.feat_extr.features):
-                # if i == 0:
-                #     if x.shape[1] == 10:
-                #         x = self.feat_extr.conv_ms(x)
-                #     else:
-                #         x = self.feat_extr.conv_rgb(x)
+                if i == 0:
+                    if x.shape[1] == 10:
+                        x = self.feat_extr.conv_ms(x)
+                    else:
+                        x = self.feat_extr.conv_rgb(x)
                 x = layer(x)
-                if i in [1, 3, 5, 7]:
-                    # if i in [0, 2, 4, 6]:
+                # if i in [1, 3, 5, 7]:
+                if i in [0, 2, 4, 6]:
                     features.append(x)
         return features
 
