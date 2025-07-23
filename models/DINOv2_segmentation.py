@@ -231,7 +231,7 @@ class DINOv2Segmenter(nn.Module):
                 imgs = F.interpolate(
                     imgs, size=490, mode="bilinear", align_corners=True
                 )
-            if imgs.shape[-1] == 512 or imgs.shape[-1] == 500:
+            elif imgs.shape[-1] == 512 or imgs.shape[-1] == 500:
                 imgs = F.interpolate(
                     imgs, size=504, mode="bilinear", align_corners=True
                 )
@@ -244,6 +244,10 @@ class DINOv2Segmenter(nn.Module):
             elif imgs.shape[-1] == 1500:
                 imgs = F.interpolate(
                     imgs, size=1498, mode="bilinear", align_corners=True
+                )
+            if imgs.shape[-1] == 320:
+                imgs = F.interpolate(
+                    imgs, size=308, mode="bilinear", align_corners=True
                 )
 
         with torch.no_grad():

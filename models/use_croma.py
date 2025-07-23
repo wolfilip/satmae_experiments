@@ -16,6 +16,7 @@ class PretrainedCROMA(nn.Module):
         size="base",
         modality="both",
         image_resolution=120,
+        num_labels=10,
     ):
         """
         NOTE: image_resolution is not the spatial, spectral, or temporal resolution. It is the height and width of the image, in pixels.
@@ -127,7 +128,7 @@ class PretrainedCROMA(nn.Module):
         config = {
             "pool_scales": [1, 2, 3, 6],
             "hidden_size": 512,
-            "num_labels": 3,
+            "num_labels": num_labels,
             "initializer_range": 0.02,
         }
 
@@ -164,13 +165,19 @@ class PretrainedCROMA(nn.Module):
         #     return_dict["SAR_encodings"] = SAR_encodings
         #     return_dict["SAR_GAP"] = SAR_GAP
 
-        if self.modality in ["optical", "both"]:
-            assert (
-                optical_images is not None
-            ), f"Modality is set to {self.modality}, but optical_images are None"
-            optical_encodings = self.s2_encoder(
-                imgs=optical_images, attn_bias=self.attn_bias.to(optical_images.device)
-            )  # (bsz, num_patches, encoder_dim)
+        with torch.no_grad():
+            if self.modality in ["optical", "both"]:
+                assert (
+                    optical_images is not None
+                ), f"Modality is set to {self.modality}, but optical_images are None"
+
+                optical_images = F.interpolate(
+                    optical_images, size=120, mode="bilinear", align_corners=True
+                )
+                optical_encodings = self.s2_encoder(
+                    imgs=optical_images,
+                    attn_bias=self.attn_bias.to(optical_images.device),
+                )  # (bsz, num_patches, encoder_dim)
             # optical_GAP = self.GAP_FFN_s2(
             #     optical_encodings.mean(dim=1)
             # )  # (bsz, encoder_dim)
@@ -240,7 +247,7 @@ class PretrainedCROMA(nn.Module):
 
         x = self.upernet_head(new_features)
 
-        x = F.interpolate(x, size=120, mode="bilinear", align_corners=False)
+        x = F.interpolate(x, size=256, mode="bilinear", align_corners=False)
         return x
 
     def forward(self, x):

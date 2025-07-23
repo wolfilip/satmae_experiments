@@ -596,7 +596,8 @@ def main(args):
             pretrained_path=args.finetune,
             size="base",
             modality="optical",
-            image_resolution=args.input_size,
+            image_resolution=120,
+            num_labels=args.nb_classes,
         ).to(device)
     elif args.model_type == "terrafm":
         model = TerraFMModel(args, "cuda")

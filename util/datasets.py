@@ -2290,7 +2290,7 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
             del norms[0]
             del stds[0]
         if (
-            args.model_type == "terrafm"
+            (args.model_type == "terrafm" or args.model_type == "croma")
             and args.dataset_type != "geobench_cattle"
             and args.dataset_type != "geobench_pv"
         ):
