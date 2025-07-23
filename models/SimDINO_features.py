@@ -62,7 +62,7 @@ class SimDINO(nn.Module):
 
         if args.finetune:
             load_pretrained_weights(
-                self.feat_extr, args.finetune, "student", args.model, 16
+                self.feat_extr, args.finetune, "teacher", args.model, 16
             )
 
         # if args.dataset_type == "spacenet":
@@ -300,14 +300,14 @@ class SimDINO(nn.Module):
         with torch.no_grad():
             features = []
             for i, layer in enumerate(self.feat_extr.features):
-                if i == 0:
-                    if x.shape[1] == 10:
-                        x = self.feat_extr.conv_ms(x)
-                    else:
-                        x = self.feat_extr.conv_rgb(x)
+                # if i == 0:
+                #     if x.shape[1] == 10:
+                #         x = self.feat_extr.conv_ms(x)
+                #     else:
+                #         x = self.feat_extr.conv_rgb(x)
                 x = layer(x)
-                # if i in [1, 3, 5, 7]:
-                if i in [0, 2, 4, 6]:
+                if i in [1, 3, 5, 7]:
+                    # if i in [0, 2, 4, 6]:
                     features.append(x)
         return features
 
@@ -381,13 +381,13 @@ class SimDINO(nn.Module):
 
     def forward(self, x):
 
-        # if not self.ms_backbone and x.shape[1] != 3:
-        #     chunks = torch.split(x, [3, 7], dim=1)
-        # else:
-        #     if x.shape[1] == 3:
-        #         x = F.pad(x, (0, 0, 0, 0, 0, 7), "constant", 0)  # Pad to 10 channels
-        #     elif x.shape[1] == 4:
-        #         x = F.pad(x, (0, 0, 0, 0, 0, 6), "constant", 0)
+        if not self.ms_backbone and x.shape[1] != 3:
+            chunks = torch.split(x, [3, 7], dim=1)
+        else:
+            if x.shape[1] == 3:
+                x = F.pad(x, (0, 0, 0, 0, 0, 7), "constant", 0)  # Pad to 10 channels
+            elif x.shape[1] == 4:
+                x = F.pad(x, (0, 0, 0, 0, 0, 6), "constant", 0)
         # x = x.permute(0, 2, 3, 1)
         # x = self.channel_project(x)
         # x = x.permute(0, 3, 1, 2)
