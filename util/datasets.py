@@ -587,10 +587,10 @@ class GeoBenchDataset(Dataset):
             band_list = [0, 1, 2, 3]
         elif len(sample.bands) == 3:
             band_list = [0, 1, 2]
-        # else:
-        #     band_list = [1, 2, 3, 4, 5, 6, 7, 8, 10, 11]
         else:
-            band_list = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+            band_list = [1, 2, 3, 4, 5, 6, 7, 8, 10, 11]
+        # else:
+        #     band_list = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
 
         for i, band in enumerate(sample.bands):
             if i in band_list:
