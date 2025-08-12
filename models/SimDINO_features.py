@@ -10,6 +10,24 @@ from .simdino_models import vision_transformer as vits
 from torchvision.ops.misc import Permute
 
 
+class ConvStem(nn.Module):
+    def __init__(self, channelt_size=10):
+        super().__init__()
+        self.conv = nn.Sequential(
+            nn.Conv2d(channelt_size, 48, kernel_size=7, stride=2, padding=3),
+            nn.BatchNorm2d(48),
+            nn.GELU(),
+            nn.Conv2d(48, 96, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(96),
+            nn.GELU(),
+        )
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = x.permute(0, 2, 3, 1)
+        return x
+
+
 class SimDINO(nn.Module):
 
     def __init__(self, args, device) -> None:
@@ -27,28 +45,30 @@ class SimDINO(nn.Module):
 
         if "dconv" in args.finetune:
             del self.feat_extr.features[0]
-            norm_layer_ms = partial(nn.LayerNorm, eps=1e-5)
-            norm_layer_rgb = partial(nn.LayerNorm, eps=1e-5)
-            self.feat_extr.conv_ms = nn.Sequential(
-                nn.Conv2d(
-                    10,
-                    self.feat_extr.features[0][0].norm1.normalized_shape[0],
-                    kernel_size=(4, 4),
-                    stride=(4, 4),
-                ),
-                Permute([0, 2, 3, 1]),
-                norm_layer_ms(self.feat_extr.features[0][0].norm1.normalized_shape[0]),
-            )
-            self.feat_extr.conv_rgb = nn.Sequential(
-                nn.Conv2d(
-                    3,
-                    self.feat_extr.features[0][0].norm1.normalized_shape[0],
-                    kernel_size=(4, 4),
-                    stride=(4, 4),
-                ),
-                Permute([0, 2, 3, 1]),
-                norm_layer_rgb(self.feat_extr.features[0][0].norm1.normalized_shape[0]),
-            )
+            self.feat_extr.conv_ms = ConvStem(10)
+            self.feat_extr.conv_rgb = ConvStem(3)
+            # norm_layer_ms = partial(nn.LayerNorm, eps=1e-5)
+            # norm_layer_rgb = partial(nn.LayerNorm, eps=1e-5)
+            # self.feat_extr.conv_ms = nn.Sequential(
+            #     nn.Conv2d(
+            #         10,
+            #         self.feat_extr.features[0][0].norm1.normalized_shape[0],
+            #         kernel_size=(4, 4),
+            #         stride=(4, 4),
+            #     ),
+            #     Permute([0, 2, 3, 1]),
+            #     norm_layer_ms(self.feat_extr.features[0][0].norm1.normalized_shape[0]),
+            # )
+            # self.feat_extr.conv_rgb = nn.Sequential(
+            #     nn.Conv2d(
+            #         3,
+            #         self.feat_extr.features[0][0].norm1.normalized_shape[0],
+            #         kernel_size=(4, 4),
+            #         stride=(4, 4),
+            #     ),
+            #     Permute([0, 2, 3, 1]),
+            #     norm_layer_rgb(self.feat_extr.features[0][0].norm1.normalized_shape[0]),
+            # )
             self.ms_backbone = True
         else:
             if "ms" in args.finetune:
