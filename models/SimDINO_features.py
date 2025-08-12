@@ -45,30 +45,36 @@ class SimDINO(nn.Module):
 
         if "dconv" in args.finetune:
             del self.feat_extr.features[0]
-            self.feat_extr.conv_ms = ConvStem(10)
-            self.feat_extr.conv_rgb = ConvStem(3)
-            # norm_layer_ms = partial(nn.LayerNorm, eps=1e-5)
-            # norm_layer_rgb = partial(nn.LayerNorm, eps=1e-5)
-            # self.feat_extr.conv_ms = nn.Sequential(
-            #     nn.Conv2d(
-            #         10,
-            #         self.feat_extr.features[0][0].norm1.normalized_shape[0],
-            #         kernel_size=(4, 4),
-            #         stride=(4, 4),
-            #     ),
-            #     Permute([0, 2, 3, 1]),
-            #     norm_layer_ms(self.feat_extr.features[0][0].norm1.normalized_shape[0]),
-            # )
-            # self.feat_extr.conv_rgb = nn.Sequential(
-            #     nn.Conv2d(
-            #         3,
-            #         self.feat_extr.features[0][0].norm1.normalized_shape[0],
-            #         kernel_size=(4, 4),
-            #         stride=(4, 4),
-            #     ),
-            #     Permute([0, 2, 3, 1]),
-            #     norm_layer_rgb(self.feat_extr.features[0][0].norm1.normalized_shape[0]),
-            # )
+            # self.feat_extr.conv_ms = ConvStem(10)
+            # self.feat_extr.conv_rgb = ConvStem(3)
+            norm_layer_ms = partial(nn.LayerNorm, eps=1e-5)
+            norm_layer_rgb = partial(nn.LayerNorm, eps=1e-5)
+            self.feat_extr.conv_ms = nn.Sequential(
+                nn.Conv2d(
+                    10,
+                    self.feat_extr.features[0][0].norm1.normalized_shape[0],
+                    kernel_size=(4, 4),
+                    stride=(4, 4),
+                ),
+                Permute([0, 2, 3, 1]),
+                norm_layer_ms(self.feat_extr.features[0][0].norm1.normalized_shape[0]),
+            )
+            # self.feat_extr.proj_ms = nn.Linear(768, 96)
+            self.feat_extr.conv_rgb = nn.Sequential(
+                nn.Conv2d(
+                    3,
+                    self.feat_extr.features[0][0].norm1.normalized_shape[0],
+                    kernel_size=(4, 4),
+                    stride=(4, 4),
+                ),
+                Permute([0, 2, 3, 1]),
+                norm_layer_rgb(self.feat_extr.features[0][0].norm1.normalized_shape[0]),
+            )
+            # self.feat_extr.proj_rgb = nn.Linear(768, 96)
+            # self.feat_extr.ms_process = torchvision_models.__dict__["swin_t"]()
+            # self.feat_extr.rgb_process = torchvision_models.__dict__["swin_t"]()
+            # del self.feat_extr.ms_process.features[0]
+            # del self.feat_extr.rgb_process.features[0]
             self.ms_backbone = True
         else:
             if "ms" in args.finetune:
@@ -323,8 +329,33 @@ class SimDINO(nn.Module):
                 if i == 0:
                     if x.shape[1] == 10:
                         x = self.feat_extr.conv_ms(x)
+                        # for i, layer_ms in enumerate(
+                        #     self.feat_extr.ms_process.features
+                        # ):
+                        #     x = layer_ms(x)
+                        # x = self.feat_extr.ms_process.norm(x)
+                        # x = self.feat_extr.proj_ms(x)
+                        # x = x.permute(0, 3, 1, 2)
+                        # x = F.interpolate(
+                        #     x, size=(56, 56), mode="bilinear", align_corners=False
+                        # )
+                        # x = x.permute(0, 2, 3, 1)
                     else:
                         x = self.feat_extr.conv_rgb(x)
+                        # for i, layer_rgb in enumerate(
+                        #     self.feat_extr.rgb_process.features
+                        # ):
+                        #     x = layer_rgb(x)
+                        # x = self.feat_extr.rgb_process.norm(x)
+                        # x = self.feat_extr.proj_rgb(x)
+                        # x = x.permute(0, 3, 1, 2)
+                        # x = F.interpolate(
+                        #     x,
+                        #     size=(56, 56),
+                        #     mode="bilinear",
+                        #     align_corners=False,
+                        # )
+                        # x = x.permute(0, 2, 3, 1)
                 x = layer(x)
                 # if i in [1, 3, 5, 7]:
                 if i in [0, 2, 4, 6]:
