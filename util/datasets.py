@@ -2280,6 +2280,7 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
             args.model_type == "simdino"
             and args.dataset_type != "geobench_cattle"
             and args.dataset_type != "geobench_pv"
+            and args.dataset_type != "geobench_chesapeake"
         ):
             norms_1, norms_3 = norms[1], norms[3]
             norms[1], norms[3] = norms_3, norms_1
@@ -2293,6 +2294,7 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
             (args.model_type == "terrafm" or args.model_type == "croma")
             and args.dataset_type != "geobench_cattle"
             and args.dataset_type != "geobench_pv"
+            and args.dataset_type != "geobench_chesapeake"
         ):
             del norms[12]
             del stds[12]
