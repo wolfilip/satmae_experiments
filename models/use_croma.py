@@ -252,6 +252,8 @@ class PretrainedCROMA(nn.Module):
 
     def forward(self, x):
 
+        x = F.pad(x, (0, 0, 0, 0, 0, 8), "constant", 0)
+
         features = self.forward_croma(optical_images=x)
         output = self.decoder_upernet(features)
 

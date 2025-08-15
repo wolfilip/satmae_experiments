@@ -339,14 +339,14 @@ class DINOv2Segmenter(nn.Module):
 
     def forward(self, x):
 
-        # chunks = torch.split(x, [3, x.shape[1] - 3], dim=1)
+        chunks = torch.split(x, [3, x.shape[1] - 3], dim=1)
 
         conv_embeds = 0
         if self.conv_size > 0:
-            conv_embeds = self.encoder_conv(x)
+            conv_embeds = self.encoder_conv(chunks[0])
         # x = self.encoder_forward(x)
         # x = self.decoder_upernet(x, conv_embeds)
-        features = self.get_features(x)
+        features = self.get_features(chunks[0])
 
         ######## LIFT ###########
 

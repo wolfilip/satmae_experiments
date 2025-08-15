@@ -596,7 +596,7 @@ class GeoBenchDataset(Dataset):
             if i in band_list:
                 image.append(torch.from_numpy(band.data))
 
-        if len(image) > 4:
+        if len(image) >= 4:
             image[:3] = [image[2], image[1], image[0]]
 
         image = torch.stack(image, dim=0)
