@@ -329,33 +329,33 @@ class SimDINO(nn.Module):
                 if i == 0:
                     if x.shape[1] == 10:
                         x = self.feat_extr.conv_ms(x)
-                        # for i, layer_ms in enumerate(
-                        #     self.feat_extr.ms_process.features
-                        # ):
-                        #     x = layer_ms(x)
-                        # x = self.feat_extr.ms_process.norm(x)
-                        # x = self.feat_extr.proj_ms(x)
-                        # x = x.permute(0, 3, 1, 2)
-                        # x = F.interpolate(
-                        #     x, size=(56, 56), mode="bilinear", align_corners=False
-                        # )
-                        # x = x.permute(0, 2, 3, 1)
+                    # for i, layer_ms in enumerate(
+                    #     self.feat_extr.ms_process.features
+                    # ):
+                    #     x = layer_ms(x)
+                    # x = self.feat_extr.ms_process.norm(x)
+                    # x = self.feat_extr.proj_ms(x)
+                    # x = x.permute(0, 3, 1, 2)
+                    # x = F.interpolate(
+                    #     x, size=(56, 56), mode="bilinear", align_corners=False
+                    # )
+                    # x = x.permute(0, 2, 3, 1)
                     else:
                         x = self.feat_extr.conv_rgb(x)
-                        # for i, layer_rgb in enumerate(
-                        #     self.feat_extr.rgb_process.features
-                        # ):
-                        #     x = layer_rgb(x)
-                        # x = self.feat_extr.rgb_process.norm(x)
-                        # x = self.feat_extr.proj_rgb(x)
-                        # x = x.permute(0, 3, 1, 2)
-                        # x = F.interpolate(
-                        #     x,
-                        #     size=(56, 56),
-                        #     mode="bilinear",
-                        #     align_corners=False,
-                        # )
-                        # x = x.permute(0, 2, 3, 1)
+                # for i, layer_rgb in enumerate(
+                #     self.feat_extr.rgb_process.features
+                # ):
+                #     x = layer_rgb(x)
+                # x = self.feat_extr.rgb_process.norm(x)
+                # x = self.feat_extr.proj_rgb(x)
+                # x = x.permute(0, 3, 1, 2)
+                # x = F.interpolate(
+                #     x,
+                #     size=(56, 56),
+                #     mode="bilinear",
+                #     align_corners=False,
+                # )
+                # x = x.permute(0, 2, 3, 1)
                 x = layer(x)
                 # if i in [1, 3, 5, 7]:
                 if i in [0, 2, 4, 6]:
@@ -439,7 +439,7 @@ class SimDINO(nn.Module):
             chunks = torch.split(x, [3, x.shape[1] - 3], dim=1)
 
         # if not self.ms_backbone and x.shape[1] != 3:
-        #     chunks = torch.split(x, [3, 7], dim=1) chunks = torch.split(x, [3, x.shape[1] - 3], dim=1)
+        #     chunks = torch.split(x, [3, 7], dim=1)
         # else:
         #     if x.shape[1] == 3:
         #         x = F.pad(x, (0, 0, 0, 0, 0, 7), "constant", 0)  # Pad to 10 channels
@@ -448,6 +448,7 @@ class SimDINO(nn.Module):
         # x = x.permute(0, 2, 3, 1)
         # x = self.channel_project(x)
         # x = x.permute(0, 3, 1, 2)
+        # print(x.shape)
         conv_embeds = 0
         if self.conv_size > 0:
             conv_embeds = self.encoder_conv(x)
@@ -457,7 +458,7 @@ class SimDINO(nn.Module):
             swin_features = self.forward_swin(chunks[0])  # type: ignore
         else:
             if x.shape[1] != 3:
-                swin_features = self.forward_swin(chunks[0])  # type: ignore
+                swin_features = self.forward_swin(x)  # type: ignore
             else:
                 swin_features = self.forward_swin(x)
 
