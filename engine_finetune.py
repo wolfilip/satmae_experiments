@@ -30,7 +30,8 @@ from torchmetrics import Accuracy, F1Score, JaccardIndex, Metric
 import util.lr_sched as lr_sched
 import util.misc as misc
 from util.misc import NativeScalerWithGradNormCount as NativeScaler
-from util.visualize_features import visualize_features
+
+# from util.visualize_features import visualize_features
 
 
 class SegPangaea(Metric):

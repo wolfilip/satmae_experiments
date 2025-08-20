@@ -28,13 +28,21 @@ class DINOv2Segmenter(nn.Module):
             self.feat_extr = torch.hub.load(
                 "facebookresearch/dinov2", "dinov2_vitb14_reg"
             )
-        if self.model_size == "large":
-            self.feat_extr = torch.hub.load("facebookresearch/dinov2", "dinov2_vitl14")
+        if self.model_size == "largev3":
+            self.feat_extr = torch.hub.load(
+                "/home/filip/dinov3",
+                "dinov3_vitl16",
+                source="local",
+                weights="https://dinov3.llamameta.net/dinov3_vitl16/dinov3_vitl16_pretrain_sat493m-eadcf0ff.pth?Policy=eyJTdGF0ZW1lbnQiOlt7InVuaXF1ZV9oYXNoIjoiamZ6b25xNDhkOTA0azlyeTk5ajdqdjNrIiwiUmVzb3VyY2UiOiJodHRwczpcL1wvZGlub3YzLmxsYW1hbWV0YS5uZXRcLyoiLCJDb25kaXRpb24iOnsiRGF0ZUxlc3NUaGFuIjp7IkFXUzpFcG9jaFRpbWUiOjE3NTU4NDg4OTB9fX1dfQ__&Signature=Cl%7EYPZsEJ60MDzDaCoOMAKoYmvrhoBawy%7ETNybOM1KB7KzoUWs5WLGIb%7E3ZVx%7ETSktnXHwnzJJI9kr4TP5r-K27qewjd64VCWXnpZeja-fJaG80bZYIB5EwYy8ZtKYAQ0ZaB%7ELlzmgiCBmkeI41piY9PE1UHN%7EoeyJymmImoFG0GJX5ZRN7WXBpaM8t%7E0kQ7ltVzDBZwZ1%7EQiG3j16VuP%7ELLvEweBegEvI3VBwgGghikjSILSWQFZapGIesG3IfF5Q12igcFBtUUh6o1ICVaVnEkxwn-kojdJbVYbuICoKGRkg2VNYpRxGPlArtuLVq7vk3P2WNcDTpNxEiq-I-Sjg__&Key-Pair-Id=K15QRJLYKIFSLZ&Download-Request-ID=962014002716706",
+            )
 
         self.feat_extr.eval()  # type: ignore
         self.feat_extr.to(device)  # type: ignore
         self.device = device
-        self.patch_size = 14
+        if self.model_size == "largev3":
+            self.patch_size = 16
+        else:
+            self.patch_size = 14
 
         for p in self.feat_extr.parameters():  # type: ignore
             p.requires_grad = False
@@ -68,7 +76,7 @@ class DINOv2Segmenter(nn.Module):
 
         self.do_interpolation = False
 
-        if args.input_size % 14 != 0:
+        if args.input_size % self.patch_size != 0:
             self.do_interpolation = True
 
         if args.dataset_type == "euro_sat" or args.dataset_type == "rgb":
@@ -229,7 +237,7 @@ class DINOv2Segmenter(nn.Module):
         if self.do_interpolation:
             if imgs.shape[-1] == 500:
                 imgs = F.interpolate(
-                    imgs, size=490, mode="bilinear", align_corners=True
+                    imgs, size=496, mode="bilinear", align_corners=True
                 )
             elif imgs.shape[-1] == 512 or imgs.shape[-1] == 500:
                 imgs = F.interpolate(
@@ -260,7 +268,7 @@ class DINOv2Segmenter(nn.Module):
                 if self.model_size == "base" or self.model_size == "small":
                     patch = self.feat_extr.get_intermediate_layers(imgs, (3, 5, 8, 11))  # type: ignore
                 else:
-                    patch = self.feat_extr.get_intermediate_layers(imgs, (3, 9, 17, 23))  # type: ignore
+                    patch = self.feat_extr.get_intermediate_layers(x=imgs, n=(3, 9, 17, 23))  # type: ignore
                 out = patch
 
             # layers.append(patch)

@@ -9,12 +9,12 @@ model: swin_t
 input_size: 224
 dataset_type: spacenet
 dataset_split: 100
-method_name: swin_t_ms_fmow_50k_50e_dinov2pc_rgb_head_dconv_5
+method_name: swin_t_ms_fmow_50k_50e_dinov2c_rgb_head
 best_epoch: false
 nb_classes: 2
 output_dir: satmae_experiments/outputs/
 log_dir: satmae_experiments/logs/
-finetune: /home/filip/pretrained_weights/simdino_checkpoints/swin_t_ms_fmow_50k_50e_dinov2pc_rgb_head_dconv_5.pth
+finetune: /home/filip/pretrained_weights/simdino_checkpoints/swin_t_ms_fmow_50k_50e_dinov2c_rgb_head.pth
 wandb: dl4rs-experiments
 eval: false
 dist_eval: true

@@ -24,21 +24,23 @@ from torch.utils.tensorboard.writer import SummaryWriter
 
 from models.DINOv2_detection import DINOv2Detector
 from models.DINOv2_segmentation import DINOv2Segmenter
-from models.OmniSat import LTAE, Omni, OmniSat
+
+# from models.OmniSat import LTAE, Omni, OmniSat
 from models.SimDINO_features import SimDINO
-from models.SimDINOv2_features import SimDINOv2
+
+# from models.SimDINOv2_features import SimDINOv2
 from models.TerraFM_features import TerraFMModel
 import models.models_resnet as models_resnet
 
 # from models.models_swin import SwinModel
-from models.models_swin import SwinModel
 import models.models_vit as models_vit
 import models.models_vit_dinov2_segmentation as models_vit_dinov2_segmentation
 import models.models_vit_group_channels as models_vit_group_channels
 import models.models_vit_segmentation as models_vit_segmentation
 import models.models_vit_temporal as models_vit_temporal
-from models.simdinov2_models import build_model
-from models.simdinov2_models.utils import load_pretrained_weights
+
+# from models.simdinov2_models import build_model
+# from models.simdinov2_models.utils import load_pretrained_weights
 import util.lr_decay as lrd
 import util.misc as misc
 from engine_finetune import (
@@ -51,13 +53,15 @@ from engine_finetune import (
     train_one_epoch_temporal,
 )
 from models import MAE_LiFT_model
-from models.SAMHQ_model import SAMHQ
-from util.datasets import build_fmow_dataset, collate_fn_dior
+
+# from models.SAMHQ_model import SAMHQ
+from util.datasets import build_fmow_dataset
 from util.misc import NativeScalerWithGradNormCount as NativeScaler
 from util.pos_embed import interpolate_pos_embed
 from util.utils_swin import remap_pretrained_keys_swin
 import yaml
-from models.use_croma import PretrainedCROMA
+
+# from models.use_croma import PretrainedCROMA
 
 
 def load_config(config_path):

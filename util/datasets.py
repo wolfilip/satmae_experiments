@@ -5,15 +5,17 @@ import warnings
 from glob import glob
 from typing import Any, List, Optional
 
-from cv2 import norm
+# from cv2 import norm
 import geobench
 import kornia.augmentation as K
-from matplotlib import pyplot as plt
+
+# from matplotlib import pyplot as plt
 import numpy as np
 import pandas as pd
 import rasterio
 import rasterio as rio
-from regex import T
+
+# from regex import T
 import torch
 import torchvision.transforms.v2 as transforms
 import torchvision.transforms.functional as F
@@ -22,12 +24,13 @@ from rasterio import logging
 from rasterio.enums import Resampling
 from torch.utils.data import Dataset
 import xml.etree.ElementTree as ET
-import albumentations as A
-from albumentations.pytorch import ToTensorV2
+
+# import albumentations as A
+# from albumentations.pytorch import ToTensorV2
 from torchvision.models.detection.transform import GeneralizedRCNNTransform
 
 
-import geopandas
+# import geopandas
 from tqdm import tqdm
 import json
 
@@ -752,7 +755,7 @@ class Sen1Floods11Dataset(Dataset):
         self.split_mapping = {"train": "train", "val": "valid", "test": "test"}
 
         metadata_file = os.path.join(self.path, "v1.1", "Sen1Floods11_Metadata.geojson")
-        self.metadata = geopandas.read_file(metadata_file)
+        # self.metadata = geopandas.read_file(metadata_file)
 
         # hand labeled
         split_file = os.path.join(
@@ -2277,7 +2280,7 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
                     stds.append(band_stats[band]["std"])
 
         if (
-            args.model_type == "simdino"
+            (args.model_type == "simdino" or args.model_type == "dinov2_segmentation")
             and args.dataset_type != "geobench_cattle"
             and args.dataset_type != "geobench_pv"
             and args.dataset_type != "geobench_chesapeake"
