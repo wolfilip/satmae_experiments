@@ -1,5 +1,5 @@
 batch_size: 64
-epochs: 128
+epochs: 50
 accum_iter: 1
 visualize_features: false
 lr: 0.0001

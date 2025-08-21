@@ -78,31 +78,31 @@ class SimDINO(nn.Module):
             self.ms_backbone = True
         else:
             if "ms" in args.finetune:
-                # del self.feat_extr.features[0]
-                # norm_layer_ms = partial(nn.LayerNorm, eps=1e-5)
-                # self.feat_extr.conv_ms = nn.Sequential(
-                #     nn.Conv2d(
-                #         10,
-                #         self.feat_extr.features[0][0].norm1.normalized_shape[0],
-                #         kernel_size=(4, 4),
-                #         stride=(4, 4),
-                #     ),
-                #     Permute([0, 2, 3, 1]),
-                #     norm_layer_ms(
-                #         self.feat_extr.features[0][0].norm1.normalized_shape[0]
-                #     ),
-                # )
-                self.feat_extr.features[0][0] = nn.Conv2d(
-                    10,
-                    self.feat_extr.features[0][0].out_channels,
-                    kernel_size=(4, 4),
-                    stride=(4, 4),
+                del self.feat_extr.features[0]
+                norm_layer_ms = partial(nn.LayerNorm, eps=1e-5)
+                self.feat_extr.conv_ms = nn.Sequential(
+                    nn.Conv2d(
+                        10,
+                        self.feat_extr.features[0][0].norm1.normalized_shape[0],
+                        kernel_size=(4, 4),
+                        stride=(4, 4),
+                    ),
+                    Permute([0, 2, 3, 1]),
+                    norm_layer_ms(
+                        self.feat_extr.features[0][0].norm1.normalized_shape[0]
+                    ),
                 )
+                # self.feat_extr.features[0][0] = nn.Conv2d(
+                #     10,
+                #     self.feat_extr.features[0][0].out_channels,
+                #     kernel_size=(4, 4),
+                #     stride=(4, 4),
+                # )
                 self.ms_backbone = True
 
         if args.finetune:
             load_pretrained_weights(
-                self.feat_extr, args.finetune, "teacher", args.model, 16
+                self.feat_extr, args.finetune, "student", args.model, 16
             )
 
         # if args.dataset_type == "spacenet":
@@ -340,22 +340,22 @@ class SimDINO(nn.Module):
         with torch.no_grad():
             features = []
             for i, layer in enumerate(self.feat_extr.features):
-                # if i == 0:
-                # if x.shape[1] == 10:
-                # x = self.feat_extr.conv_ms(x)
-                # for i, layer_ms in enumerate(
-                #     self.feat_extr.ms_process.features
-                # ):
-                #     x = layer_ms(x)
-                # x = self.feat_extr.ms_process.norm(x)
-                # x = self.feat_extr.proj_ms(x)
-                # x = x.permute(0, 3, 1, 2)
-                # x = F.interpolate(
-                #     x, size=(56, 56), mode="bilinear", align_corners=False
-                # )
-                # x = x.permute(0, 2, 3, 1)
-                # else:
-                #     x = self.feat_extr.conv_rgb(x)
+                if i == 0:
+                    if x.shape[1] == 10:
+                        x = self.feat_extr.conv_ms(x)
+                    # for i, layer_ms in enumerate(
+                    #     self.feat_extr.ms_process.features
+                    # ):
+                    #     x = layer_ms(x)
+                    # x = self.feat_extr.ms_process.norm(x)
+                    # x = self.feat_extr.proj_ms(x)
+                    # x = x.permute(0, 3, 1, 2)
+                    # x = F.interpolate(
+                    #     x, size=(56, 56), mode="bilinear", align_corners=False
+                    # )
+                    # x = x.permute(0, 2, 3, 1)
+                    else:
+                        x = self.feat_extr.conv_rgb(x)
                 # for i, layer_rgb in enumerate(
                 #     self.feat_extr.rgb_process.features
                 # ):
@@ -371,8 +371,8 @@ class SimDINO(nn.Module):
                 # )
                 # x = x.permute(0, 2, 3, 1)
                 x = layer(x)
-                if i in [1, 3, 5, 7]:
-                    # if i in [0, 2, 4, 6]:
+                # if i in [1, 3, 5, 7]:
+                if i in [0, 2, 4, 6]:
                     features.append(x)
         return features
 
@@ -449,16 +449,16 @@ class SimDINO(nn.Module):
         # if x.shape[1] == 4:
         #     x = F.pad(x, (0, 0, 0, 0, 0, 6), "constant", 0)
 
-        # if x.shape[1] == 4:
-        #     chunks = torch.split(x, [3, x.shape[1] - 3], dim=1)
+        if x.shape[1] == 4:
+            x = torch.split(x, [3, x.shape[1] - 3], dim=1)[0]
 
-        if not self.ms_backbone and x.shape[1] != 3:
-            chunks = torch.split(x, [3, 7], dim=1)
-        else:
-            if x.shape[1] == 3:
-                x = F.pad(x, (0, 0, 0, 0, 0, 7), "constant", 0)  # Pad to 10 channels
-            elif x.shape[1] == 4:
-                x = F.pad(x, (0, 0, 0, 0, 0, 6), "constant", 0)
+        # if not self.ms_backbone and x.shape[1] != 3:
+        #     chunks = torch.split(x, [3, 7], dim=1)
+        # else:
+        #     if x.shape[1] == 3:
+        #         x = F.pad(x, (0, 0, 0, 0, 0, 7), "constant", 0)  # Pad to 10 channels
+        #     elif x.shape[1] == 4:
+        #         x = F.pad(x, (0, 0, 0, 0, 0, 6), "constant", 0)
         # x = x.permute(0, 2, 3, 1)
         # x = self.channel_project(x)
         # x = x.permute(0, 3, 1, 2)
