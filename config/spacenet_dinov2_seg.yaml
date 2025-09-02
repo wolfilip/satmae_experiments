@@ -5,11 +5,11 @@ lr: 0.0001
 visualize_features: false
 save_images: false
 model_type: dinov2_segmentation
-model: base_0
+model: largev3_0
 input_size: 224
 dataset_type: spacenet
 dataset_split: 100
-method_name: dinov2_b
+method_name: dinov3_l_SAT
 best_epoch: false
 nb_classes: 2
 output_dir: satmae_experiments/outputs/

@@ -33,7 +33,7 @@ class DINOv2Segmenter(nn.Module):
                 "/home/filip/dinov3",
                 "dinov3_vitl16",
                 source="local",
-                weights="https://dinov3.llamameta.net/dinov3_vitl16/dinov3_vitl16_pretrain_sat493m-eadcf0ff.pth?Policy=eyJTdGF0ZW1lbnQiOlt7InVuaXF1ZV9oYXNoIjoiamZ6b25xNDhkOTA0azlyeTk5ajdqdjNrIiwiUmVzb3VyY2UiOiJodHRwczpcL1wvZGlub3YzLmxsYW1hbWV0YS5uZXRcLyoiLCJDb25kaXRpb24iOnsiRGF0ZUxlc3NUaGFuIjp7IkFXUzpFcG9jaFRpbWUiOjE3NTU4NDg4OTB9fX1dfQ__&Signature=Cl%7EYPZsEJ60MDzDaCoOMAKoYmvrhoBawy%7ETNybOM1KB7KzoUWs5WLGIb%7E3ZVx%7ETSktnXHwnzJJI9kr4TP5r-K27qewjd64VCWXnpZeja-fJaG80bZYIB5EwYy8ZtKYAQ0ZaB%7ELlzmgiCBmkeI41piY9PE1UHN%7EoeyJymmImoFG0GJX5ZRN7WXBpaM8t%7E0kQ7ltVzDBZwZ1%7EQiG3j16VuP%7ELLvEweBegEvI3VBwgGghikjSILSWQFZapGIesG3IfF5Q12igcFBtUUh6o1ICVaVnEkxwn-kojdJbVYbuICoKGRkg2VNYpRxGPlArtuLVq7vk3P2WNcDTpNxEiq-I-Sjg__&Key-Pair-Id=K15QRJLYKIFSLZ&Download-Request-ID=962014002716706",
+                weights="https://dinov3.llamameta.net/dinov3_vitl16/dinov3_vitl16_pretrain_sat493m-eadcf0ff.pth?Policy=eyJTdGF0ZW1lbnQiOlt7InVuaXF1ZV9oYXNoIjoiNzYxOXJpNWI5NWFhM2ljNHA5ajRydTFuIiwiUmVzb3VyY2UiOiJodHRwczpcL1wvZGlub3YzLmxsYW1hbWV0YS5uZXRcLyoiLCJDb25kaXRpb24iOnsiRGF0ZUxlc3NUaGFuIjp7IkFXUzpFcG9jaFRpbWUiOjE3NTY4OTc0ODV9fX1dfQ__&Signature=idvsKUfjMYLxPWxkhD4LW22QpJlaBEY5H4Em8-yiTVgrPpnXIiT0IyS21gwb%7Eyggi98KAA2BAAGmkhU7bMAKUHBTqCWz-I2M0l7XKVsDPR12TpHUTYyL1I4gMpKsul6%7EfMFAAMncSOICrCmVqIJK9sK%7ERQbUdgLhMIOXXxIkEHppx3gnN4bvrsHiMGEAaCOpvAYjwijBH0T1396smEgCQQVLRB1W2pSItmiqgCtwpBgpzcCo7c%7EjJqW0GB0%7EukFKDBf5COevl8it4HK7TuvPbma98NvMjF723RJfCa%7E9m4xMZYXN6Qq8WcrTGkiMcFpDYjIw0lZVzGL-1pjfRDk-TA__&Key-Pair-Id=K15QRJLYKIFSLZ&Download-Request-ID=1443501060205428",
             )
 
         self.feat_extr.eval()  # type: ignore
