@@ -8,6 +8,7 @@ from UPerNet.UPerNetHead import UperNetHead
 
 from .simdino_models import vision_transformer as vits
 from torchvision.ops.misc import Permute
+from util.pos_embed import get_2d_sincos_pos_embed
 
 
 class ConvStem(nn.Module):
@@ -34,16 +35,21 @@ class SimDINO(nn.Module):
         super().__init__()
         # self.model_size = model_args["model_size"]
         self.model_size = args.model.split("_")[1]
-        self.conv_size = 0
 
         # self.feat_extr = vits.__dict__[args.model](
         #     patch_size=args.patch_size, num_classes=0
         # )
-        self.feat_extr = torchvision_models.__dict__[args.model]()
 
         self.ms_backbone = False
+        self.model = args.model.split("_")[0]
 
-        if "dconv" in args.finetune:
+        if "vit" in args.finetune:
+            self.feat_extr = vits.__dict__[args.model]()
+            self.feat_extr.patch_embed.proj = nn.Conv2d(
+                10, 192, kernel_size=(16, 16), stride=(16, 16)
+            )
+        elif "dconv" in args.finetune:
+            self.feat_extr = torchvision_models.__dict__[args.model]()
             del self.feat_extr.features[0]
             # self.feat_extr.conv_ms = ConvStem(10)
             # self.feat_extr.conv_rgb = ConvStem(3)
@@ -76,29 +82,27 @@ class SimDINO(nn.Module):
             # del self.feat_extr.ms_process.features[0]
             # del self.feat_extr.rgb_process.features[0]
             self.ms_backbone = True
-        else:
-            if "ms" in args.finetune:
-                del self.feat_extr.features[0]
-                norm_layer_ms = partial(nn.LayerNorm, eps=1e-5)
-                self.feat_extr.conv_ms = nn.Sequential(
-                    nn.Conv2d(
-                        10,
-                        self.feat_extr.features[0][0].norm1.normalized_shape[0],
-                        kernel_size=(4, 4),
-                        stride=(4, 4),
-                    ),
-                    Permute([0, 2, 3, 1]),
-                    norm_layer_ms(
-                        self.feat_extr.features[0][0].norm1.normalized_shape[0]
-                    ),
-                )
-                # self.feat_extr.features[0][0] = nn.Conv2d(
-                #     10,
-                #     self.feat_extr.features[0][0].out_channels,
-                #     kernel_size=(4, 4),
-                #     stride=(4, 4),
-                # )
-                self.ms_backbone = True
+        elif "ms" in args.finetune:
+            self.feat_extr = torchvision_models.__dict__[args.model]()
+            del self.feat_extr.features[0]
+            norm_layer_ms = partial(nn.LayerNorm, eps=1e-5)
+            self.feat_extr.conv_ms = nn.Sequential(
+                nn.Conv2d(
+                    10,
+                    self.feat_extr.features[0][0].norm1.normalized_shape[0],
+                    kernel_size=(4, 4),
+                    stride=(4, 4),
+                ),
+                Permute([0, 2, 3, 1]),
+                norm_layer_ms(self.feat_extr.features[0][0].norm1.normalized_shape[0]),
+            )
+            # self.feat_extr.features[0][0] = nn.Conv2d(
+            #     10,
+            #     self.feat_extr.features[0][0].out_channels,
+            #     kernel_size=(4, 4),
+            #     stride=(4, 4),
+            # )
+            self.ms_backbone = True
 
         if args.finetune:
             load_pretrained_weights(
@@ -147,10 +151,12 @@ class SimDINO(nn.Module):
             feature_channels = [96, 192, 384, 768]
         elif args.model == "swin_t":
             feature_channels = [96, 192, 384, 768]
+        elif args.model == "vit_tiny":
+            feature_channels = [192, 192, 192, 192]
 
         # fpn_out = self.embed_dim + self.conv_size
         self.input_size = (args.input_size, args.input_size)
-        # self.num_patches = int(self.input_size[0] / self.patch_size)
+        self.num_patches = int(self.input_size[0] / 16)
 
         self.do_interpolation = False
 
@@ -166,8 +172,8 @@ class SimDINO(nn.Module):
         else:
             self.task = "segmentation"
 
-        # self.up_1 = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
-        # self.up_2 = nn.Upsample(scale_factor=4, mode="bilinear", align_corners=True)
+        self.up_1 = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
+        self.up_2 = nn.Upsample(scale_factor=4, mode="bilinear", align_corners=True)
 
         config = {
             "pool_scales": [1, 2, 3, 6],
@@ -180,28 +186,7 @@ class SimDINO(nn.Module):
 
         self.channel_project = nn.Linear(3, 10)  # Define a learnable linear layer
 
-        if self.conv_size > 0:
-            if args.dataset_type == "spacenet":
-                self.up = nn.Upsample(
-                    size=(64, 64), mode="bilinear", align_corners=True
-                )
-            elif (
-                args.dataset_type == "sen1floods11"
-                or args.dataset_type == "vaihingen"
-                or args.dataset_type == "potsdam"
-            ):
-                self.up = nn.Upsample(
-                    size=(144, 144), mode="bilinear", align_corners=True
-                )
-            elif args.dataset_type == "isaid":
-                self.up = nn.Upsample(
-                    size=(256, 256), mode="bilinear", align_corners=True
-                )
-            elif args.dataset_type == "mass_roads":
-                self.up = nn.Upsample(
-                    size=(428, 428), mode="bilinear", align_corners=True
-                )
-            # elif  args.dataset_type == "rgb":
+        # elif  args.dataset_type == "rgb":
 
         # self.conv = nn.Conv2d(
         #     in_channels=256, out_channels=256, kernel_size=3, stride=2, padding=1
@@ -219,122 +204,24 @@ class SimDINO(nn.Module):
         #     self.embed_dim, self.num_patches, self.num_patches, args.nb_classes
         # )
 
-        if self.conv_size == 32:
-            # Commenting out the original self.conv_layers definition
-            self.conv_layers = nn.Sequential(
-                nn.Conv2d(
-                    in_channels=7, out_channels=16, kernel_size=7, stride=2, padding=3
-                ),
-                nn.BatchNorm2d(16),
-                nn.ReLU(),
-                nn.Conv2d(
-                    in_channels=16, out_channels=32, kernel_size=3, stride=2, padding=1
-                ),
-                nn.BatchNorm2d(32),
-                nn.ReLU(),
-            )
+    # def forward_vit(self, x):
+    #     with torch.no_grad():
+    #         B = x.shape[0]
+    #         x = self.feat_extr.patch_embed(x)
 
-            # Adding the new function to reduce image size by four
-            # self.conv_layers = nn.Sequential(
-            #     nn.Conv2d(
-            #         in_channels=7, out_channels=16, kernel_size=3, stride=2, padding=1
-            #     ),
-            #     nn.BatchNorm2d(16),
-            #     nn.ReLU(),
-            #     nn.Conv2d(
-            #         in_channels=16, out_channels=32, kernel_size=3, stride=2, padding=1
-            #     ),
-            #     nn.BatchNorm2d(32),
-            #     nn.ReLU(),
-            #     nn.Conv2d(
-            #         in_channels=32, out_channels=64, kernel_size=3, stride=2, padding=1
-            #     ),
-            #     nn.BatchNorm2d(64),
-            #     nn.ReLU(),
-            #     nn.Conv2d(
-            #         in_channels=64, out_channels=128, kernel_size=3, stride=2, padding=1
-            #     ),
-            #     nn.BatchNorm2d(128),
-            #     nn.ReLU(),
-            # )
-        elif self.conv_size == 256:
-            self.conv_layers = nn.Sequential(
-                # Conv1: Input [B, 3, 224, 224] -> Output [B, 64, 112, 112]
-                nn.Conv2d(
-                    in_channels=7, out_channels=64, kernel_size=7, stride=2, padding=3
-                ),  # Kernel size 7x7, stride 2, padding 3
-                nn.BatchNorm2d(64),
-                nn.ReLU(),
-                # Conv2: Input [B, 64, 112, 112] -> Output [B, 128, 56, 56]
-                nn.Conv2d(
-                    in_channels=64, out_channels=128, kernel_size=3, stride=2, padding=1
-                ),  # Kernel size 3x3, stride 2, padding 1
-                nn.BatchNorm2d(128),
-                nn.ReLU(),
-                # Conv3: Input [B, 128, 56, 56] -> Output [B, 256, 56, 56]
-                nn.Conv2d(
-                    in_channels=128,
-                    out_channels=256,
-                    kernel_size=3,
-                    stride=1,
-                    padding=1,
-                ),  # Kernel size 3x3, stride 1, padding 1
-                nn.BatchNorm2d(256),
-                nn.ReLU(),
-                # Conv4: Input [B, 256, 56, 56] -> Output [B, 512, 56, 56]
-                # nn.Conv2d(
-                #     in_channels=256, out_channels=512, kernel_size=3, stride=1, padding=1
-                # ),  # Kernel size 3x3, stride 1, padding 1
-                # nn.BatchNorm2d(512),
-                # nn.ReLU(),
-                # Conv5: Input [B, 512, 56, 56] -> Output [B, 1024, 56, 56]
-                # nn.Conv2d(
-                #     in_channels=512, out_channels=1024, kernel_size=3, stride=1, padding=1
-                # ),  # Kernel size 3x3, stride 1, padding 1
-                # nn.BatchNorm2d(1024),
-                # nn.ReLU(),
-            )
+    #         cls_tokens = self.feat_extr.cls_token.expand(B, -1, -1)
+    #         x = torch.cat((cls_tokens, x), dim=1)
+    #         x = x + self.feat_extr.pos_embed
+    #         x = self.feat_extr.pos_drop(x)
+    #         x = x[:, 1:]
 
-    def get_features(self, imgs):
-        # layer = self.layer_num[0] # TODO: make it a list
-        # layers = []
-        if self.do_interpolation:
-            if imgs.shape[-1] == 512:
-                imgs = F.interpolate(
-                    imgs, size=504, mode="bilinear", align_corners=True
-                )
-            elif imgs.shape[-1] == 64:
-                imgs = F.interpolate(imgs, size=56, mode="bilinear", align_corners=True)
-            elif imgs.shape[-1] == 256:
-                imgs = F.interpolate(
-                    imgs, size=252, mode="bilinear", align_corners=True
-                )
-            elif imgs.shape[-1] == 1500:
-                imgs = F.interpolate(
-                    imgs, size=1498, mode="bilinear", align_corners=True
-                )
-
-        with torch.no_grad():
-            if self.task == "classification":
-                out = self.feat_extr.forward_features(imgs)  # type: ignore
-                cls = out["x_norm_clstoken"]
-                out = cls
-            else:
-                # if self.layer_num == "last":
-                if self.model_size == "base" or self.model_size == "small":
-                    patch = self.feat_extr.get_intermediate_layers(imgs, (3, 5, 8, 11))  # type: ignore
-                else:
-                    patch = self.feat_extr.get_intermediate_layers(imgs, (3, 9, 17, 23))  # type: ignore
-                out = patch
-
-            # layers.append(patch)
-            # layers.append(patch)
-            # cls = out["x_norm_clstoken"]
-            # elif self.layer_num == "first":
-
-        # elif self.layer_num == "avg":
-        #     pass
-        return out
+    #         outs = []
+    #         for i, blk in enumerate(self.feat_extr.blocks):
+    #             x = blk(x)
+    #             # if i in [3, 11]:
+    #             if i in [3, 5, 8, 11]:
+    #                 # if i in [3, 8, 13, 18, 23]:
+    #                 outs.append(x)
 
     def forward_swin(self, x):
         with torch.no_grad():
@@ -383,7 +270,12 @@ class SimDINO(nn.Module):
 
         return conv_embeds
 
-    def decoder_upernet_swin(self, swin_embeds, conv_embeds=None):
+    def decoder_upernet_swin(self, swin_embeds):
+
+        swin_embeds[0] = torch.permute(swin_embeds[0], (0, 3, 1, 2))
+        swin_embeds[1] = torch.permute(swin_embeds[1], (0, 3, 1, 2))
+        swin_embeds[2] = torch.permute(swin_embeds[2], (0, 3, 1, 2))
+        swin_embeds[3] = torch.permute(swin_embeds[3], (0, 3, 1, 2))
 
         x = self.upernet_head(swin_embeds)
 
@@ -391,24 +283,21 @@ class SimDINO(nn.Module):
 
         return x
 
-    def decoder_upernet(self, features, conv_embeds):
+    def decoder_upernet_vit(self, features):
 
-        # conv_1 = self.relu(self.bn(self.conv(conv_embeds)))
-        # conv_2 = self.relu(self.bn(self.conv(conv_1)))
-        # conv_3 = self.relu(self.bn(self.conv(conv_2)))
         new_features = []
 
         new_features.append(
-            features[0].reshape(-1, self.num_patches, self.num_patches, self.embed_dim)
+            features[0].reshape(-1, self.num_patches, self.num_patches, 192)
         )
         new_features.append(
-            features[1].reshape(-1, self.num_patches, self.num_patches, self.embed_dim)
+            features[1].reshape(-1, self.num_patches, self.num_patches, 192)
         )
         new_features.append(
-            features[2].reshape(-1, self.num_patches, self.num_patches, self.embed_dim)
+            features[2].reshape(-1, self.num_patches, self.num_patches, 192)
         )
         new_features.append(
-            features[3].reshape(-1, self.num_patches, self.num_patches, self.embed_dim)
+            features[3].reshape(-1, self.num_patches, self.num_patches, 192)
         )
 
         new_features[0] = torch.permute(new_features[0], (0, 3, 1, 2))
@@ -422,11 +311,6 @@ class SimDINO(nn.Module):
         # features[2] = self.up_1(features[2])
         new_features[1] = self.up_1(new_features[1])
         new_features[0] = self.up_2(new_features[0])
-        if self.conv_size > 0:
-            new_features[0] = torch.cat((new_features[0], conv_embeds), 1)
-            # new_features[1] = torch.cat((new_features[1], conv_1), 1)
-            # new_features[2] = torch.cat((new_features[2], conv_2), 1)
-            # new_features[3] = torch.cat((new_features[3], conv_3), 1)
 
         # features[0] = features[0] + conv_embeds
 
@@ -449,46 +333,43 @@ class SimDINO(nn.Module):
         # if x.shape[1] == 4:
         #     x = F.pad(x, (0, 0, 0, 0, 0, 6), "constant", 0)
 
-        if x.shape[1] == 4:
-            x = torch.split(x, [3, x.shape[1] - 3], dim=1)[0]
+        # if x.shape[1] == 4:
+        #     x = torch.split(x, [3, x.shape[1] - 3], dim=1)[0]
 
         # if not self.ms_backbone and x.shape[1] != 3:
         #     chunks = torch.split(x, [3, 7], dim=1)
         # else:
-        #     if x.shape[1] == 3:
-        #         x = F.pad(x, (0, 0, 0, 0, 0, 7), "constant", 0)  # Pad to 10 channels
-        #     elif x.shape[1] == 4:
-        #         x = F.pad(x, (0, 0, 0, 0, 0, 6), "constant", 0)
+        if x.shape[1] == 3:
+            x = F.pad(x, (0, 0, 0, 0, 0, 7), "constant", 0)  # Pad to 10 channels
+        elif x.shape[1] == 4:
+            x = F.pad(x, (0, 0, 0, 0, 0, 6), "constant", 0)
         # x = x.permute(0, 2, 3, 1)
         # x = self.channel_project(x)
         # x = x.permute(0, 3, 1, 2)
         # print(x.shape)
-        conv_embeds = 0
-        if self.conv_size > 0:
-            conv_embeds = self.encoder_conv(x)
+
         # x = self.encoder_forward(x)
         # x = self.decoder_upernet(x, conv_embeds)
-        if self.ms_backbone:
-            swin_features = self.forward_swin(x)  # type: ignore
-        else:
-            if x.shape[1] != 3:
+        if self.model == "swin":
+            if self.ms_backbone:
                 swin_features = self.forward_swin(x)  # type: ignore
             else:
-                swin_features = self.forward_swin(x)
+                if x.shape[1] != 3:
+                    swin_features = self.forward_swin(x)  # type: ignore
+                else:
+                    swin_features = self.forward_swin(x)
 
-        swin_features[0] = torch.permute(swin_features[0], (0, 3, 1, 2))
-        swin_features[1] = torch.permute(swin_features[1], (0, 3, 1, 2))
-        swin_features[2] = torch.permute(swin_features[2], (0, 3, 1, 2))
-        swin_features[3] = torch.permute(swin_features[3], (0, 3, 1, 2))
+            x = self.decoder_upernet_swin(swin_features)
 
-        if self.conv_size > 0:
-            swin_features[0] = torch.cat((swin_features[0], conv_embeds), 1)
+        else:
+            vit_features = self.feat_extr.get_intermediate_layers(x=x, n=[3, 5, 8, 11])
+            x = self.decoder_upernet_vit(vit_features)
+
         # features = self.get_features(x)
         # x = self.encoder_forward(x)
         # x = self.decoder_upernet(swin_features, conv_embeds)
-        x = self.decoder_upernet_swin(swin_features, conv_embeds)
-        # new_features = []
 
+        # new_features = []
         # new_features.append(
         #     features[0].reshape(-1, self.num_patches, self.num_patches, self.embed_dim)
         # )
@@ -514,4 +395,4 @@ class SimDINO(nn.Module):
 
         # x = self.decoder_upernet(x[1])
 
-        return x, (conv_embeds, swin_features[-1])
+        return x, (0, swin_features[-1])
