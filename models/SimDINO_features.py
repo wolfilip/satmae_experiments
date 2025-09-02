@@ -352,18 +352,18 @@ class SimDINO(nn.Module):
         # x = self.decoder_upernet(x, conv_embeds)
         if self.model == "swin":
             if self.ms_backbone:
-                swin_features = self.forward_swin(x)  # type: ignore
+                features = self.forward_swin(x)  # type: ignore
             else:
                 if x.shape[1] != 3:
-                    swin_features = self.forward_swin(x)  # type: ignore
+                    features = self.forward_swin(x)  # type: ignore
                 else:
-                    swin_features = self.forward_swin(x)
+                    features = self.forward_swin(x)
 
-            x = self.decoder_upernet_swin(swin_features)
+            x = self.decoder_upernet_swin(features)
 
         else:
-            vit_features = self.feat_extr.get_intermediate_layers(x=x, n=[3, 5, 8, 11])
-            x = self.decoder_upernet_vit(vit_features)
+            features = self.feat_extr.get_intermediate_layers(x=x, n=[3, 5, 8, 11])
+            x = self.decoder_upernet_vit(features)
 
         # features = self.get_features(x)
         # x = self.encoder_forward(x)
@@ -395,4 +395,4 @@ class SimDINO(nn.Module):
 
         # x = self.decoder_upernet(x[1])
 
-        return x, (0, swin_features[-1])
+        return x, (0, features[-1])
