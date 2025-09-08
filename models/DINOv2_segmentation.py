@@ -1,3 +1,4 @@
+from math import e, sqrt
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -28,18 +29,32 @@ class DINOv2Segmenter(nn.Module):
             self.feat_extr = torch.hub.load(
                 "facebookresearch/dinov2", "dinov2_vitb14_reg"
             )
-        if self.model_size == "largev3":
+        if self.model_size == "largev3sat":
             self.feat_extr = torch.hub.load(
                 "/home/filip/dinov3",
                 "dinov3_vitl16",
                 source="local",
                 weights="https://dinov3.llamameta.net/dinov3_vitl16/dinov3_vitl16_pretrain_sat493m-eadcf0ff.pth?Policy=eyJTdGF0ZW1lbnQiOlt7InVuaXF1ZV9oYXNoIjoiNzYxOXJpNWI5NWFhM2ljNHA5ajRydTFuIiwiUmVzb3VyY2UiOiJodHRwczpcL1wvZGlub3YzLmxsYW1hbWV0YS5uZXRcLyoiLCJDb25kaXRpb24iOnsiRGF0ZUxlc3NUaGFuIjp7IkFXUzpFcG9jaFRpbWUiOjE3NTY4OTc0ODV9fX1dfQ__&Signature=idvsKUfjMYLxPWxkhD4LW22QpJlaBEY5H4Em8-yiTVgrPpnXIiT0IyS21gwb%7Eyggi98KAA2BAAGmkhU7bMAKUHBTqCWz-I2M0l7XKVsDPR12TpHUTYyL1I4gMpKsul6%7EfMFAAMncSOICrCmVqIJK9sK%7ERQbUdgLhMIOXXxIkEHppx3gnN4bvrsHiMGEAaCOpvAYjwijBH0T1396smEgCQQVLRB1W2pSItmiqgCtwpBgpzcCo7c%7EjJqW0GB0%7EukFKDBf5COevl8it4HK7TuvPbma98NvMjF723RJfCa%7E9m4xMZYXN6Qq8WcrTGkiMcFpDYjIw0lZVzGL-1pjfRDk-TA__&Key-Pair-Id=K15QRJLYKIFSLZ&Download-Request-ID=1443501060205428",
             )
+        if self.model_size == "basev3":
+            self.feat_extr = torch.hub.load(
+                "/home/filip/dinov3",
+                "dinov3_vitb16",
+                source="local",
+                weights="https://dinov3.llamameta.net/dinov3_vitb16/dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth?Policy=eyJTdGF0ZW1lbnQiOlt7InVuaXF1ZV9oYXNoIjoiYXc4czlsdTFzOGM5ZmplMXB6eHBqeGtuIiwiUmVzb3VyY2UiOiJodHRwczpcL1wvZGlub3YzLmxsYW1hbWV0YS5uZXRcLyoiLCJDb25kaXRpb24iOnsiRGF0ZUxlc3NUaGFuIjp7IkFXUzpFcG9jaFRpbWUiOjE3NTcxNTgwODl9fX1dfQ__&Signature=YKAeRDd0tWkt3P7E%7ECdPIFpKVzUkrvN%7E3gvWKvuclcNm9LcbDhSSRikDB1R8CS02EuICZL1UPm9R5I7xzobUqUQ-%7EViHdPdaHlcIprbn5coceH8%7E79g0N2FTZ36ssLHl5ptBgClOLRX7gbFLCDMfzVBgmrXAxKEyIvVBkepnfrkkzlE4lSCMAwYjIHNFU84Z-Mc2FE7D7unuXf89NIdihIp0hEZQiVhKs93Cl7mY3Et-cfPXyYH-jjtpGtgeaSGAA5K9dMcp7Wlpaabxs4EitEv%7EFDGCvp8etBuDrZ8SYkDhgr7jIGJ4VEOqWtO6JWZeia9DAqNNcQWcZ-kObnhqBQ__&Key-Pair-Id=K15QRJLYKIFSLZ&Download-Request-ID=1140958134613743",
+            )
+        if self.model_size == "basev3conv":
+            self.feat_extr = torch.hub.load(
+                "/home/filip/dinov3",
+                "dinov3_convnext_base",
+                source="local",
+                weights="https://dinov3.llamameta.net/dinov3_convnext_base/dinov3_convnext_base_pretrain_lvd1689m-801f2ba9.pth?Policy=eyJTdGF0ZW1lbnQiOlt7InVuaXF1ZV9oYXNoIjoiZHIyaTlsMmJncjR0dzFrbXRydW5lMG9zIiwiUmVzb3VyY2UiOiJodHRwczpcL1wvZGlub3YzLmxsYW1hbWV0YS5uZXRcLyoiLCJDb25kaXRpb24iOnsiRGF0ZUxlc3NUaGFuIjp7IkFXUzpFcG9jaFRpbWUiOjE3NTc0OTQxOTV9fX1dfQ__&Signature=fxQQBREKnOwqASyDbX4qnjp%7E4ivn1khbIDnS7aw%7EYYhisStCXF38PkuEcI2LTe0i6VKW6HnHKLnnqFTjAKLUT4FQwtCcVnuwQnPDcKsLjTYOZXLjSmf8S1%7Er07yFmljG06w26ZNaxl9pRq%7E6TjDdRcBv7TOAKtheH4xDYSvpYWENUzk8twsfgOtVdkxUAaQeJjbDnFcmRhMMIf5yx-fb5s2nPBZrodzTetMZIaJh2aca-HCOLqeDjjklnDGQob7tzg5qs6oMshoYiyi20y-HE%7EsQndgiisG-zUg-RajQ735IPfSPhfUg2ROOvuLHYSBuWaCXZEofe-o02v3HHn4mRg__&Key-Pair-Id=K15QRJLYKIFSLZ&Download-Request-ID=1965232937651613",
+            )
 
         self.feat_extr.eval()  # type: ignore
         self.feat_extr.to(device)  # type: ignore
         self.device = device
-        if self.model_size == "largev3":
+        if self.model_size == "largev3sat" or self.model_size == "basev3":
             self.patch_size = 16
         else:
             self.patch_size = 14
@@ -54,7 +69,7 @@ class DINOv2Segmenter(nn.Module):
                 self.embed_dim + self.conv_size,
                 self.embed_dim,
             ]
-        elif self.model_size == "base":
+        elif self.model_size == "base" or self.model_size == "basev3":
             self.embed_dim = 768
             feature_channels = [
                 self.embed_dim + self.conv_size,
@@ -62,6 +77,8 @@ class DINOv2Segmenter(nn.Module):
                 self.embed_dim,
                 self.embed_dim,
             ]
+        elif self.model_size == "basev3conv":
+            feature_channels = [128, 256, 512, 1024]
         else:
             self.embed_dim = 1024
             feature_channels = [
@@ -234,29 +251,29 @@ class DINOv2Segmenter(nn.Module):
     def get_features(self, imgs):
         # layer = self.layer_num[0] # TODO: make it a list
         # layers = []
-        if self.do_interpolation:
-            if imgs.shape[-1] == 500:
-                imgs = F.interpolate(
-                    imgs, size=496, mode="bilinear", align_corners=True
-                )
-            elif imgs.shape[-1] == 512 or imgs.shape[-1] == 500:
-                imgs = F.interpolate(
-                    imgs, size=504, mode="bilinear", align_corners=True
-                )
-            elif imgs.shape[-1] == 64:
-                imgs = F.interpolate(imgs, size=56, mode="bilinear", align_corners=True)
-            elif imgs.shape[-1] == 256:
-                imgs = F.interpolate(
-                    imgs, size=252, mode="bilinear", align_corners=True
-                )
-            elif imgs.shape[-1] == 1500:
-                imgs = F.interpolate(
-                    imgs, size=1498, mode="bilinear", align_corners=True
-                )
-            if imgs.shape[-1] == 320:
-                imgs = F.interpolate(
-                    imgs, size=308, mode="bilinear", align_corners=True
-                )
+        # if self.do_interpolation:
+        # if imgs.shape[-1] == 500:
+        #     imgs = F.interpolate(
+        #         imgs, size=512, mode="bilinear", align_corners=True
+        #     )
+        # elif imgs.shape[-1] == 512 or imgs.shape[-1] == 500:
+        #     imgs = F.interpolate(
+        #         imgs, size=504, mode="bilinear", align_corners=True
+        #     )
+        # elif imgs.shape[-1] == 64:
+        #     imgs = F.interpolate(imgs, size=56, mode="bilinear", align_corners=True)
+        # elif imgs.shape[-1] == 256:
+        #     imgs = F.interpolate(
+        #         imgs, size=252, mode="bilinear", align_corners=True
+        #     )
+        # elif imgs.shape[-1] == 1500:
+        #     imgs = F.interpolate(
+        #         imgs, size=1498, mode="bilinear", align_corners=True
+        #     )
+        # if imgs.shape[-1] == 320:
+        #     imgs = F.interpolate(
+        #         imgs, size=308, mode="bilinear", align_corners=True
+        #     )
 
         with torch.no_grad():
             if self.task == "classification":
@@ -265,8 +282,14 @@ class DINOv2Segmenter(nn.Module):
                 out = cls
             else:
                 # if self.layer_num == "last":
-                if self.model_size == "base" or self.model_size == "small":
-                    patch = self.feat_extr.get_intermediate_layers(imgs, (3, 5, 8, 11))  # type: ignore
+                if (
+                    self.model_size == "base"
+                    or self.model_size == "small"
+                    or self.model_size == "basev3"
+                ):
+                    patch = self.feat_extr.get_intermediate_layers(x=imgs, n=(3, 5, 8, 11))  # type: ignore
+                elif self.model_size == "basev3conv":
+                    patch = self.feat_extr.get_intermediate_layers(imgs, n=(0, 1, 2, 3))  # type: ignore
                 else:
                     patch = self.feat_extr.get_intermediate_layers(x=imgs, n=(3, 9, 17, 23))  # type: ignore
                 out = patch
@@ -340,6 +363,79 @@ class DINOv2Segmenter(nn.Module):
         x = F.interpolate(x, size=self.input_size, mode="bilinear", align_corners=False)
         return x
 
+    def decoder_upernet_conv(self, features, conv_embeds):
+
+        # conv_1 = self.relu(self.bn(self.conv(conv_embeds)))
+        # conv_2 = self.relu(self.bn(self.conv(conv_1)))
+        # conv_3 = self.relu(self.bn(self.conv(conv_2)))
+        new_features = []
+
+        new_features.append(
+            features[0].reshape(
+                -1,
+                int(sqrt(features[0].shape[1])),
+                int(sqrt(features[0].shape[1])),
+                128,
+            )
+        )
+        new_features.append(
+            features[1].reshape(
+                -1,
+                int(sqrt(features[1].shape[1])),
+                int(sqrt(features[1].shape[1])),
+                256,
+            )
+        )
+        new_features.append(
+            features[2].reshape(
+                -1,
+                int(sqrt(int(features[2].shape[1]))),
+                int(sqrt(int(features[2].shape[1]))),
+                512,
+            )
+        )
+        new_features.append(
+            features[3].reshape(
+                -1,
+                int(sqrt(int(features[3].shape[1]))),
+                int(sqrt(int(features[3].shape[1]))),
+                1024,
+            )
+        )
+        # swin_embeds = conv_embeds[0].reshape(-1, 128, 128, 96)
+
+        new_features[0] = torch.permute(new_features[0], (0, 3, 1, 2))
+        new_features[1] = torch.permute(new_features[1], (0, 3, 1, 2))
+        new_features[2] = torch.permute(new_features[2], (0, 3, 1, 2))
+        new_features[3] = torch.permute(new_features[3], (0, 3, 1, 2))
+        # swin_embeds = torch.permute(swin_embeds, (0, 3, 1, 2))
+
+        # new_features[-1] = F.interpolate(
+        #     new_features[-1], scale_factor=0.5, mode="bilinear", align_corners=True
+        # )
+        # # features[2] = self.up_1(features[2])
+        # new_features[1] = self.up_1(new_features[1])
+        # new_features[0] = self.up_2(new_features[0])
+
+        # new_features[0] = torch.cat((new_features[0], self.up(swin_embeds)), 1)
+
+        # if self.conv_size > 0:
+        #     new_features[0] = torch.cat((new_features[0], conv_embeds), 1)
+        # new_features[1] = torch.cat((new_features[1], conv_1), 1)
+        # new_features[2] = torch.cat((new_features[2], conv_2), 1)
+        # new_features[3] = torch.cat((new_features[3], conv_3), 1)
+
+        # features[0] = features[0] + conv_embeds
+
+        # new_features[-1] = self.PPN(new_features[-1])
+        # x = self.head(features[-1])
+        # x = self.head(self.FPN(new_features))
+
+        x = self.upernet_head(new_features)
+
+        x = F.interpolate(x, size=self.input_size, mode="bilinear", align_corners=False)
+        return x
+
     def decoder_linear(self, x, conv_embeds):
         x = self.classifier(x)
         x = F.interpolate(x, size=self.input_size, mode="bilinear", align_corners=False)
@@ -396,7 +492,7 @@ class DINOv2Segmenter(nn.Module):
         ######## LIFT ###########
 
         # x = self.encoder_forward(x)
-        x = self.decoder_upernet(features, conv_embeds)
+        x = self.decoder_upernet_conv(features, conv_embeds)
         # new_features = []
 
         # new_features.append(

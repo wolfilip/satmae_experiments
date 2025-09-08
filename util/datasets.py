@@ -590,17 +590,17 @@ class GeoBenchDataset(Dataset):
             band_list = [0, 1, 2, 3]
         elif len(sample.bands) == 3:
             band_list = [0, 1, 2]
+        # else:
+        #     band_list = [1, 2, 3, 4, 5, 6, 7, 8, 10, 11]
         else:
-            band_list = [1, 2, 3, 4, 5, 6, 7, 8, 10, 11]
-            # else:
-            # band_list = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+            band_list = [1, 2, 3, 4, 5, 6, 7, 8, 9]
 
         for i, band in enumerate(sample.bands):
             if i in band_list:
                 image.append(torch.from_numpy(band.data))
 
-        if len(image) > 4:
-            image[:3] = [image[2], image[1], image[0]]
+        # if len(image) > 4:
+        #     image[:3] = [image[2], image[1], image[0]]
 
         image = torch.stack(image, dim=0)
         image_rgb = image[:3]
@@ -2301,6 +2301,15 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
         ):
             del norms[12]
             del stds[12]
+        if args.model_type == "copernicusfm":
+            del norms[12]
+            del stds[12]
+            del norms[11]
+            del stds[11]
+            del norms[10]
+            del stds[10]
+            del norms[0]
+            del stds[0]
 
         normalize = K.Normalize(tuple(norms), tuple(stds))
         # if args.dataset_type == "geobench_chesapeake":

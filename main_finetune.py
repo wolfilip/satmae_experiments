@@ -52,7 +52,7 @@ from engine_finetune import (
     train_one_epoch_segmentation,
     train_one_epoch_temporal,
 )
-from models import MAE_LiFT_model
+from models import Copernicus_fm, MAE_LiFT_model
 
 # from models.SAMHQ_model import SAMHQ
 from util.datasets import build_fmow_dataset
@@ -119,6 +119,7 @@ def get_args_parser():
             "simdino",
             "croma",
             "terrafm",
+            "copernicusfm",
         ],
         help="Use channel model",
     )
@@ -595,6 +596,8 @@ def main(args):
             num_classes=args.nb_classes,
             drop_path_rate=args.drop_path,
         )
+    elif args.model_type == "copernicusfm":
+        model = Copernicus_fm.CopernicusFM(args, device)
     elif args.model_type == "croma":
         model = PretrainedCROMA(
             pretrained_path=args.finetune,
@@ -622,6 +625,7 @@ def main(args):
         and args.model_type != "swin"
         and args.model_type != "croma"
         and args.model_type != "terrafm"
+        and args.model_type != "copernicusfm"
         and "simdino" not in args.model_type
     ):
         checkpoint = torch.load(args.finetune, map_location="cpu")
@@ -733,6 +737,7 @@ def main(args):
         or args.model_type == "swin"
         or args.model_type == "croma"
         or args.model_type == "terrafm"
+        or args.model_type == "copernicusfm"
         or "simdino" in args.model_type
     ):
         param_groups = model_without_ddp.parameters()
@@ -781,6 +786,7 @@ def main(args):
             or args.model_type == "dinov2_vit"
             or args.model_type == "swin"
             or args.model_type == "terrafm"
+            or args.model_type == "copernicusfm"
             or "simdino" in args.model_type
         ):
             test_stats, max_iou = evaluate_segmentation(
@@ -797,6 +803,7 @@ def main(args):
             or args.model_type == "dinov2_vit"
             or args.model_type == "swin"
             or args.model_type == "terrafm"
+            or args.model_type == "copernicusfm"
             or "simdino" in args.model_type
         ):
             print(
@@ -852,6 +859,7 @@ def main(args):
                 or args.model_type == "swin"
                 or args.model_type == "croma"
                 or args.model_type == "terrafm"
+                or args.model_type == "copernicusfm"
                 or "simdino" in args.model_type
             ):
                 # test_stats = evaluate_segmentation(data_loader_val, model, device)
@@ -914,6 +922,7 @@ def main(args):
             or args.model_type == "swin"
             or args.model_type == "croma"
             or args.model_type == "terrafm"
+            or args.model_type == "copernicusfm"
             or "simdino" in args.model_type
         ):
             test_stats, max_iou = evaluate_segmentation(
@@ -945,6 +954,7 @@ def main(args):
             or args.model_type == "swin"
             or args.model_type == "croma"
             or args.model_type == "terrafm"
+            or args.model_type == "copernicusfm"
             or "simdino" in args.model_type
         ):
             # print(
