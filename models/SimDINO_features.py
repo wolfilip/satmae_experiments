@@ -11,6 +11,26 @@ from torchvision.ops.misc import Permute
 from util.pos_embed import get_2d_sincos_pos_embed
 
 
+class PatchEmbed(nn.Module):
+    """Image to Patch Embedding"""
+
+    def __init__(self, img_size=224, patch_size=16, in_chans=3, embed_dim=768):
+        super().__init__()
+        num_patches = (img_size // patch_size) * (img_size // patch_size)
+        self.img_size = img_size
+        self.patch_size = patch_size
+        self.num_patches = num_patches
+
+        self.proj = nn.Conv2d(
+            in_chans, embed_dim, kernel_size=patch_size, stride=patch_size
+        )
+
+    def forward(self, x):
+        B, C, H, W = x.shape
+        x = self.proj(x).flatten(2).transpose(1, 2)
+        return x
+
+
 class ConvStem(nn.Module):
     def __init__(self, channelt_size=10):
         super().__init__()
@@ -45,8 +65,15 @@ class SimDINO(nn.Module):
 
         if "vit" in args.finetune:
             self.feat_extr = vits.__dict__[args.model]()
-            self.feat_extr.patch_embed.proj = nn.Conv2d(
-                10, 192, kernel_size=(16, 16), stride=(16, 16)
+            self.feat_extr.patch_embed_ms = PatchEmbed(
+                img_size=args.input_size,
+                in_chans=10,
+                embed_dim=self.feat_extr.embed_dim,
+            )
+            self.feat_extr.patch_embed_rgb = PatchEmbed(
+                img_size=args.input_size,
+                in_chans=3,
+                embed_dim=self.feat_extr.embed_dim,
             )
         elif "dconv" in args.finetune:
             self.feat_extr = torchvision_models.__dict__[args.model]()
@@ -223,6 +250,22 @@ class SimDINO(nn.Module):
     #                 # if i in [3, 8, 13, 18, 23]:
     #                 outs.append(x)
 
+    def prepare_tokens(self, x):
+        B, nc, w, h = x.shape
+        if nc == 3:
+            x = self.feat_extr.patch_embed_rgb(x)  # patch linear embedding
+        else:
+            x = self.feat_extr.patch_embed_ms(x)  # patch linear embedding
+
+        # add the [CLS] token to the embed patch tokens
+        cls_tokens = self.feat_extr.cls_token.expand(B, -1, -1)
+        x = torch.cat((cls_tokens, x), dim=1)
+
+        # add positional encoding to each token
+        x = x + self.feat_extr.interpolate_pos_encoding(x, w, h)
+
+        return self.feat_extr.pos_drop(x)
+
     def forward_swin(self, x):
         with torch.no_grad():
             features = []
@@ -361,7 +404,9 @@ class SimDINO(nn.Module):
 
             x = self.decoder_upernet_swin(features)
         else:
-            features = self.feat_extr.get_intermediate_layers(x=x, n=[3, 5, 8, 11])
+            with torch.no_grad():
+                x = self.prepare_tokens(x)
+                features = self.feat_extr.get_intermediate_layers(x=x, n=[3, 5, 8, 11])
             x = self.decoder_upernet_vit(features)
 
         # features = self.get_features(x)
