@@ -61,7 +61,7 @@ from util.pos_embed import interpolate_pos_embed
 from util.utils_swin import remap_pretrained_keys_swin
 import yaml
 
-# from models.use_croma import PretrainedCROMA
+from models.use_croma import PretrainedCROMA
 
 
 def load_config(config_path):
@@ -317,6 +317,7 @@ def get_args_parser():
             "geobench_chesapeake",
             "geobench_cattle",
             "geobench_pv",
+            "PASTIS",
         ],
         help="Whether to use fmow rgb, sentinel, or other dataset.",
     )

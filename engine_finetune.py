@@ -517,6 +517,7 @@ def train_one_epoch_segmentation(
                 and args.dataset_type != "sen1floods11"
                 and args.dataset_type != "mass_roads"
                 and "geobench" not in args.dataset_type
+                and args.dataset_type != "PASTIS"
             ):
                 miou_metric_2.update(pred.argmax(1), mask)
                 f1_score.update(pred.argmax(1), mask)
@@ -572,7 +573,7 @@ def train_one_epoch_segmentation(
 
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
-    if args.dataset_type == "spacenet" or args.dataset_type == "sen1floods11" or args.dataset_type == "mass_roads" or "geobench" in args.dataset_type:  # type: ignore
+    if args.dataset_type == "spacenet" or args.dataset_type == "sen1floods11" or args.dataset_type == "mass_roads" or "geobench" in args.dataset_type or args.dataset_type == "PASTIS":  # type: ignore
         print("* loss {losses.global_avg:.4f}".format(losses=metric_logger.loss))
     else:
         print(
@@ -789,7 +790,7 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
         # miou_metric_3 = miou_metric_2.to(device)
         # miou_metric_4 = miou_metric_2.to(device)
         overall_accuracy = overall_accuracy.to(device)
-    elif "geobench" in args.dataset_type:
+    elif "geobench" in args.dataset_type or args.dataset_type == "PASTIS":  # type: ignore
         miou_metric = JaccardIndex(
             task="multiclass",
             num_classes=args.nb_classes,

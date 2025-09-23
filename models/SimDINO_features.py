@@ -269,23 +269,22 @@ class SimDINO(nn.Module):
     def forward_swin(self, x):
         with torch.no_grad():
             features = []
+            if x.shape[1] == 10:
+                x = self.feat_extr.conv_ms(x)
+            else:
+                x = self.feat_extr.conv_rgb(x)
             for i, layer in enumerate(self.feat_extr.features):
-                if i == 0:
-                    if x.shape[1] == 10:
-                        x = self.feat_extr.conv_ms(x)
-                    # for i, layer_ms in enumerate(
-                    #     self.feat_extr.ms_process.features
-                    # ):
-                    #     x = layer_ms(x)
-                    # x = self.feat_extr.ms_process.norm(x)
-                    # x = self.feat_extr.proj_ms(x)
-                    # x = x.permute(0, 3, 1, 2)
-                    # x = F.interpolate(
-                    #     x, size=(56, 56), mode="bilinear", align_corners=False
-                    # )
-                    # x = x.permute(0, 2, 3, 1)
-                    else:
-                        x = self.feat_extr.conv_rgb(x)
+                # for i, layer_ms in enumerate(
+                #     self.feat_extr.ms_process.features
+                # ):
+                #     x = layer_ms(x)
+                # x = self.feat_extr.ms_process.norm(x)
+                # x = self.feat_extr.proj_ms(x)
+                # x = x.permute(0, 3, 1, 2)
+                # x = F.interpolate(
+                #     x, size=(56, 56), mode="bilinear", align_corners=False
+                # )
+                # x = x.permute(0, 2, 3, 1)
                 # for i, layer_rgb in enumerate(
                 #     self.feat_extr.rgb_process.features
                 # ):

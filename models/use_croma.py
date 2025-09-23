@@ -247,12 +247,20 @@ class PretrainedCROMA(nn.Module):
 
         x = self.upernet_head(new_features)
 
-        x = F.interpolate(x, size=256, mode="bilinear", align_corners=False)
+        x = F.interpolate(x, size=128, mode="bilinear", align_corners=False)
         return x
 
     def forward(self, x):
 
-        x = F.pad(x, (0, 0, 0, 0, 0, 8), "constant", 0)
+        x = torch.cat(
+            [
+                torch.zeros_like(x[:, :1]),  # zero channel at index 0
+                x[:, :9],  # original channels 0-8
+                torch.zeros_like(x[:, :1]),  # zero channel at index 9
+                x[:, 9:],  # original channels 9 (and 10 if present)
+            ],
+            dim=1,
+        )
 
         features = self.forward_croma(optical_images=x)
         output = self.decoder_upernet(features)

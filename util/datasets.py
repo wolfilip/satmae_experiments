@@ -30,9 +30,10 @@ import xml.etree.ElementTree as ET
 from torchvision.models.detection.transform import GeneralizedRCNNTransform
 
 
-# import geopandas
+import geopandas as gpd
 from tqdm import tqdm
 import json
+from einops import rearrange
 
 from engine_finetune import sentinel2_l2a_to_rgb
 
@@ -46,6 +47,39 @@ def collate_fn_dior(batch):
     images = torch.stack([item[0] for item in batch], 0)
     targets = [item[1] for item in batch]
     return images, targets
+
+
+def split_image(image_tensor, nb_split, id):
+    """
+    Split the input image tensor into four quadrants based on the integer i.
+    To use if Pastis data does not fit in your GPU memory.
+    Returns the corresponding quadrant based on the value of i
+    """
+    if nb_split == 1:
+        return image_tensor
+    i1 = id // nb_split
+    i2 = id % nb_split
+    height, width = image_tensor.shape[-2:]
+    half_height = height // nb_split
+    half_width = width // nb_split
+    if image_tensor.dim() == 4:
+        return image_tensor[
+            :,
+            :,
+            i1 * half_height : (i1 + 1) * half_height,
+            i2 * half_width : (i2 + 1) * half_width,
+        ].float()
+    if image_tensor.dim() == 3:
+        return image_tensor[
+            :,
+            i1 * half_height : (i1 + 1) * half_height,
+            i2 * half_width : (i2 + 1) * half_width,
+        ].float()
+    if image_tensor.dim() == 2:
+        return image_tensor[
+            i1 * half_height : (i1 + 1) * half_height,
+            i2 * half_width : (i2 + 1) * half_width,
+        ].float()
 
 
 def collate_fn(batch):
@@ -572,6 +606,157 @@ class MassachusettsRoadsDataset(SatelliteDataset):
         return image.squeeze(0), mask.squeeze(0).squeeze(0).long()
 
 
+class PASTIS(Dataset):
+    def __init__(
+        self,
+        path,
+        modalities,
+        transform,
+        split,
+        folds=None,
+        nb_split=1,
+        num_classes=20,
+    ):
+        """
+        Initializes the dataset.
+        Args:
+            path (str): path to the dataset
+            modalities (list): list of modalities to use
+            transform (torch module): transform to apply to the data
+            folds (list): list of folds to use
+            nb_split (int): number of splits from one observation
+            num_classes (int): number of classes
+        """
+        super(PASTIS, self).__init__()
+        self.path = path
+        self.transform = transform
+        self.modalities = modalities
+        self.nb_split = nb_split
+
+        self.meta_patch = gpd.read_file(os.path.join(self.path, "metadata.geojson"))
+
+        self.num_classes = num_classes
+
+        assert split in ["train", "val", "test"], "Split must be train, val or test"
+        if split == "train":
+            folds = [1, 2, 3]
+        elif split == "val":
+            folds = [4]
+        else:
+            folds = [5]
+
+        if folds is not None:
+            self.meta_patch = pd.concat(
+                [self.meta_patch[self.meta_patch["Fold"] == f] for f in folds]
+            )
+
+    def __getitem__(self, i: int):
+        """Get the item at index i.
+
+        Args:
+            i (int): index of the item.
+
+        Returns:
+            dict[str, torch.Tensor | dict[str, torch.Tensor]]: output dictionary follwing the format
+            {"image":
+                {"optical": torch.Tensor,
+                 "sar": torch.Tensor},
+            "target": torch.Tensor,
+             "metadata": dict}.
+        """
+        line = self.meta_patch.iloc[i // (self.nb_split * self.nb_split)]
+        name = line["ID_PATCH"]
+        part = i % (self.nb_split * self.nb_split)
+        label = torch.from_numpy(
+            np.load(
+                os.path.join(self.path, "ANNOTATIONS/TARGET_" + str(name) + ".npy")
+            )[0].astype(np.int32)
+        )
+        output = {"label": label, "name": name}
+
+        for modality in self.modalities:
+            if modality == "aerial":
+                with rasterio.open(
+                    os.path.join(
+                        self.root_path,
+                        "DATA_SPOT/PASTIS_SPOT6_RVB_1M00_2019/SPOT6_RVB_1M00_2019_"
+                        + str(name)
+                        + ".tif",
+                    )
+                ) as f:
+                    output["aerial"] = split_image(
+                        torch.FloatTensor(f.read()), self.nb_split, part
+                    )
+            elif modality == "s2-median":
+                modality_name = "s2"
+                images = split_image(
+                    torch.from_numpy(
+                        np.load(
+                            os.path.join(
+                                self.path,
+                                "DATA_{}".format(modality_name.upper()),
+                                "{}_{}.npy".format(modality_name.upper(), name),
+                            )
+                        )
+                    ),
+                    self.nb_split,
+                    part,
+                ).to(torch.float32)
+                out, _ = torch.median(images, dim=0)
+                output[modality_name], output["label"] = self.transform(
+                    out.float(), output["label"].unsqueeze(0).unsqueeze(0).float()
+                )
+            else:
+                if len(modality) > 3:
+                    modality_name = modality[:2] + modality[3]
+                    output[modality] = split_image(
+                        torch.from_numpy(
+                            np.load(
+                                os.path.join(
+                                    self.root_path,
+                                    "DATA_{}".format(modality_name.upper()),
+                                    "{}_{}.npy".format(modality_name.upper(), name),
+                                )
+                            )
+                        ),
+                        self.nb_split,
+                        part,
+                    )
+                    output["_".join([modality, "dates"])] = prepare_dates(
+                        line["-".join(["dates", modality_name.upper()])],
+                        self.reference_date,
+                    )
+                else:
+                    output[modality] = split_image(
+                        torch.from_numpy(
+                            np.load(
+                                os.path.join(
+                                    self.root_path,
+                                    "DATA_{}".format(modality.upper()),
+                                    "{}_{}.npy".format(modality.upper(), name),
+                                )
+                            )
+                        ),
+                        self.nb_split,
+                        part,
+                    )
+                    output["_".join([modality, "dates"])] = prepare_dates(
+                        line["-".join(["dates", modality.upper()])], self.reference_date
+                    )
+                N = len(output[modality])
+                if N > 50:
+                    random_indices = torch.randperm(N)[:50]
+                    output[modality] = output[modality][random_indices]
+                    output["_".join([modality, "dates"])] = output[
+                        "_".join([modality, "dates"])
+                    ][random_indices]
+
+        return output["s2"].squeeze(0), output["label"].squeeze(0).squeeze(0).long()
+
+    def __len__(self):
+        return len(self.meta_patch) * self.nb_split * self.nb_split
+
+
 class GeoBenchDataset(Dataset):
     def __init__(self, dataset, transform):
         super().__init__()
@@ -590,10 +775,10 @@ class GeoBenchDataset(Dataset):
             band_list = [0, 1, 2, 3]
         elif len(sample.bands) == 3:
             band_list = [0, 1, 2]
-        # else:
-        #     band_list = [1, 2, 3, 4, 5, 6, 7, 8, 10, 11]
         else:
-            band_list = [1, 2, 3, 4, 5, 6, 7, 8, 12]
+            band_list = [1, 2, 3, 4, 5, 6, 7, 8, 10, 11]
+        # else:
+        #     band_list = [1, 2, 3, 4, 5, 6, 7, 8, 12]
 
         for i, band in enumerate(sample.bands):
             if i in band_list:
@@ -2248,6 +2433,50 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
             dataset = DIORDataset(dataset_root, data_split, transforms_test)
         else:
             dataset = DIORDataset(dataset_root, data_split, transforms_test)
+    elif args.dataset_type == "PASTIS":
+        path = "/home/filip/datasets/PASTIS/PASTIS"
+        mean = [
+            1165.9398193359375,
+            1375.6534423828125,
+            1429.2191162109375,
+            1764.798828125,
+            2719.273193359375,
+            3063.61181640625,
+            3205.90185546875,
+            3319.109619140625,
+            2422.904296875,
+            1639.370361328125,
+        ]
+        std = [
+            1942.6156005859375,
+            1881.9234619140625,
+            1959.3798828125,
+            1867.2239990234375,
+            1754.5850830078125,
+            1769.4046630859375,
+            1784.860595703125,
+            1767.7100830078125,
+            1458.963623046875,
+            1299.2833251953125,
+        ]
+        normalize = K.Normalize(mean, std)
+        transforms_train = K.AugmentationSequential(
+            # K.RandomResizedCrop(size=(args.input_size, args.input_size), scale=(0.5, 1.0)),
+            K.RandomCrop(size=(args.input_size, args.input_size)),
+            K.RandomHorizontalFlip(p=0.5),
+            K.RandomVerticalFlip(p=0.5),
+            normalize,
+            data_keys=["input", "mask"],
+        )
+        transforms_test = K.AugmentationSequential(
+            K.Resize(size=(args.input_size, args.input_size)),
+            normalize,
+            data_keys=["input", "mask"],
+        )
+        if data_split == "train":
+            dataset = PASTIS(path, ["s2-median"], transforms_train, data_split)
+        else:
+            dataset = PASTIS(path, ["s2-median"], transforms_test, data_split)
     elif "geobench" in args.dataset_type:
         if data_split == "val":
             data_split = "valid"
