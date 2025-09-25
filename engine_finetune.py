@@ -5,6 +5,7 @@
 # BEiT: https://github.com/microsoft/unilm/tree/master/beit
 # --------------------------------------------------------
 
+from ast import arg
 import math
 import os
 import sys
@@ -481,6 +482,7 @@ def train_one_epoch_segmentation(
         # else:
         data = batch[0].to(device, non_blocking=True)
         mask = batch[-1].to(device, non_blocking=True)
+        # label = batch[-1].to(device, non_blocking=True)
         # if args.dataset_type == "sen1floods11":
         #     data_ms = batch[1].to(device, non_blocking=True)
 
@@ -498,7 +500,7 @@ def train_one_epoch_segmentation(
             if args.dataset_type == "loveda" or args.dataset_type == "vaihingen" or args.dataset_type == "potsdam":  # type: ignore
                 mask = mask.squeeze(1)
 
-            if args.dataset_type != "isaid":
+            if args.dataset_type != "isaid" and args.dataset_type != "geobench_eurosat":  # type: ignore
                 mask_one_hot = F.one_hot(mask, num_classes=args.nb_classes).permute(  # type: ignore
                     0, 3, 1, 2
                 )
@@ -506,6 +508,8 @@ def train_one_epoch_segmentation(
             # if args.dataset_type == "sen1floods11" or args.dataset_type == "isaid" or "geobench" in args.dataset_type
             if args.dataset_type == "sen1floods11" or args.dataset_type == "isaid":  # type: ignore
                 loss_value = get_bce_loss_ignore(pred, mask)
+            elif args.dataset_type == "geobench_eurosat":  # type: ignore
+                loss_value = F.cross_entropy(pred, mask.long())
             else:
                 loss_value = get_bce_loss(pred, mask_one_hot.float())
             # print(loss_value)
@@ -598,7 +602,7 @@ def evaluate(data_loader, model, device):
     # switch to evaluation mode
     model.eval()
 
-    for batch in metric_logger.log_every(data_loader, 10, header):
+    for batch in metric_logger.log_every(data_loader, 100, header):
         images = batch[0]
         target = batch[-1]
         # print('images and targets')
@@ -877,11 +881,14 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
             ):
                 mask = mask.squeeze(1)
 
-            mask_one_hot = F.one_hot(mask, num_classes=args.nb_classes).permute(
-                0, 3, 1, 2
-            )
-
-            loss = get_bce_loss(pred, mask_one_hot.float())
+            if args.dataset_type != "geobench_eurosat":  # type: ignore
+                mask_one_hot = F.one_hot(mask, num_classes=args.nb_classes).permute(
+                    0, 3, 1, 2
+                )
+            if args.dataset_type == "geobench_eurosat":
+                loss = F.cross_entropy(pred, mask.long())
+            else:
+                loss = get_bce_loss(pred, mask_one_hot.float())
             # loss = 2
             # dice_loss = DiceLoss()
             # loss_2 = dice_loss(pred, mask_one_hot.float())
@@ -891,6 +898,7 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
                 args.dataset_type != "spacenet"
                 and args.dataset_type != "sen1floods11"
                 and args.dataset_type != "mass_roads"
+                and args.dataset_type != "geobench_eurosat"
             ):
                 miou_metric_2.update(pred.argmax(1), mask)
                 # miou_metric_3.update(pred.argmax(1), mask)

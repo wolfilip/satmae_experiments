@@ -317,6 +317,7 @@ def get_args_parser():
             "geobench_chesapeake",
             "geobench_cattle",
             "geobench_pv",
+            "geobench_eurosat",
             "PASTIS",
         ],
         help="Whether to use fmow rgb, sentinel, or other dataset.",
@@ -914,6 +915,8 @@ def main(args):
 
         if args.model_type == "temporal":
             test_stats = evaluate_temporal(data_loader_val, model, device)
+        elif args.dataset_type == "geobench_eurosat":
+            test_stats = evaluate(data_loader_val, model, device)
         elif (
             args.model_type == "segmentation"
             or args.model_type == "dinov2_segmentation"
@@ -957,7 +960,7 @@ def main(args):
             or args.model_type == "terrafm"
             or args.model_type == "copernicusfm"
             or "simdino" in args.model_type
-        ):
+        ) and args.dataset_type != "geobench_eurosat":
             # print(
             #     f"mIoU of the network on the {len(dataset_val)} test images: {test_stats['IoU']:.4f}"  # type: ignore
             # )
@@ -971,18 +974,27 @@ def main(args):
                     and args.dataset_type != "mass_roads"
                 ):
                     log_writer.add_scalar("perf/val_f1", test_stats["f1"], epoch)
-
         else:
             print(
-                f"Accuracy of the network on the {len(dataset_val)} val images: {test_stats['acc1']:.1f}%"  # type: ignore
+                f"Accuracy of the network on the val images: {test_stats['acc1']:.1f}%"  # type: ignore
             )
-            max_accuracy = max(max_accuracy, test_stats["acc1"])
+            if test_stats["acc1"] > max_accuracy or epoch == 0:
+                max_accuracy = test_stats["acc1"]
+                print("Saving best model")
+                misc.save_best_model(
+                    args=args,
+                    model=model,
+                    model_without_ddp=model_without_ddp,
+                    optimizer=optimizer,
+                    loss_scaler=loss_scaler,
+                    epoch=epoch,
+                )
             print(f"Max accuracy: {max_accuracy:.2f}%")
 
             if log_writer is not None:
-                log_writer.add_scalar("perf/test_acc1", test_stats["acc1"], epoch)
-                log_writer.add_scalar("perf/test_acc5", test_stats["acc5"], epoch)
-                log_writer.add_scalar("perf/test_loss", test_stats["loss"], epoch)
+                log_writer.add_scalar("perf/val_acc1", test_stats["acc1"], epoch)
+                log_writer.add_scalar("perf/val_acc5", test_stats["acc5"], epoch)
+                log_writer.add_scalar("perf/val_loss", test_stats["loss"], epoch)
 
         if args.eval is False:
             log_stats = {
@@ -1018,19 +1030,27 @@ def main(args):
 
     epoch = -1
 
-    test_stats, max_iou = evaluate_segmentation(
-        data_loader_test, model, device, epoch, max_iou, args
-    )
+    if args.dataset_type != "geobench_eurosat":
+        test_stats, max_iou = evaluate_segmentation(
+            data_loader_test, model, device, epoch, max_iou, args
+        )
 
-    if log_writer is not None:
-        log_writer.add_scalar("perf/test_iou", test_stats["IoU"], epoch)
-        log_writer.add_scalar("perf/test_loss", test_stats["loss"], epoch)
-        if (
-            args.dataset_type != "spacenet"
-            and args.dataset_type != "sen1floods11"
-            and args.dataset_type != "mass_roads"
-        ):
-            log_writer.add_scalar("perf/test_miou2", test_stats["iou2"], epoch)
+        if log_writer is not None:
+            log_writer.add_scalar("perf/test_iou", test_stats["IoU"], epoch)
+            log_writer.add_scalar("perf/test_loss", test_stats["loss"], epoch)
+            if (
+                args.dataset_type != "spacenet"
+                and args.dataset_type != "sen1floods11"
+                and args.dataset_type != "mass_roads"
+            ):
+                log_writer.add_scalar("perf/test_miou2", test_stats["iou2"], epoch)
+    else:
+        test_stats = evaluate(data_loader_test, model, device)
+
+        if log_writer is not None:
+            log_writer.add_scalar("perf/test_acc1", test_stats["acc1"], epoch)
+            log_writer.add_scalar("perf/test_acc5", test_stats["acc5"], epoch)
+            log_writer.add_scalar("perf/test_loss", test_stats["loss"], epoch)
 
     if args.eval is False:
         log_stats = {

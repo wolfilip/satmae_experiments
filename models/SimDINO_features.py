@@ -190,28 +190,27 @@ class SimDINO(nn.Module):
         if args.input_size % 14 != 0:
             self.do_interpolation = True
 
-        if args.dataset_type == "euro_sat" or args.dataset_type == "rgb":
+        if args.dataset_type == "geobench_eurosat" or args.dataset_type == "rgb":
             self.task = "classification"
             # self.classifier = LinearClassifier(
             #     self.embed_dim, self.num_patches, self.num_patches, args.nb_classes
             # )
-            self.classification_head = nn.Linear(self.embed_dim, args.nb_classes)
+            self.classification_head = nn.Linear(feature_channels[-1], args.nb_classes)
         else:
             self.task = "segmentation"
+            # self.up_1 = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
+            # self.up_2 = nn.Upsample(scale_factor=4, mode="bilinear", align_corners=True)
 
-        self.up_1 = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
-        self.up_2 = nn.Upsample(scale_factor=4, mode="bilinear", align_corners=True)
+            config = {
+                "pool_scales": [1, 2, 3, 6],
+                "hidden_size": 512,
+                "num_labels": args.nb_classes,
+                "initializer_range": 0.02,
+            }
 
-        config = {
-            "pool_scales": [1, 2, 3, 6],
-            "hidden_size": 512,
-            "num_labels": args.nb_classes,
-            "initializer_range": 0.02,
-        }
+            self.upernet_head = UperNetHead(config, feature_channels)
 
-        self.upernet_head = UperNetHead(config, feature_channels)
-
-        self.channel_project = nn.Linear(3, 10)  # Define a learnable linear layer
+        # self.channel_project = nn.Linear(3, 10)  # Define a learnable linear layer
 
         # elif  args.dataset_type == "rgb":
 
@@ -303,7 +302,52 @@ class SimDINO(nn.Module):
                 # if i in [1, 3, 5, 7]:
                 if i in [0, 2, 4, 6]:
                     features.append(x)
+            # rgb_data = self.feat_extr.norm(features[-1])
+            # rgb_data = self.feat_extr.permute(rgb_data)
+            # rgb_data = self.feat_extr.avgpool(rgb_data)
+            # rgb_data = self.feat_extr.flatten(rgb_data)
+            # features = self.feat_extr.head(rgb_data)
         return features
+
+    def forward_swin_cls(self, x):
+        with torch.no_grad():
+            if x.shape[1] == 10:
+                x = self.feat_extr.conv_ms(x)
+            else:
+                x = self.feat_extr.conv_rgb(x)
+            for layer in self.feat_extr.features:
+                # for i, layer_ms in enumerate(
+                #     self.feat_extr.ms_process.features
+                # ):
+                #     x = layer_ms(x)
+                # x = self.feat_extr.ms_process.norm(x)
+                # x = self.feat_extr.proj_ms(x)
+                # x = x.permute(0, 3, 1, 2)
+                # x = F.interpolate(
+                #     x, size=(56, 56), mode="bilinear", align_corners=False
+                # )
+                # x = x.permute(0, 2, 3, 1)
+                # for i, layer_rgb in enumerate(
+                #     self.feat_extr.rgb_process.features
+                # ):
+                #     x = layer_rgb(x)
+                # x = self.feat_extr.rgb_process.norm(x)
+                # x = self.feat_extr.proj_rgb(x)
+                # x = x.permute(0, 3, 1, 2)
+                # x = F.interpolate(
+                #     x,
+                #     size=(56, 56),
+                #     mode="bilinear",
+                #     align_corners=False,
+                # )
+                # x = x.permute(0, 2, 3, 1)
+                x = layer(x)
+                # if i in [1, 3, 5, 7]:
+            rgb_data = self.feat_extr.norm(x)
+            rgb_data = self.feat_extr.permute(rgb_data)
+            rgb_data = self.feat_extr.avgpool(rgb_data)
+            rgb_data = self.feat_extr.flatten(rgb_data)
+        return rgb_data
 
     def encoder_conv(self, x):
 
@@ -392,21 +436,27 @@ class SimDINO(nn.Module):
 
         # x = self.encoder_forward(x)
         # x = self.decoder_upernet(x, conv_embeds)
-        if self.model == "swin":
-            if self.ms_backbone:
-                features = self.forward_swin(x)  # type: ignore
-            else:
-                if x.shape[1] != 3:
+        if self.task == "classification":
+            features = self.forward_swin_cls(x)
+            x = self.classification_head(features)
+        else:
+            if self.model == "swin":
+                if self.ms_backbone:
                     features = self.forward_swin(x)  # type: ignore
                 else:
-                    features = self.forward_swin(x)
+                    if x.shape[1] != 3:
+                        features = self.forward_swin(x)  # type: ignore
+                    else:
+                        features = self.forward_swin(x)
 
-            x = self.decoder_upernet_swin(features)
-        else:
-            with torch.no_grad():
-                x = self.prepare_tokens(x)
-                features = self.feat_extr.get_intermediate_layers(x=x, n=[3, 5, 8, 11])
-            x = self.decoder_upernet_vit(features)
+                x = self.decoder_upernet_swin(features)
+            else:
+                with torch.no_grad():
+                    x = self.prepare_tokens(x)
+                    features = self.feat_extr.get_intermediate_layers(
+                        x=x, n=[3, 5, 8, 11]
+                    )
+                x = self.decoder_upernet_vit(features)
 
         # features = self.get_features(x)
         # x = self.encoder_forward(x)

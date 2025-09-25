@@ -784,18 +784,22 @@ class GeoBenchDataset(Dataset):
             if i in band_list:
                 image.append(torch.from_numpy(band.data))
 
-        # if len(image) > 4:
-        #     image[:3] = [image[2], image[1], image[0]]
+        if len(image) > 4:
+            image[:3] = [image[2], image[1], image[0]]
 
         image = torch.stack(image, dim=0)
         image_rgb = image[:3]
-        mask = torch.from_numpy(sample.label.data)
+        # mask = torch.from_numpy(sample.label.data)
+        label = sample.label
 
-        image, mask = self.transform(
-            image.float(), mask.unsqueeze(0).unsqueeze(0).float()
-        )
+        # image, mask = self.transform(
+        #     image.float(), mask.unsqueeze(0).unsqueeze(0).float()
+        # )
+        image = self.transform(image.float())
 
-        return image.squeeze(0), image_rgb, mask.squeeze(0).squeeze(0).long()
+        return image.squeeze(0), image_rgb, label
+
+    # mask.squeeze(0).squeeze(0).long()
 
 
 class SpaceNetDataset(SatelliteDataset):
@@ -2397,39 +2401,23 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
     elif args.dataset_type == "dior":
         dataset_root = "/mnt/c/Users/filip.wolf/Datasets/DIOR-VOC/DIOR-VOC/VOC2007"
 
-        transforms_train = A.Compose(
-            [
-                A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-                A.RandomResizedCrop((512, 512), scale=(0.5, 1.0), interpolation=1),
-                A.HorizontalFlip(p=0.5),
-                A.VerticalFlip(p=0.5),
-                A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-                # A.RandomBrightnessContrast(p=0.2),
-                # A.HueSaturationValue(p=0.2),
-                # A.Rotate(limit=15, p=0.5),
-                ToTensorV2(),
-            ],
-            bbox_params=A.BboxParams(
-                format="pascal_voc",  # Format of bounding boxes (Pascal VOC in this case)
-                label_fields=["labels"],  # Field containing labels for bounding boxes
-            ),
+        transforms_train = K.AugmentationSequential(
+            # K.RandomResizedCrop(size=(args.input_size, args.input_size), scale=(0.5, 1.0)),
+            K.RandomCrop(size=(args.input_size, args.input_size)),
+            K.RandomHorizontalFlip(p=0.5),
+            K.RandomVerticalFlip(p=0.5),
+            normalize,
+            data_keys=["input", "mask"],
         )
-
-        transforms_test = A.Compose(
-            [
-                A.Resize(height=512, width=512, interpolation=1),
-                A.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
-                ToTensorV2(),
-            ],
-            bbox_params=A.BboxParams(
-                format="pascal_voc",
-                label_fields=["labels"],
-            ),
+        transforms_test = K.AugmentationSequential(
+            K.Resize(size=(args.input_size, args.input_size)),
+            normalize,
+            data_keys=["input", "mask"],
         )
 
         if data_split == "train":
             dataset = DIORDataset(dataset_root, data_split, transforms_train)
-        elif data_split == "test":
+        elif data_split == "val":
             dataset = DIORDataset(dataset_root, data_split, transforms_test)
         else:
             dataset = DIORDataset(dataset_root, data_split, transforms_test)
@@ -2480,22 +2468,27 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
     elif "geobench" in args.dataset_type:
         if data_split == "val":
             data_split = "valid"
-        for task in geobench.task_iterator(benchmark_name="segmentation_v1.0"):
+        # for task in geobench.task_iterator(benchmark_name="segmentation_v1.0"):
+        #     dataset = task.get_dataset(split=data_split)
+        #     if args.dataset_type == "geobench_crop":
+        #         if "crop" in str(dataset.dataset_dir):
+        #             break
+        #     elif args.dataset_type == "geobench_cashew":
+        #         if "cashew" in str(dataset.dataset_dir):
+        #             break
+        #     elif args.dataset_type == "geobench_chesapeake":
+        #         if "chesapeake" in str(dataset.dataset_dir):
+        #             break
+        #     elif args.dataset_type == "geobench_cattle":
+        #         if "cattle" in str(dataset.dataset_dir):
+        #             break
+        #     elif args.dataset_type == "geobench_pv":
+        #         if "pv" in str(dataset.dataset_dir):
+        #             break
+        for task in geobench.task_iterator(benchmark_name="classification_v1.0"):
             dataset = task.get_dataset(split=data_split)
-            if args.dataset_type == "geobench_crop":
-                if "crop" in str(dataset.dataset_dir):
-                    break
-            elif args.dataset_type == "geobench_cashew":
-                if "cashew" in str(dataset.dataset_dir):
-                    break
-            elif args.dataset_type == "geobench_chesapeake":
-                if "chesapeake" in str(dataset.dataset_dir):
-                    break
-            elif args.dataset_type == "geobench_cattle":
-                if "cattle" in str(dataset.dataset_dir):
-                    break
-            elif args.dataset_type == "geobench_pv":
-                if "pv" in str(dataset.dataset_dir):
+            if args.dataset_type == "geobench_eurosat":
+                if "eurosat" in str(dataset.dataset_dir):
                     break
 
         data_json = dataset.dataset_dir / "band_stats.json"
@@ -2592,18 +2585,33 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
         #         ),  # type: ignore
         #     )
 
+        # transforms_train = K.AugmentationSequential(
+        #     # K.RandomResizedCrop(size=(args.input_size, args.input_size), scale=(0.5, 1.0)),
+        #     K.RandomCrop(size=(args.input_size, args.input_size)),
+        #     K.RandomHorizontalFlip(p=0.5),
+        #     K.RandomVerticalFlip(p=0.5),
+        #     normalize,
+        #     data_keys=["input", "mask"],
+        # )
+        # transforms_test = K.AugmentationSequential(
+        #     K.Resize(size=(args.input_size, args.input_size)),
+        #     normalize,
+        #     data_keys=["input", "mask"],
+        # )
+
+        # classification
         transforms_train = K.AugmentationSequential(
             # K.RandomResizedCrop(size=(args.input_size, args.input_size), scale=(0.5, 1.0)),
             K.RandomCrop(size=(args.input_size, args.input_size)),
             K.RandomHorizontalFlip(p=0.5),
             K.RandomVerticalFlip(p=0.5),
             normalize,
-            data_keys=["input", "mask"],
+            data_keys=["input"],
         )
         transforms_test = K.AugmentationSequential(
             K.Resize(size=(args.input_size, args.input_size)),
             normalize,
-            data_keys=["input", "mask"],
+            data_keys=["input"],
         )
 
         if data_split == "train":

@@ -96,7 +96,7 @@ class DINOv2Segmenter(nn.Module):
         if args.input_size % self.patch_size != 0:
             self.do_interpolation = True
 
-        if args.dataset_type == "euro_sat" or args.dataset_type == "rgb":
+        if args.dataset_type == "geobench_eurosat" or args.dataset_type == "rgb":
             self.task = "classification"
             # self.classifier = LinearClassifier(
             #     self.embed_dim, self.num_patches, self.num_patches, args.nb_classes
@@ -105,31 +105,39 @@ class DINOv2Segmenter(nn.Module):
         else:
             self.task = "segmentation"
 
-        self.up_1 = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
-        self.up_2 = nn.Upsample(scale_factor=4, mode="bilinear", align_corners=True)
+            self.up_1 = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
+            self.up_2 = nn.Upsample(scale_factor=4, mode="bilinear", align_corners=True)
 
-        config = {
-            "pool_scales": [1, 2, 3, 6],
-            "hidden_size": 512,
-            "num_labels": args.nb_classes,
-            "initializer_range": 0.02,
-        }
+            config = {
+                "pool_scales": [1, 2, 3, 6],
+                "hidden_size": 512,
+                "num_labels": args.nb_classes,
+                "initializer_range": 0.02,
+            }
 
-        self.upernet_head = UperNetHead(config, feature_channels)
+            self.upernet_head = UperNetHead(config, feature_channels)
 
-        # if self.conv_size > 0:
-        if args.dataset_type == "spacenet":
-            self.up = nn.Upsample(size=(64, 64), mode="bilinear", align_corners=True)
-        elif (
-            args.dataset_type == "sen1floods11"
-            or args.dataset_type == "vaihingen"
-            or args.dataset_type == "potsdam"
-        ):
-            self.up = nn.Upsample(size=(144, 144), mode="bilinear", align_corners=True)
-        elif args.dataset_type == "isaid":
-            self.up = nn.Upsample(size=(256, 256), mode="bilinear", align_corners=True)
-        elif args.dataset_type == "mass_roads":
-            self.up = nn.Upsample(size=(428, 428), mode="bilinear", align_corners=True)
+            # if self.conv_size > 0:
+            if args.dataset_type == "spacenet":
+                self.up = nn.Upsample(
+                    size=(64, 64), mode="bilinear", align_corners=True
+                )
+            elif (
+                args.dataset_type == "sen1floods11"
+                or args.dataset_type == "vaihingen"
+                or args.dataset_type == "potsdam"
+            ):
+                self.up = nn.Upsample(
+                    size=(144, 144), mode="bilinear", align_corners=True
+                )
+            elif args.dataset_type == "isaid":
+                self.up = nn.Upsample(
+                    size=(256, 256), mode="bilinear", align_corners=True
+                )
+            elif args.dataset_type == "mass_roads":
+                self.up = nn.Upsample(
+                    size=(428, 428), mode="bilinear", align_corners=True
+                )
             # elif  args.dataset_type == "rgb":
 
         # self.conv = nn.Conv2d(
@@ -260,8 +268,8 @@ class DINOv2Segmenter(nn.Module):
         #     imgs = F.interpolate(
         #         imgs, size=504, mode="bilinear", align_corners=True
         #     )
-        # elif imgs.shape[-1] == 64:
-        #     imgs = F.interpolate(imgs, size=56, mode="bilinear", align_corners=True)
+        if imgs.shape[-1] == 64:
+            imgs = F.interpolate(imgs, size=56, mode="bilinear", align_corners=True)
         # elif imgs.shape[-1] == 256:
         #     imgs = F.interpolate(
         #         imgs, size=252, mode="bilinear", align_corners=True
@@ -492,7 +500,7 @@ class DINOv2Segmenter(nn.Module):
         ######## LIFT ###########
 
         # x = self.encoder_forward(x)
-        x = self.decoder_upernet_conv(features, conv_embeds)
+        # x = self.decoder_upernet_conv(features, conv_embeds)
         # new_features = []
 
         # new_features.append(
@@ -522,7 +530,7 @@ class DINOv2Segmenter(nn.Module):
         # x = self.upernet_head(new_features)
         # x = F.interpolate(x, size=self.input_size, mode="bilinear", align_corners=False)
 
-        # x = self.classification_head(features)
+        x = self.classification_head(features)
         # x = self.decoder_linear(features[-1], conv_embeds)
 
         # x = self.decoder_upernet(x[1])
