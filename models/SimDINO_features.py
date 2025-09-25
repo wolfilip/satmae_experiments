@@ -142,13 +142,13 @@ class SimDINO(nn.Module):
         #         conv1_weights[:, :3, :, :]
         #     )
 
-        self.feat_extr.eval()  # type: ignore
+        # self.feat_extr.eval()  # type: ignore
         self.feat_extr.to(device)  # type: ignore
         # self.device = device
         # self.patch_size = 16
 
-        for p in self.feat_extr.parameters():
-            p.requires_grad = False
+        # for p in self.feat_extr.parameters():
+        #     p.requires_grad = False
 
         # upernet stuff
         # if self.model_size == "small" or self.model_size == "s":
@@ -310,43 +310,43 @@ class SimDINO(nn.Module):
         return features
 
     def forward_swin_cls(self, x):
-        with torch.no_grad():
-            if x.shape[1] == 10:
-                x = self.feat_extr.conv_ms(x)
-            else:
-                x = self.feat_extr.conv_rgb(x)
-            for layer in self.feat_extr.features:
-                # for i, layer_ms in enumerate(
-                #     self.feat_extr.ms_process.features
-                # ):
-                #     x = layer_ms(x)
-                # x = self.feat_extr.ms_process.norm(x)
-                # x = self.feat_extr.proj_ms(x)
-                # x = x.permute(0, 3, 1, 2)
-                # x = F.interpolate(
-                #     x, size=(56, 56), mode="bilinear", align_corners=False
-                # )
-                # x = x.permute(0, 2, 3, 1)
-                # for i, layer_rgb in enumerate(
-                #     self.feat_extr.rgb_process.features
-                # ):
-                #     x = layer_rgb(x)
-                # x = self.feat_extr.rgb_process.norm(x)
-                # x = self.feat_extr.proj_rgb(x)
-                # x = x.permute(0, 3, 1, 2)
-                # x = F.interpolate(
-                #     x,
-                #     size=(56, 56),
-                #     mode="bilinear",
-                #     align_corners=False,
-                # )
-                # x = x.permute(0, 2, 3, 1)
-                x = layer(x)
-                # if i in [1, 3, 5, 7]:
-            rgb_data = self.feat_extr.norm(x)
-            rgb_data = self.feat_extr.permute(rgb_data)
-            rgb_data = self.feat_extr.avgpool(rgb_data)
-            rgb_data = self.feat_extr.flatten(rgb_data)
+        # with torch.no_grad():
+        if x.shape[1] == 10:
+            x = self.feat_extr.conv_ms(x)
+        else:
+            x = self.feat_extr.conv_rgb(x)
+        for layer in self.feat_extr.features:
+            # for i, layer_ms in enumerate(
+            #     self.feat_extr.ms_process.features
+            # ):
+            #     x = layer_ms(x)
+            # x = self.feat_extr.ms_process.norm(x)
+            # x = self.feat_extr.proj_ms(x)
+            # x = x.permute(0, 3, 1, 2)
+            # x = F.interpolate(
+            #     x, size=(56, 56), mode="bilinear", align_corners=False
+            # )
+            # x = x.permute(0, 2, 3, 1)
+            # for i, layer_rgb in enumerate(
+            #     self.feat_extr.rgb_process.features
+            # ):
+            #     x = layer_rgb(x)
+            # x = self.feat_extr.rgb_process.norm(x)
+            # x = self.feat_extr.proj_rgb(x)
+            # x = x.permute(0, 3, 1, 2)
+            # x = F.interpolate(
+            #     x,
+            #     size=(56, 56),
+            #     mode="bilinear",
+            #     align_corners=False,
+            # )
+            # x = x.permute(0, 2, 3, 1)
+            x = layer(x)
+            # if i in [1, 3, 5, 7]:
+        rgb_data = self.feat_extr.norm(x)
+        rgb_data = self.feat_extr.permute(rgb_data)
+        rgb_data = self.feat_extr.avgpool(rgb_data)
+        rgb_data = self.feat_extr.flatten(rgb_data)
         return rgb_data
 
     def encoder_conv(self, x):

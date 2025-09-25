@@ -46,7 +46,7 @@ class CopernicusFM(nn.Module):
         if args.input_size % self.patch_size != 0:
             self.do_interpolation = True
 
-        if args.dataset_type == "euro_sat" or args.dataset_type == "rgb":
+        if args.dataset_type == "geobench_eurosat" or args.dataset_type == "rgb":
             self.task = "classification"
             # self.classifier = LinearClassifier(
             #     self.embed_dim, self.num_patches, self.num_patches, args.nb_classes
@@ -55,72 +55,17 @@ class CopernicusFM(nn.Module):
         else:
             self.task = "segmentation"
 
-        self.up_1 = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
-        self.up_2 = nn.Upsample(scale_factor=4, mode="bilinear", align_corners=True)
+            self.up_1 = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
+            self.up_2 = nn.Upsample(scale_factor=4, mode="bilinear", align_corners=True)
 
-        config = {
-            "pool_scales": [1, 2, 3, 6],
-            "hidden_size": 512,
-            "num_labels": args.nb_classes,
-            "initializer_range": 0.02,
-        }
+            config = {
+                "pool_scales": [1, 2, 3, 6],
+                "hidden_size": 512,
+                "num_labels": args.nb_classes,
+                "initializer_range": 0.02,
+            }
 
-        self.upernet_head = UperNetHead(config, feature_channels)
-
-    def get_features(self, imgs):
-        # layer = self.layer_num[0] # TODO: make it a list
-        # layers = []
-        # if self.do_interpolation:
-        # if imgs.shape[-1] == 500:
-        #     imgs = F.interpolate(
-        #         imgs, size=512, mode="bilinear", align_corners=True
-        #     )
-        # elif imgs.shape[-1] == 512 or imgs.shape[-1] == 500:
-        #     imgs = F.interpolate(
-        #         imgs, size=504, mode="bilinear", align_corners=True
-        #     )
-        # elif imgs.shape[-1] == 64:
-        #     imgs = F.interpolate(imgs, size=56, mode="bilinear", align_corners=True)
-        # elif imgs.shape[-1] == 256:
-        #     imgs = F.interpolate(
-        #         imgs, size=252, mode="bilinear", align_corners=True
-        #     )
-        # elif imgs.shape[-1] == 1500:
-        #     imgs = F.interpolate(
-        #         imgs, size=1498, mode="bilinear", align_corners=True
-        #     )
-        # if imgs.shape[-1] == 320:
-        #     imgs = F.interpolate(
-        #         imgs, size=308, mode="bilinear", align_corners=True
-        #     )
-
-        with torch.no_grad():
-            if self.task == "classification":
-                out = self.feat_extr.forward_features(imgs)  # type: ignore
-                cls = out["x_norm_clstoken"]
-                out = cls
-            else:
-                # if self.layer_num == "last":
-                if (
-                    self.model_size == "base"
-                    or self.model_size == "small"
-                    or self.model_size == "basev3"
-                ):
-                    patch = self.feat_extr.get_intermediate_layers(x=imgs, n=(3, 5, 8, 11))  # type: ignore
-                elif self.model_size == "basev3conv":
-                    patch = self.feat_extr.get_intermediate_layers(imgs, n=(0, 1, 2, 3))  # type: ignore
-                else:
-                    patch = self.feat_extr.get_intermediate_layers(x=imgs, n=(3, 9, 17, 23))  # type: ignore
-                out = patch
-
-            # layers.append(patch)
-            # layers.append(patch)
-            # cls = out["x_norm_clstoken"]
-            # elif self.layer_num == "first":
-
-        # elif self.layer_num == "avg":
-        #     pass
-        return out
+            self.upernet_head = UperNetHead(config, feature_channels)
 
     def encoder_conv(self, x):
 
@@ -241,7 +186,7 @@ class CopernicusFM(nn.Module):
         ######## LIFT ###########
 
         # x = self.encoder_forward(x)
-        x = self.decoder_upernet(features[1])
+        # x = self.decoder_upernet(features[1])
         # new_features = []
 
         # new_features.append(
@@ -271,7 +216,7 @@ class CopernicusFM(nn.Module):
         # x = self.upernet_head(new_features)
         # x = F.interpolate(x, size=self.input_size, mode="bilinear", align_corners=False)
 
-        # x = self.classification_head(features)
+        x = self.classification_head(features[0])
         # x = self.decoder_linear(features[-1], conv_embeds)
 
         # x = self.decoder_upernet(x[1])
