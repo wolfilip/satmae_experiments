@@ -142,13 +142,13 @@ class SimDINO(nn.Module):
         #         conv1_weights[:, :3, :, :]
         #     )
 
-        # self.feat_extr.eval()  # type: ignore
+        self.feat_extr.eval()  # type: ignore
         self.feat_extr.to(device)  # type: ignore
         # self.device = device
         # self.patch_size = 16
 
-        # for p in self.feat_extr.parameters():
-        #     p.requires_grad = False
+        for p in self.feat_extr.parameters():
+            p.requires_grad = False
 
         # upernet stuff
         # if self.model_size == "small" or self.model_size == "s":
@@ -190,7 +190,11 @@ class SimDINO(nn.Module):
         if args.input_size % 14 != 0:
             self.do_interpolation = True
 
-        if args.dataset_type == "geobench_eurosat" or args.dataset_type == "rgb":
+        if (
+            args.dataset_type == "geobench_eurosat"
+            or args.dataset_type == "rgb"
+            or args.dataset_type == "geobench_bigearthnet"
+        ):
             self.task = "classification"
             # self.classifier = LinearClassifier(
             #     self.embed_dim, self.num_patches, self.num_patches, args.nb_classes

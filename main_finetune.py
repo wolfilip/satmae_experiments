@@ -318,6 +318,7 @@ def get_args_parser():
             "geobench_cattle",
             "geobench_pv",
             "geobench_eurosat",
+            "geobench_bigearthnet",
             "PASTIS",
         ],
         help="Whether to use fmow rgb, sentinel, or other dataset.",
@@ -605,7 +606,7 @@ def main(args):
             pretrained_path=args.finetune,
             size="base",
             modality="optical",
-            image_resolution=120,
+            image_resolution=args.input_size,
             num_labels=args.nb_classes,
         ).to(device)
     elif args.model_type == "terrafm":
@@ -781,21 +782,25 @@ def main(args):
         if args.model_type == "temporal":
             test_stats = evaluate_temporal(data_loader_val, model, device)
         elif (
+            args.dataset_type == "geobench_eurosat"
+            or args.dataset_type == "geobench_bigearthnet"
+        ):
+            test_stats = evaluate(data_loader_val, model, device)
+        elif (
             args.model_type == "segmentation"
             or args.model_type == "dinov2_segmentation"
             or args.model_type == "samhq_segmentation"
             or args.model_type == "lift_segmentation"
             or args.model_type == "dinov2_vit"
             or args.model_type == "swin"
+            or args.model_type == "croma"
             or args.model_type == "terrafm"
             or args.model_type == "copernicusfm"
             or "simdino" in args.model_type
         ):
             test_stats, max_iou = evaluate_segmentation(
-                data_loader_test, model, device, 0, 0, args
+                data_loader_val, model, device, 0, 0, args
             )
-        else:
-            test_stats = evaluate(data_loader_val, model, device)
 
         if (
             args.model_type == "segmentation"
@@ -915,7 +920,10 @@ def main(args):
 
         if args.model_type == "temporal":
             test_stats = evaluate_temporal(data_loader_val, model, device)
-        elif args.dataset_type == "geobench_eurosat":
+        elif (
+            args.dataset_type == "geobench_eurosat"
+            or args.dataset_type == "geobench_bigearthnet"
+        ):
             test_stats = evaluate(data_loader_val, model, device)
         elif (
             args.model_type == "segmentation"
@@ -950,17 +958,21 @@ def main(args):
             test_stats = evaluate(data_loader_val, model, device)
 
         if (
-            args.model_type == "segmentation"
-            or args.model_type == "dinov2_segmentation"
-            or args.model_type == "samhq_segmentation"
-            or args.model_type == "lift_segmentation"
-            or args.model_type == "dinov2_vit"
-            or args.model_type == "swin"
-            or args.model_type == "croma"
-            or args.model_type == "terrafm"
-            or args.model_type == "copernicusfm"
-            or "simdino" in args.model_type
-        ) and args.dataset_type != "geobench_eurosat":
+            (
+                args.model_type == "segmentation"
+                or args.model_type == "dinov2_segmentation"
+                or args.model_type == "samhq_segmentation"
+                or args.model_type == "lift_segmentation"
+                or args.model_type == "dinov2_vit"
+                or args.model_type == "swin"
+                or args.model_type == "croma"
+                or args.model_type == "terrafm"
+                or args.model_type == "copernicusfm"
+                or "simdino" in args.model_type
+            )
+            and args.dataset_type != "geobench_eurosat"
+            and args.dataset_type != "geobench_bigearthnet"
+        ):
             # print(
             #     f"mIoU of the network on the {len(dataset_val)} test images: {test_stats['IoU']:.4f}"  # type: ignore
             # )
@@ -994,6 +1006,7 @@ def main(args):
             if log_writer is not None:
                 log_writer.add_scalar("perf/val_acc1", test_stats["acc1"], epoch)
                 log_writer.add_scalar("perf/val_acc5", test_stats["acc5"], epoch)
+                log_writer.add_scalar("perf/val_f1", test_stats["f1"], epoch)
                 log_writer.add_scalar("perf/val_loss", test_stats["loss"], epoch)
 
         if args.eval is False:
@@ -1030,7 +1043,10 @@ def main(args):
 
     epoch = -1
 
-    if args.dataset_type != "geobench_eurosat":
+    if (
+        args.dataset_type != "geobench_eurosat"
+        and args.dataset_type != "geobench_bigearthnet"
+    ):
         test_stats, max_iou = evaluate_segmentation(
             data_loader_test, model, device, epoch, max_iou, args
         )
@@ -1050,6 +1066,7 @@ def main(args):
         if log_writer is not None:
             log_writer.add_scalar("perf/test_acc1", test_stats["acc1"], epoch)
             log_writer.add_scalar("perf/test_acc5", test_stats["acc5"], epoch)
+            log_writer.add_scalar("perf/test_f1", test_stats["f1"], epoch)
             log_writer.add_scalar("perf/test_loss", test_stats["loss"], epoch)
 
     if args.eval is False:

@@ -775,31 +775,35 @@ class GeoBenchDataset(Dataset):
             band_list = [0, 1, 2, 3]
         elif len(sample.bands) == 3:
             band_list = [0, 1, 2]
-        else:
-            band_list = [1, 2, 3, 4, 5, 6, 7, 8, 10, 11]
+        # else:
+        #     band_list = [1, 2, 3, 4, 5, 6, 7, 8, 10, 11]
         # else:
         #     band_list = [1, 2, 3, 4, 5, 6, 7, 8, 12]
+        # else:
+        #     band_list = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+        else:
+            band_list = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11]
 
         for i, band in enumerate(sample.bands):
             if i in band_list:
                 image.append(torch.from_numpy(band.data))
 
-        if len(image) > 4:
-            image[:3] = [image[2], image[1], image[0]]
+        # if len(image) > 4:
+        #     image[:3] = [image[2], image[1], image[0]]
 
         image = torch.stack(image, dim=0)
         image_rgb = image[:3]
-        # mask = torch.from_numpy(sample.label.data)
-        label = sample.label
+        mask = torch.from_numpy(sample.label.data)
+        # label = sample.label
 
-        # image, mask = self.transform(
-        #     image.float(), mask.unsqueeze(0).unsqueeze(0).float()
-        # )
-        image = self.transform(image.float())
+        image, mask = self.transform(
+            image.float(), mask.unsqueeze(0).unsqueeze(0).float()
+        )
+        # image = self.transform(image.float())
 
-        return image.squeeze(0), image_rgb, label
+        return image.squeeze(0), image_rgb, mask.squeeze(0).squeeze(0).long()
 
-    # mask.squeeze(0).squeeze(0).long()
+    # label
 
 
 class SpaceNetDataset(SatelliteDataset):
@@ -1083,11 +1087,11 @@ class Sen1Floods11Dataset(Dataset):
 
         # s2_image_rgb = torch.from_numpy(s2_image).float()[[3, 2, 7]]
         # s2_image_ms = torch.from_numpy(s2_image).float()[
-        #     [0, 3, 2, 1, 4, 5, 6, 7, 8, 9, 11, 12]
+        #     [1, 2, 3, 4, 5, 6, 7, 8, 11, 12]
         # ]
-        s2_image_ms = torch.from_numpy(s2_image).float()[
-            [3, 2, 1, 4, 5, 6, 7, 8, 11, 12]
-        ]
+        # s2_image_ms = torch.from_numpy(s2_image).float()[
+        #     [3, 2, 1, 4, 5, 6, 7, 8, 11, 12]
+        # ]
         # s1_image = torch.from_numpy(s1_image).float()
         # ratio_band = s1_image[:1, :, :] / (s1_image[1:, :, :] + 1e-10)
         # ratio_band = torch.clamp(ratio_band, max=1e4, min=-1e4)
@@ -2468,28 +2472,31 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
     elif "geobench" in args.dataset_type:
         if data_split == "val":
             data_split = "valid"
-        # for task in geobench.task_iterator(benchmark_name="segmentation_v1.0"):
-        #     dataset = task.get_dataset(split=data_split)
-        #     if args.dataset_type == "geobench_crop":
-        #         if "crop" in str(dataset.dataset_dir):
-        #             break
-        #     elif args.dataset_type == "geobench_cashew":
-        #         if "cashew" in str(dataset.dataset_dir):
-        #             break
-        #     elif args.dataset_type == "geobench_chesapeake":
-        #         if "chesapeake" in str(dataset.dataset_dir):
-        #             break
-        #     elif args.dataset_type == "geobench_cattle":
-        #         if "cattle" in str(dataset.dataset_dir):
-        #             break
-        #     elif args.dataset_type == "geobench_pv":
-        #         if "pv" in str(dataset.dataset_dir):
-        #             break
-        for task in geobench.task_iterator(benchmark_name="classification_v1.0"):
+        for task in geobench.task_iterator(benchmark_name="segmentation_v1.0"):
             dataset = task.get_dataset(split=data_split)
-            if args.dataset_type == "geobench_eurosat":
-                if "eurosat" in str(dataset.dataset_dir):
+            if args.dataset_type == "geobench_crop":
+                if "crop" in str(dataset.dataset_dir):
                     break
+            elif args.dataset_type == "geobench_cashew":
+                if "cashew" in str(dataset.dataset_dir):
+                    break
+            elif args.dataset_type == "geobench_chesapeake":
+                if "chesapeake" in str(dataset.dataset_dir):
+                    break
+            elif args.dataset_type == "geobench_cattle":
+                if "cattle" in str(dataset.dataset_dir):
+                    break
+            elif args.dataset_type == "geobench_pv":
+                if "pv" in str(dataset.dataset_dir):
+                    break
+        # for task in geobench.task_iterator(benchmark_name="classification_v1.0"):
+        #     dataset = task.get_dataset(split=data_split)
+        #     if args.dataset_type == "geobench_eurosat":
+        #         if "eurosat" in str(dataset.dataset_dir):
+        #             break
+        #     elif args.dataset_type == "geobench_bigearthnet":
+        #         if "bigearthnet" in str(dataset.dataset_dir):
+        #             break
 
         data_json = dataset.dataset_dir / "band_stats.json"
         norms = []
@@ -2509,34 +2516,33 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
         ):
             norms_1, norms_3 = norms[1], norms[3]
             norms[1], norms[3] = norms_3, norms_1
-            del norms[12]
-            del stds[12]
-            del norms[9]
-            del stds[9]
-            del norms[0]
-            del stds[0]
-        if (
-            (args.model_type == "terrafm" or args.model_type == "croma")
-            and args.dataset_type != "geobench_cattle"
-            and args.dataset_type != "geobench_pv"
-            and args.dataset_type != "geobench_chesapeake"
+            if args.dataset_type == "geobench_eurosat":
+                del norms[12]
+                del stds[12]
+                del norms[9]
+                del stds[9]
+                del norms[0]
+                del stds[0]
+            elif args.dataset_type == "geobench_bigearthnet":
+                del norms[9]
+                del stds[9]
+                del norms[0]
+                del stds[0]
+        if (args.model_type == "terrafm" or args.model_type == "croma") and (
+            args.dataset_type == "geobench_crop"
+            or args.dataset_type == "geobench_cashew"
         ):
             del norms[12]
             del stds[12]
-        if (
-            args.model_type == "copernicusfm"
-            and args.dataset_type != "geobench_cattle"
-            and args.dataset_type != "geobench_pv"
-            and args.dataset_type != "geobench_chesapeake"
-        ):
-            del norms[11]
-            del stds[11]
             del norms[10]
             del stds[10]
-            del norms[9]
-            del stds[9]
-            del norms[0]
-            del stds[0]
+        if args.model_type == "copernicusfm" and (
+            args.dataset_type == "geobench_crop"
+            or args.dataset_type == "geobench_cashew"
+        ):
+            del norms[12]
+            del stds[12]
+        #     continue
 
         normalize = K.Normalize(tuple(norms), tuple(stds))
         # if args.dataset_type == "geobench_chesapeake":
@@ -2585,34 +2591,36 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
         #         ),  # type: ignore
         #     )
 
-        # transforms_train = K.AugmentationSequential(
-        #     # K.RandomResizedCrop(size=(args.input_size, args.input_size), scale=(0.5, 1.0)),
-        #     K.RandomCrop(size=(args.input_size, args.input_size)),
-        #     K.RandomHorizontalFlip(p=0.5),
-        #     K.RandomVerticalFlip(p=0.5),
-        #     normalize,
-        #     data_keys=["input", "mask"],
-        # )
-        # transforms_test = K.AugmentationSequential(
-        #     K.Resize(size=(args.input_size, args.input_size)),
-        #     normalize,
-        #     data_keys=["input", "mask"],
-        # )
-
-        # classification
         transforms_train = K.AugmentationSequential(
             # K.RandomResizedCrop(size=(args.input_size, args.input_size), scale=(0.5, 1.0)),
             K.RandomCrop(size=(args.input_size, args.input_size)),
             K.RandomHorizontalFlip(p=0.5),
             K.RandomVerticalFlip(p=0.5),
             normalize,
-            data_keys=["input"],
+            data_keys=["input", "mask"],
         )
         transforms_test = K.AugmentationSequential(
             K.Resize(size=(args.input_size, args.input_size)),
             normalize,
-            data_keys=["input"],
+            data_keys=["input", "mask"],
         )
+
+        # classification
+        # transforms_train = K.AugmentationSequential(
+        #     K.RandomResizedCrop(
+        #         size=(args.input_size, args.input_size), scale=(0.5, 1.0)
+        #     ),
+        #     K.RandomCrop(size=(args.input_size, args.input_size)),
+        #     K.RandomHorizontalFlip(p=0.5),
+        #     K.RandomVerticalFlip(p=0.5),
+        #     normalize,
+        #     data_keys=["input"],
+        # )
+        # transforms_test = K.AugmentationSequential(
+        #     K.Resize(size=(args.input_size, args.input_size)),
+        #     normalize,
+        #     data_keys=["input"],
+        # )
 
         if data_split == "train":
             dataset = GeoBenchDataset(dataset, transforms_train)

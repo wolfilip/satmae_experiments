@@ -31,6 +31,10 @@ from torchmetrics import Accuracy, F1Score, JaccardIndex, Metric
 import util.lr_sched as lr_sched
 import util.misc as misc
 from util.misc import NativeScalerWithGradNormCount as NativeScaler
+from torchmetrics.functional.classification import (
+    multilabel_average_precision,
+    multilabel_f1_score,
+)
 
 # from util.visualize_features import visualize_features
 
@@ -500,7 +504,7 @@ def train_one_epoch_segmentation(
             if args.dataset_type == "loveda" or args.dataset_type == "vaihingen" or args.dataset_type == "potsdam":  # type: ignore
                 mask = mask.squeeze(1)
 
-            if args.dataset_type != "isaid" and args.dataset_type != "geobench_eurosat":  # type: ignore
+            if args.dataset_type != "isaid" and args.dataset_type != "geobench_eurosat" and args.dataset_type != "geobench_bigearthnet":  # type: ignore
                 mask_one_hot = F.one_hot(mask, num_classes=args.nb_classes).permute(  # type: ignore
                     0, 3, 1, 2
                 )
@@ -509,7 +513,9 @@ def train_one_epoch_segmentation(
             if args.dataset_type == "sen1floods11" or args.dataset_type == "isaid":  # type: ignore
                 loss_value = get_bce_loss_ignore(pred, mask)
             elif args.dataset_type == "geobench_eurosat":  # type: ignore
-                loss_value = F.cross_entropy(pred, mask.long())
+                loss_value = F.cross_entropy(pred, mask.float())
+            elif args.dataset_type == "geobench_bigearthnet":
+                loss_value = F.binary_cross_entropy_with_logits(pred, mask.float())
             else:
                 loss_value = get_bce_loss(pred, mask_one_hot.float())
             # print(loss_value)
@@ -595,6 +601,17 @@ def train_one_epoch_segmentation(
 @torch.no_grad()
 def evaluate(data_loader, model, device):
     criterion = torch.nn.CrossEntropyLoss()
+    # oa = Accuracy(
+    #     task="multiclass",
+    #     num_classes=43,
+    #     average="micro",
+    # ).to(device)
+
+    f1_score = F1Score(
+        task="multilabel",
+        num_labels=43,
+        average="micro",
+    ).to(device)
 
     metric_logger = misc.MetricLogger(delimiter="  ")
     header = "Test:"
@@ -613,20 +630,40 @@ def evaluate(data_loader, model, device):
         # compute output
         with torch.amp.autocast("cuda"):  # type: ignore
             output, _ = model(images)
-            loss = criterion(output, target)
+            loss = criterion(output, target.float())
 
-        acc1, acc5 = accuracy(output, target, topk=(1, 5))
+        # acc1, acc5 = accuracy(output, target, topk=(1, 5))
+        score = torch.sigmoid(output)
+        # acc1 = oa(output, target.float()) * 100
+        # f1 = f1_score(output, target.float()) * 100
+        # score = torch.sigmoid(output).detach()
+        # target = F.one_hot(target, num_classes=10)
+        # acc1 = (
+        #     multilabel_average_precision(score, target, num_labels=10, average="micro")
+        #     * 100
+        # )
         # print(acc1, acc5, flush=True)
+
+        acc1 = (
+            multilabel_average_precision(score, target, num_labels=43, average="micro")
+            * 100
+        )
+        acc5 = multilabel_f1_score(score, target, num_labels=43, average="micro") * 100
+        f1 = f1_score(score, target.float()) * 100
 
         batch_size = images.shape[0]
         metric_logger.update(loss=loss.item())
         metric_logger.meters["acc1"].update(acc1.item(), n=batch_size)
         metric_logger.meters["acc5"].update(acc5.item(), n=batch_size)
+        metric_logger.meters["f1"].update(f1.item(), n=batch_size)
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
     print(
-        "* Acc@1 {top1.global_avg:.3f} Acc@5 {top5.global_avg:.3f} loss {losses.global_avg:.3f}".format(
-            top1=metric_logger.acc1, top5=metric_logger.acc5, losses=metric_logger.loss
+        "* Acc@1 {top1.global_avg:.3f} Acc@5 {top5.global_avg:.3f} loss {losses.global_avg:.3f} F1 {f1.global_avg:.3f}".format(
+            top1=metric_logger.acc1,
+            top5=metric_logger.acc5,
+            losses=metric_logger.loss,
+            f1=metric_logger.f1,
         )
     )
 
@@ -881,11 +918,14 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
             ):
                 mask = mask.squeeze(1)
 
-            if args.dataset_type != "geobench_eurosat":  # type: ignore
+            if args.dataset_type != "geobench_eurosat" and args.dataset_type != "geobench_bigearthnet":  # type: ignore
                 mask_one_hot = F.one_hot(mask, num_classes=args.nb_classes).permute(
                     0, 3, 1, 2
                 )
-            if args.dataset_type == "geobench_eurosat":
+            if (
+                args.dataset_type == "geobench_eurosat"
+                or args.dataset_type == "geobench_bigearthnet"
+            ):
                 loss = F.cross_entropy(pred, mask.long())
             else:
                 loss = get_bce_loss(pred, mask_one_hot.float())
@@ -899,6 +939,7 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
                 and args.dataset_type != "sen1floods11"
                 and args.dataset_type != "mass_roads"
                 and args.dataset_type != "geobench_eurosat"
+                and args.dataset_type != "geobench_bigearthnet"
             ):
                 miou_metric_2.update(pred.argmax(1), mask)
                 # miou_metric_3.update(pred.argmax(1), mask)

@@ -29,18 +29,13 @@ class PretrainedCROMA(nn.Module):
         ), f"pretrained_path must be a string, not {type(pretrained_path)}"
         assert type(size) == str, f"size must be a string, not {type(size)}"
         assert type(modality) == str, f"modality must be a string, not {type(modality)}"
-        assert (
-            type(image_resolution) == int
-        ), f"image_resolution must be an int, not {type(image_resolution)}"
 
         # check values
         assert size in [
             "base",
             "large",
         ], f"size must be either base or large, not {size}"
-        assert (
-            image_resolution % 8 == 0
-        ), f"image_resolution must be a multiple of 8, not {image_resolution}"
+
         assert modality in [
             "both",
             "SAR",
@@ -70,8 +65,11 @@ class PretrainedCROMA(nn.Module):
             self.patch_size = 8
 
         self.modality = modality
-        self.num_patches = int((image_resolution / 8) ** 2)
-        self.num_patches_unroll = int(image_resolution / 8)
+        self.image_resolution = image_resolution
+        if image_resolution == 500:
+            self.image_resolution = 496
+        self.num_patches = int((self.image_resolution / 8) ** 2)
+        self.num_patches_unroll = int(self.image_resolution / 8)
         # self.s1_channels = 2  # fixed at 2 SAR backscatter channels
         self.s2_channels = 12  # fixed at 12 multispectral optical channels
         self.attn_bias = get_2dalibi(
@@ -152,7 +150,7 @@ class PretrainedCROMA(nn.Module):
         #         torch.load(pretrained_path)["joint_encoder"]
         #     )
 
-    def forward_croma(self, SAR_images=None, optical_images=None):
+    def forward_croma(self, optical_images=None):
         # return_dict = {}
         # if self.modality in ["SAR", "both"]:
         #     assert (
@@ -166,18 +164,14 @@ class PretrainedCROMA(nn.Module):
         #     return_dict["SAR_GAP"] = SAR_GAP
 
         with torch.no_grad():
-            if self.modality in ["optical", "both"]:
-                assert (
-                    optical_images is not None
-                ), f"Modality is set to {self.modality}, but optical_images are None"
-
+            if optical_images.shape[-1] == 500:
                 optical_images = F.interpolate(
-                    optical_images, size=120, mode="bilinear", align_corners=True
+                    optical_images, size=496, mode="bilinear", align_corners=True
                 )
-                optical_encodings = self.s2_encoder(
-                    imgs=optical_images,
-                    attn_bias=self.attn_bias.to(optical_images.device),
-                )  # (bsz, num_patches, encoder_dim)
+            optical_encodings = self.s2_encoder(
+                imgs=optical_images,
+                attn_bias=self.attn_bias.to(optical_images.device),
+            )  # (bsz, num_patches, encoder_dim)
             # optical_GAP = self.GAP_FFN_s2(
             #     optical_encodings.mean(dim=1)
             # )  # (bsz, encoder_dim)
@@ -247,20 +241,33 @@ class PretrainedCROMA(nn.Module):
 
         x = self.upernet_head(new_features)
 
-        x = F.interpolate(x, size=128, mode="bilinear", align_corners=False)
+        x = F.interpolate(
+            x, size=self.image_resolution, mode="bilinear", align_corners=False
+        )
         return x
 
     def forward(self, x):
 
-        x = torch.cat(
-            [
-                torch.zeros_like(x[:, :1]),  # zero channel at index 0
-                x[:, :9],  # original channels 0-8
-                torch.zeros_like(x[:, :1]),  # zero channel at index 9
-                x[:, 9:],  # original channels 9 (and 10 if present)
-            ],
-            dim=1,
-        )
+        if x.shape[1] == 11:
+            x = F.pad(x, (0, 0, 0, 0, 0, 1), "constant", 0)
+        elif x.shape[1] == 3:
+            x = torch.cat(
+                [
+                    torch.zeros_like(x[:, :1]),  # zero channel at index 0
+                    x[:, :4],
+                ],
+                dim=1,
+            )
+            x = F.pad(x, (0, 0, 0, 0, 0, 8), "constant", 0)
+        elif x.shape[1] == 4:
+            x = torch.cat(
+                [
+                    torch.zeros_like(x[:, :1]),  # zero channel at index 0
+                    x[:, :5],
+                ],
+                dim=1,
+            )
+            x = F.pad(x, (0, 0, 0, 0, 0, 7), "constant", 0)
 
         features = self.forward_croma(optical_images=x)
         output = self.decoder_upernet(features)

@@ -47,11 +47,17 @@ class CopernicusFM(nn.Module):
             self.do_interpolation = True
 
         if args.dataset_type == "geobench_eurosat" or args.dataset_type == "rgb":
+            print(self.feat_extr.head)
             self.task = "classification"
             # self.classifier = LinearClassifier(
             #     self.embed_dim, self.num_patches, self.num_patches, args.nb_classes
             # )
-            self.classification_head = nn.Linear(self.embed_dim, args.nb_classes)
+            # self.classification_head = nn.Linear(self.embed_dim, args.nb_classes)
+            self.classification_head = nn.Sequential(
+                nn.BatchNorm1d(self.feat_extr.head.in_features, affine=False, eps=1e-6),
+                self.feat_extr.head,
+            )
+
         else:
             self.task = "segmentation"
 
@@ -138,10 +144,12 @@ class CopernicusFM(nn.Module):
         elif x.shape[1] == 4:
             wvs = [490, 560, 665, 705]
             bws = [65, 35, 30, 15]
+        elif x.shape[1] == 12:
+            wvs = [443, 490, 560, 665, 705, 740, 783, 842, 865, 945, 1375, 1610]
+            bws = [20, 65, 35, 30, 15, 15, 20, 115, 20, 20, 30, 90]
         else:
-            wvs = [490, 560, 665, 705, 740, 783, 842, 865, 2190]
-            bws = [65, 35, 30, 15, 15, 20, 115, 20, 180]
-
+            wvs = [443, 490, 560, 665, 705, 740, 783, 842, 865, 945, 1375, 1610, 2190]
+            bws = [20, 65, 35, 30, 15, 15, 20, 115, 20, 20, 30, 90, 180]
         features = self.feat_extr(
             x, meta, wvs, bws, language_embed, input_mode, kernel_size
         )
@@ -186,7 +194,7 @@ class CopernicusFM(nn.Module):
         ######## LIFT ###########
 
         # x = self.encoder_forward(x)
-        # x = self.decoder_upernet(features[1])
+        x = self.decoder_upernet(features[1])
         # new_features = []
 
         # new_features.append(
@@ -216,7 +224,7 @@ class CopernicusFM(nn.Module):
         # x = self.upernet_head(new_features)
         # x = F.interpolate(x, size=self.input_size, mode="bilinear", align_corners=False)
 
-        x = self.classification_head(features[0])
+        # x = self.classification_head(features[0])
         # x = self.decoder_linear(features[-1], conv_embeds)
 
         # x = self.decoder_upernet(x[1])
