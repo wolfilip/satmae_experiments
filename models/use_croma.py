@@ -67,9 +67,9 @@ class PretrainedCROMA(nn.Module):
         self.modality = modality
         self.image_resolution = image_resolution
         if image_resolution == 500:
-            self.image_resolution = 496
-        self.num_patches = int((self.image_resolution / 8) ** 2)
-        self.num_patches_unroll = int(self.image_resolution / 8)
+            image_resolution = 496
+        self.num_patches = int((image_resolution / 8) ** 2)
+        self.num_patches_unroll = int(image_resolution / 8)
         # self.s1_channels = 2  # fixed at 2 SAR backscatter channels
         self.s2_channels = 12  # fixed at 12 multispectral optical channels
         self.attn_bias = get_2dalibi(
