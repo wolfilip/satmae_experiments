@@ -260,28 +260,22 @@ class DINOv2Segmenter(nn.Module):
         # layer = self.layer_num[0] # TODO: make it a list
         # layers = []
         # if self.do_interpolation:
-        # if imgs.shape[-1] == 500:
-        #     imgs = F.interpolate(
-        #         imgs, size=512, mode="bilinear", align_corners=True
-        #     )
+        if imgs.shape[-1] == 500:
+            imgs = F.interpolate(imgs, size=490, mode="bilinear", align_corners=True)
         # elif imgs.shape[-1] == 512 or imgs.shape[-1] == 500:
         #     imgs = F.interpolate(
         #         imgs, size=504, mode="bilinear", align_corners=True
         #     )
         if imgs.shape[-1] == 64:
             imgs = F.interpolate(imgs, size=56, mode="bilinear", align_corners=True)
-        # elif imgs.shape[-1] == 256:
-        #     imgs = F.interpolate(
-        #         imgs, size=252, mode="bilinear", align_corners=True
-        #     )
+        elif imgs.shape[-1] == 256:
+            imgs = F.interpolate(imgs, size=252, mode="bilinear", align_corners=True)
         # elif imgs.shape[-1] == 1500:
         #     imgs = F.interpolate(
         #         imgs, size=1498, mode="bilinear", align_corners=True
         #     )
-        # if imgs.shape[-1] == 320:
-        #     imgs = F.interpolate(
-        #         imgs, size=308, mode="bilinear", align_corners=True
-        #     )
+        if imgs.shape[-1] == 320:
+            imgs = F.interpolate(imgs, size=308, mode="bilinear", align_corners=True)
 
         with torch.no_grad():
             if self.task == "classification":
@@ -500,7 +494,7 @@ class DINOv2Segmenter(nn.Module):
         ######## LIFT ###########
 
         # x = self.encoder_forward(x)
-        # x = self.decoder_upernet_conv(features, conv_embeds)
+        x = self.decoder_upernet(features, conv_embeds)
         # new_features = []
 
         # new_features.append(
@@ -530,7 +524,7 @@ class DINOv2Segmenter(nn.Module):
         # x = self.upernet_head(new_features)
         # x = F.interpolate(x, size=self.input_size, mode="bilinear", align_corners=False)
 
-        x = self.classification_head(features)
+        # x = self.classification_head(features)
         # x = self.decoder_linear(features[-1], conv_embeds)
 
         # x = self.decoder_upernet(x[1])

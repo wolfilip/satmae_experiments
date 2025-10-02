@@ -775,21 +775,21 @@ class GeoBenchDataset(Dataset):
             band_list = [0, 1, 2, 3]
         elif len(sample.bands) == 3:
             band_list = [0, 1, 2]
-        # else:
-        #     band_list = [1, 2, 3, 4, 5, 6, 7, 8, 10, 11]
+        else:
+            band_list = [1, 2, 3, 4, 5, 6, 7, 8, 10, 11]
         # else:
         #     band_list = [1, 2, 3, 4, 5, 6, 7, 8, 12]
         # else:
         #     band_list = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
-        else:
-            band_list = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11]
+        # else:
+        #     band_list = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11]
 
         for i, band in enumerate(sample.bands):
             if i in band_list:
                 image.append(torch.from_numpy(band.data))
 
-        # if len(image) > 4:
-        #     image[:3] = [image[2], image[1], image[0]]
+        if len(image) > 4:
+            image[:3] = [image[2], image[1], image[0]]
 
         image = torch.stack(image, dim=0)
         image_rgb = image[:3]
@@ -1089,9 +1089,9 @@ class Sen1Floods11Dataset(Dataset):
         # s2_image_ms = torch.from_numpy(s2_image).float()[
         #     [1, 2, 3, 4, 5, 6, 7, 8, 11, 12]
         # ]
-        # s2_image_ms = torch.from_numpy(s2_image).float()[
-        #     [3, 2, 1, 4, 5, 6, 7, 8, 11, 12]
-        # ]
+        s2_image_ms = torch.from_numpy(s2_image).float()[
+            [3, 2, 1, 4, 5, 6, 7, 8, 11, 12]
+        ]
         # s1_image = torch.from_numpy(s1_image).float()
         # ratio_band = s1_image[:1, :, :] / (s1_image[1:, :, :] + 1e-10)
         # ratio_band = torch.clamp(ratio_band, max=1e4, min=-1e4)
@@ -2472,7 +2472,10 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
     elif "geobench" in args.dataset_type:
         if data_split == "val":
             data_split = "valid"
-        for task in geobench.task_iterator(benchmark_name="segmentation_v1.0"):
+        for task in geobench.task_iterator(
+            benchmark_name="segmentation_v1.0",
+            benchmark_dir="/storage/local/ssd/filipwolf-workspace/geobench/segmentation_v1.0/",
+        ):
             dataset = task.get_dataset(split=data_split)
             if args.dataset_type == "geobench_crop":
                 if "crop" in str(dataset.dataset_dir):
@@ -2524,6 +2527,13 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
                 del norms[0]
                 del stds[0]
             elif args.dataset_type == "geobench_bigearthnet":
+                del norms[9]
+                del stds[9]
+                del norms[0]
+                del stds[0]
+            else:
+                del norms[12]
+                del stds[12]
                 del norms[9]
                 del stds[9]
                 del norms[0]
