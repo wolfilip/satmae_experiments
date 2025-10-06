@@ -15,7 +15,7 @@ nb_classes: 2
 output_dir: satmae_experiments/outputs/
 log_dir: satmae_experiments/logs/
 finetune: /home/filip/pretrained_weights/simdino_checkpoints/swin_t_ms_fmow_50k_50e_dinov3p34c_rgb_head_dconv_aug.pth
-wandb: dl4rs-experiments
+# wandb: dl4rs-experiments
 eval: false
 dist_eval: true
 num_workers: 10
