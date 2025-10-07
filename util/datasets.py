@@ -674,84 +674,30 @@ class PASTIS(Dataset):
         )
         output = {"label": label, "name": name}
 
-        for modality in self.modalities:
-            if modality == "aerial":
-                with rasterio.open(
+        modality_name = "s2"
+        images = split_image(
+            torch.from_numpy(
+                np.load(
                     os.path.join(
-                        self.root_path,
-                        "DATA_SPOT/PASTIS_SPOT6_RVB_1M00_2019/SPOT6_RVB_1M00_2019_"
-                        + str(name)
-                        + ".tif",
+                        self.path,
+                        "DATA_{}".format(modality_name.upper()),
+                        "{}_{}.npy".format(modality_name.upper(), name),
                     )
-                ) as f:
-                    output["aerial"] = split_image(
-                        torch.FloatTensor(f.read()), self.nb_split, part
-                    )
-            elif modality == "s2-median":
-                modality_name = "s2"
-                images = split_image(
-                    torch.from_numpy(
-                        np.load(
-                            os.path.join(
-                                self.path,
-                                "DATA_{}".format(modality_name.upper()),
-                                "{}_{}.npy".format(modality_name.upper(), name),
-                            )
-                        )
-                    ),
-                    self.nb_split,
-                    part,
-                ).to(torch.float32)
-                out, _ = torch.median(images, dim=0)
-                output[modality_name], output["label"] = self.transform(
-                    out.float(), output["label"].unsqueeze(0).unsqueeze(0).float()
                 )
-            else:
-                if len(modality) > 3:
-                    modality_name = modality[:2] + modality[3]
-                    output[modality] = split_image(
-                        torch.from_numpy(
-                            np.load(
-                                os.path.join(
-                                    self.root_path,
-                                    "DATA_{}".format(modality_name.upper()),
-                                    "{}_{}.npy".format(modality_name.upper(), name),
-                                )
-                            )
-                        ),
-                        self.nb_split,
-                        part,
-                    )
-                    output["_".join([modality, "dates"])] = prepare_dates(
-                        line["-".join(["dates", modality_name.upper()])],
-                        self.reference_date,
-                    )
-                else:
-                    output[modality] = split_image(
-                        torch.from_numpy(
-                            np.load(
-                                os.path.join(
-                                    self.root_path,
-                                    "DATA_{}".format(modality.upper()),
-                                    "{}_{}.npy".format(modality.upper(), name),
-                                )
-                            )
-                        ),
-                        self.nb_split,
-                        part,
-                    )
-                    output["_".join([modality, "dates"])] = prepare_dates(
-                        line["-".join(["dates", modality.upper()])], self.reference_date
-                    )
-                N = len(output[modality])
-                if N > 50:
-                    random_indices = torch.randperm(N)[:50]
-                    output[modality] = output[modality][random_indices]
-                    output["_".join([modality, "dates"])] = output[
-                        "_".join([modality, "dates"])
-                    ][random_indices]
+            ),
+            self.nb_split,
+            part,
+        ).to(torch.float32)
+        out, _ = torch.median(images, dim=0)
+        output[modality_name], output["label"] = self.transform(
+            out.float(), output["label"].unsqueeze(0).unsqueeze(0).float()
+        )
 
-        return output["s2"].squeeze(0), output["label"].squeeze(0).squeeze(0).long()
+        return (
+            output["s2"].squeeze(0),
+            # output["s2"].squeeze(0)[[3, 2, 1], :, :],
+            output["label"].squeeze(0).squeeze(0).long(),
+        )
 
     def __len__(self):
         return len(self.meta_patch) * self.nb_split * self.nb_split
@@ -775,6 +721,11 @@ class GeoBenchDataset(Dataset):
             band_list = [0, 1, 2, 3]
         elif len(sample.bands) == 3:
             band_list = [0, 1, 2]
+        elif len(sample.bands) == 6:
+            # RGB + NIR + SWIR1 + SWIR2 (3, 2, 1, 7, 11, 12)
+            band_list = [0, 1, 2, 3, 4, 5]
+        elif len(sample.bands) == 18:
+            band_list = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17]
         else:
             band_list = [1, 2, 3, 4, 5, 6, 7, 8, 10, 11]
         # else:
@@ -792,18 +743,20 @@ class GeoBenchDataset(Dataset):
             image[:3] = [image[2], image[1], image[0]]
 
         image = torch.stack(image, dim=0)
+        image = image / 4095
+        image = np.clip(image, 0, 1)
         image_rgb = image[:3]
-        mask = torch.from_numpy(sample.label.data)
-        # label = sample.label
+        # mask = torch.from_numpy(sample.label.data)
+        label = sample.label
 
-        image, mask = self.transform(
-            image.float(), mask.unsqueeze(0).unsqueeze(0).float()
-        )
-        # image = self.transform(image.float())
+        # image, mask = self.transform(
+        #     image.float(), mask.unsqueeze(0).unsqueeze(0).float()
+        # )
+        image = self.transform(image)
 
-        return image.squeeze(0), image_rgb, mask.squeeze(0).squeeze(0).long()
+        return image.squeeze(0), image_rgb, label
 
-    # label
+    # mask.squeeze(0).squeeze(0).long()
 
 
 class SpaceNetDataset(SatelliteDataset):
@@ -2426,7 +2379,7 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
         else:
             dataset = DIORDataset(dataset_root, data_split, transforms_test)
     elif args.dataset_type == "PASTIS":
-        path = "/home/filip/datasets/PASTIS/PASTIS"
+        path = "/storage/local/ssd/filipwolf-workspace/PASTIS"
         mean = [
             1165.9398193359375,
             1375.6534423828125,
@@ -2472,34 +2425,41 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
     elif "geobench" in args.dataset_type:
         if data_split == "val":
             data_split = "valid"
-        for task in geobench.task_iterator(
-            benchmark_name="segmentation_v1.0",
-            benchmark_dir="/storage/local/ssd/filipwolf-workspace/geobench/segmentation_v1.0/",
-        ):
-            dataset = task.get_dataset(split=data_split)
-            if args.dataset_type == "geobench_crop":
-                if "crop" in str(dataset.dataset_dir):
-                    break
-            elif args.dataset_type == "geobench_cashew":
-                if "cashew" in str(dataset.dataset_dir):
-                    break
-            elif args.dataset_type == "geobench_chesapeake":
-                if "chesapeake" in str(dataset.dataset_dir):
-                    break
-            elif args.dataset_type == "geobench_cattle":
-                if "cattle" in str(dataset.dataset_dir):
-                    break
-            elif args.dataset_type == "geobench_pv":
-                if "pv" in str(dataset.dataset_dir):
-                    break
-        # for task in geobench.task_iterator(benchmark_name="classification_v1.0"):
+        # for task in geobench.task_iterator(
+        #     benchmark_name="segmentation_v1.0",
+        #     benchmark_dir="/storage/local/ssd/filipwolf-workspace/geobench/segmentation_v1.0/",
+        # ):
         #     dataset = task.get_dataset(split=data_split)
-        #     if args.dataset_type == "geobench_eurosat":
-        #         if "eurosat" in str(dataset.dataset_dir):
+        #     if args.dataset_type == "geobench_crop":
+        #         if "crop" in str(dataset.dataset_dir):
         #             break
-        #     elif args.dataset_type == "geobench_bigearthnet":
-        #         if "bigearthnet" in str(dataset.dataset_dir):
+        #     elif args.dataset_type == "geobench_cashew":
+        #         if "cashew" in str(dataset.dataset_dir):
         #             break
+        #     elif args.dataset_type == "geobench_chesapeake":
+        #         if "chesapeake" in str(dataset.dataset_dir):
+        #             break
+        #     elif args.dataset_type == "geobench_cattle":
+        #         if "cattle" in str(dataset.dataset_dir):
+        #             break
+        #     elif args.dataset_type == "geobench_pv":
+        #         if "pv" in str(dataset.dataset_dir):
+        #             break
+        for task in geobench.task_iterator(benchmark_name="classification_v1.0"):
+            dataset = task.get_dataset(split=data_split)
+            if args.dataset_type == "geobench_eurosat":
+                if "eurosat" in str(dataset.dataset_dir):
+                    break
+            elif args.dataset_type == "geobench_bigearthnet":
+                if "bigearthnet" in str(dataset.dataset_dir):
+                    break
+            elif args.dataset_type == "geobench_forestnet":
+                if "forestnet" in str(dataset.dataset_dir):
+                    break
+            elif args.dataset_type == "geobench_so2sat":
+                if "so2sat" in str(dataset.dataset_dir):
+                    break
+        print(dataset.dataset_dir)
 
         data_json = dataset.dataset_dir / "band_stats.json"
         norms = []
@@ -2529,6 +2489,10 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
             elif args.dataset_type == "geobench_bigearthnet":
                 del norms[9]
                 del stds[9]
+                del norms[0]
+                del stds[0]
+            elif args.dataset_type == "geobench_forestnet":
+                # random
                 del norms[0]
                 del stds[0]
             else:
@@ -2601,6 +2565,7 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
         #         ),  # type: ignore
         #     )
 
+        # segmentation
         transforms_train = K.AugmentationSequential(
             # K.RandomResizedCrop(size=(args.input_size, args.input_size), scale=(0.5, 1.0)),
             K.RandomCrop(size=(args.input_size, args.input_size)),
@@ -2616,21 +2581,52 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
         )
 
         # classification
-        # transforms_train = K.AugmentationSequential(
-        #     K.RandomResizedCrop(
-        #         size=(args.input_size, args.input_size), scale=(0.5, 1.0)
-        #     ),
-        #     K.RandomCrop(size=(args.input_size, args.input_size)),
-        #     K.RandomHorizontalFlip(p=0.5),
-        #     K.RandomVerticalFlip(p=0.5),
-        #     normalize,
-        #     data_keys=["input"],
-        # )
-        # transforms_test = K.AugmentationSequential(
-        #     K.Resize(size=(args.input_size, args.input_size)),
-        #     normalize,
-        #     data_keys=["input"],
-        # )
+        if args.dataset_type == "geobench_bigearthnet":
+            transforms_train = K.AugmentationSequential(
+                K.RandomHorizontalFlip(p=0.5),
+                K.RandomVerticalFlip(p=0.5),
+                K.RandomRotation(90),
+                # K.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1),
+                K.Normalize(0.5, 0.5),
+                # K.RandomResizedCrop(
+                #     size=(args.input_size, args.input_size), scale=(0.5, 1.0)
+                # ),
+                # K.RandomCrop(size=(args.input_size, args.input_size)),
+                # K.RandomHorizontalFlip(p=0.5),
+                # K.RandomVerticalFlip(p=0.5),
+                # normalize,
+                data_keys=["input"],
+            )
+            transforms_test = K.AugmentationSequential(
+                K.Resize(size=(args.input_size, args.input_size)),
+                K.Normalize(0.5, 0.5),
+                data_keys=["input"],
+            )
+        elif (
+            args.dataset_type == "geobench_forestnet"
+            or args.dataset_type == "geobench_so2sat"
+        ):
+            transforms_train = K.AugmentationSequential(
+                K.RandomHorizontalFlip(p=0.5),
+                K.RandomVerticalFlip(p=0.5),
+                # K.RandomRotation(90),
+                # K.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1),
+                # K.Normalize(0.5, 0.5),
+                # K.RandomResizedCrop(
+                #     size=(args.input_size, args.input_size), scale=(0.5, 1.0)
+                # ),
+                # K.RandomCrop(size=(args.input_size, args.input_size)),
+                # K.RandomHorizontalFlip(p=0.5),
+                # K.RandomVerticalFlip(p=0.5),
+                K.Normalize(0.5, 0.5),
+                data_keys=["input"],
+            )
+            transforms_test = K.AugmentationSequential(
+                K.Resize(size=(args.input_size, args.input_size)),
+                # K.Normalize(0.5, 0.5),
+                K.Normalize(0.5, 0.5),
+                data_keys=["input"],
+            )
 
         if data_split == "train":
             dataset = GeoBenchDataset(dataset, transforms_train)

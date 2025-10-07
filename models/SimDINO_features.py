@@ -194,6 +194,8 @@ class SimDINO(nn.Module):
             args.dataset_type == "geobench_eurosat"
             or args.dataset_type == "rgb"
             or args.dataset_type == "geobench_bigearthnet"
+            or args.dataset_type == "geobench_forestnet"
+            or args.dataset_type == "geobench_so2sat"
         ):
             self.task = "classification"
             # self.classifier = LinearClassifier(
@@ -314,43 +316,43 @@ class SimDINO(nn.Module):
         return features
 
     def forward_swin_cls(self, x):
-        # with torch.no_grad():
-        if x.shape[1] == 10:
-            x = self.feat_extr.conv_ms(x)
-        else:
-            x = self.feat_extr.conv_rgb(x)
-        for layer in self.feat_extr.features:
-            # for i, layer_ms in enumerate(
-            #     self.feat_extr.ms_process.features
-            # ):
-            #     x = layer_ms(x)
-            # x = self.feat_extr.ms_process.norm(x)
-            # x = self.feat_extr.proj_ms(x)
-            # x = x.permute(0, 3, 1, 2)
-            # x = F.interpolate(
-            #     x, size=(56, 56), mode="bilinear", align_corners=False
-            # )
-            # x = x.permute(0, 2, 3, 1)
-            # for i, layer_rgb in enumerate(
-            #     self.feat_extr.rgb_process.features
-            # ):
-            #     x = layer_rgb(x)
-            # x = self.feat_extr.rgb_process.norm(x)
-            # x = self.feat_extr.proj_rgb(x)
-            # x = x.permute(0, 3, 1, 2)
-            # x = F.interpolate(
-            #     x,
-            #     size=(56, 56),
-            #     mode="bilinear",
-            #     align_corners=False,
-            # )
-            # x = x.permute(0, 2, 3, 1)
-            x = layer(x)
-            # if i in [1, 3, 5, 7]:
-        rgb_data = self.feat_extr.norm(x)
-        rgb_data = self.feat_extr.permute(rgb_data)
-        rgb_data = self.feat_extr.avgpool(rgb_data)
-        rgb_data = self.feat_extr.flatten(rgb_data)
+        with torch.no_grad():
+            if x.shape[1] == 10:
+                x = self.feat_extr.conv_ms(x)
+            else:
+                x = self.feat_extr.conv_rgb(x)
+            for layer in self.feat_extr.features:
+                # for i, layer_ms in enumerate(
+                #     self.feat_extr.ms_process.features
+                # ):
+                #     x = layer_ms(x)
+                # x = self.feat_extr.ms_process.norm(x)
+                # x = self.feat_extr.proj_ms(x)
+                # x = x.permute(0, 3, 1, 2)
+                # x = F.interpolate(
+                #     x, size=(56, 56), mode="bilinear", align_corners=False
+                # )
+                # x = x.permute(0, 2, 3, 1)
+                # for i, layer_rgb in enumerate(
+                #     self.feat_extr.rgb_process.features
+                # ):
+                #     x = layer_rgb(x)
+                # x = self.feat_extr.rgb_process.norm(x)
+                # x = self.feat_extr.proj_rgb(x)
+                # x = x.permute(0, 3, 1, 2)
+                # x = F.interpolate(
+                #     x,
+                #     size=(56, 56),
+                #     mode="bilinear",
+                #     align_corners=False,
+                # )
+                # x = x.permute(0, 2, 3, 1)
+                x = layer(x)
+                # if i in [1, 3, 5, 7]:
+            # rgb_data = self.feat_extr.norm(x)
+            rgb_data = self.feat_extr.permute(x)
+            rgb_data = self.feat_extr.avgpool(rgb_data)
+            rgb_data = self.feat_extr.flatten(rgb_data)
         return rgb_data
 
     def encoder_conv(self, x):
@@ -423,8 +425,19 @@ class SimDINO(nn.Module):
         # if x.shape[1] == 4:
         #     x = F.pad(x, (0, 0, 0, 0, 0, 6), "constant", 0)
 
-        if x.shape[1] == 10:
+        if x.shape[1] == 4:
             x = torch.split(x, [3, x.shape[1] - 3], dim=1)[0]
+
+        if x.shape[1] == 6:
+            x = F.pad(x, (0, 0, 0, 0, 0, 4), "constant", 0)
+            # c0_2 = x[:, 0:3]  # [B,3,H,W] -> c0,c1,c2
+            # c3 = x[:, 3:4]  # [B,1,H,W] -> c3
+            # c4_5 = x[:, 4:6]  # [B,2,H,W] -> c4,c5
+
+            # zeros3 = torch.zeros_like(c0_2)[:, :3]  # [B,3,H,W] three zero channels
+            # zeros1 = torch.zeros_like(c3)
+            # x = torch.cat([c0_2, zeros3, c3, zeros1, c4_5], dim=1)
+            # x = torch.split(x, [3, x.shape[1] - 3], dim=1)[0]
 
         # if not self.ms_backbone and x.shape[1] != 3:
         #     chunks = torch.split(x, [3, 7], dim=1)

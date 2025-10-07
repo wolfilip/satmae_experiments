@@ -319,6 +319,8 @@ def get_args_parser():
             "geobench_pv",
             "geobench_eurosat",
             "geobench_bigearthnet",
+            "geobench_forestnet",
+            "geobench_so2sat",
             "PASTIS",
         ],
         help="Whether to use fmow rgb, sentinel, or other dataset.",
@@ -784,6 +786,8 @@ def main(args):
         elif (
             args.dataset_type == "geobench_eurosat"
             or args.dataset_type == "geobench_bigearthnet"
+            or args.dataset_type == "geobench_forestnet"
+            or args.dataset_type == "geobench_so2sat"
         ):
             test_stats = evaluate(data_loader_val, model, device)
         elif (
@@ -889,7 +893,6 @@ def main(args):
                     loss_scaler,
                     log_writer,
                     args,
-                    mixup_fn,
                     args.clip_grad,
                 )
             else:
@@ -923,6 +926,8 @@ def main(args):
         elif (
             args.dataset_type == "geobench_eurosat"
             or args.dataset_type == "geobench_bigearthnet"
+            or args.dataset_type == "geobench_forestnet"
+            or args.dataset_type == "geobench_so2sat"
         ):
             test_stats = evaluate(data_loader_val, model, device)
         elif (
@@ -972,6 +977,8 @@ def main(args):
             )
             and args.dataset_type != "geobench_eurosat"
             and args.dataset_type != "geobench_bigearthnet"
+            and args.dataset_type != "geobench_forestnet"
+            and args.dataset_type != "geobench_so2sat"
         ):
             # print(
             #     f"mIoU of the network on the {len(dataset_val)} test images: {test_stats['IoU']:.4f}"  # type: ignore
@@ -988,20 +995,37 @@ def main(args):
                     log_writer.add_scalar("perf/val_f1", test_stats["f1"], epoch)
         else:
             print(
-                f"Accuracy of the network on the val images: {test_stats['acc1']:.1f}%"  # type: ignore
+                f"F1 of the network on the val images: {test_stats['f1']:.1f}%"  # type: ignore
             )
-            if test_stats["acc1"] > max_accuracy or epoch == 0:
-                max_accuracy = test_stats["acc1"]
-                print("Saving best model")
-                misc.save_best_model(
-                    args=args,
-                    model=model,
-                    model_without_ddp=model_without_ddp,
-                    optimizer=optimizer,
-                    loss_scaler=loss_scaler,
-                    epoch=epoch,
-                )
-            print(f"Max accuracy: {max_accuracy:.2f}%")
+            if args.dataset_type == "geobench_bigearthnet":
+                if test_stats["f1"] > max_accuracy or epoch == 0:
+                    max_accuracy = test_stats["f1"]
+                    print("Saving best model")
+                    misc.save_best_model(
+                        args=args,
+                        model=model,
+                        model_without_ddp=model_without_ddp,
+                        optimizer=optimizer,
+                        loss_scaler=loss_scaler,
+                        epoch=epoch,
+                    )
+                print(f"Max F1: {max_accuracy:.2f}%")
+            elif (
+                args.dataset_type == "geobench_forestnet"
+                or args.dataset_type == "geobench_so2sat"
+            ):
+                if test_stats["acc1"] > max_accuracy or epoch == 0:
+                    max_accuracy = test_stats["acc1"]
+                    print("Saving best model")
+                    misc.save_best_model(
+                        args=args,
+                        model=model,
+                        model_without_ddp=model_without_ddp,
+                        optimizer=optimizer,
+                        loss_scaler=loss_scaler,
+                        epoch=epoch,
+                    )
+                print(f"Max acc1: {max_accuracy:.2f}%")
 
             if log_writer is not None:
                 log_writer.add_scalar("perf/val_acc1", test_stats["acc1"], epoch)
@@ -1046,6 +1070,8 @@ def main(args):
     if (
         args.dataset_type != "geobench_eurosat"
         and args.dataset_type != "geobench_bigearthnet"
+        and args.dataset_type != "geobench_forestnet"
+        and args.dataset_type != "geobench_so2sat"
     ):
         test_stats, max_iou = evaluate_segmentation(
             data_loader_test, model, device, epoch, max_iou, args

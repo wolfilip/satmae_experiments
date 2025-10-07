@@ -16,7 +16,7 @@ from util.linear_calssifier import LinearClassifier
 from util.pos_embed import get_2d_sincos_pos_embed
 
 
-class VisionTransformer(timm.models.vision_transformer.VisionTransformer):
+class VisionTransformer(timm.models.vision_transformer.VisionTransformer):  # type: ignore
     """Vision Transformer with support for global average pooling"""
 
     def __init__(self, **kwargs):

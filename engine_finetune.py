@@ -14,6 +14,7 @@ from typing import Iterable, Optional
 
 import matplotlib
 import matplotlib.pyplot as plt
+from sklearn.metrics import precision_recall_fscore_support
 
 matplotlib.use("Agg")
 import numpy as np
@@ -369,7 +370,6 @@ def train_one_epoch_segmentation(
     loss_scaler: NativeScaler,
     log_writer,
     args: ArgumentParser,
-    mixup_fn: Optional[Mixup] = None,
     max_norm: float = 1,
 ):
     model.train(True)
@@ -504,7 +504,7 @@ def train_one_epoch_segmentation(
             if args.dataset_type == "loveda" or args.dataset_type == "vaihingen" or args.dataset_type == "potsdam":  # type: ignore
                 mask = mask.squeeze(1)
 
-            if args.dataset_type != "isaid" and args.dataset_type != "geobench_eurosat" and args.dataset_type != "geobench_bigearthnet":  # type: ignore
+            if args.dataset_type != "isaid" and args.dataset_type != "geobench_eurosat" and args.dataset_type != "geobench_bigearthnet" and args.dataset_type != "geobench_forestnet" and args.dataset_type != "geobench_so2sat":  # type: ignore
                 mask_one_hot = F.one_hot(mask, num_classes=args.nb_classes).permute(  # type: ignore
                     0, 3, 1, 2
                 )
@@ -512,8 +512,8 @@ def train_one_epoch_segmentation(
             # if args.dataset_type == "sen1floods11" or args.dataset_type == "isaid" or "geobench" in args.dataset_type
             if args.dataset_type == "sen1floods11" or args.dataset_type == "isaid":  # type: ignore
                 loss_value = get_bce_loss_ignore(pred, mask)
-            elif args.dataset_type == "geobench_eurosat":  # type: ignore
-                loss_value = F.cross_entropy(pred, mask.float())
+            elif args.dataset_type == "geobench_eurosat" or args.dataset_type == "geobench_forestnet" or args.dataset_type == "geobench_so2sat":  # type: ignore
+                loss_value = F.cross_entropy(pred, mask)
             elif args.dataset_type == "geobench_bigearthnet":
                 loss_value = F.binary_cross_entropy_with_logits(pred, mask.float())
             else:
@@ -600,12 +600,12 @@ def train_one_epoch_segmentation(
 
 @torch.no_grad()
 def evaluate(data_loader, model, device):
-    criterion = torch.nn.CrossEntropyLoss()
-    # oa = Accuracy(
-    #     task="multiclass",
-    #     num_classes=43,
-    #     average="micro",
-    # ).to(device)
+    # criterion = torch.nn.CrossEntropyLoss()
+    oa = Accuracy(
+        task="multiclass",
+        num_classes=17,
+        average="micro",
+    ).to(device)
 
     f1_score = F1Score(
         task="multilabel",
@@ -630,12 +630,14 @@ def evaluate(data_loader, model, device):
         # compute output
         with torch.amp.autocast("cuda"):  # type: ignore
             output, _ = model(images)
-            loss = criterion(output, target.float())
+            # loss = criterion(output, target)
 
         # acc1, acc5 = accuracy(output, target, topk=(1, 5))
-        score = torch.sigmoid(output)
-        # acc1 = oa(output, target.float()) * 100
-        # f1 = f1_score(output, target.float()) * 100
+        # score = torch.sigmoid(output) > 0.5
+        if output.shape[-1] == 43:
+            f1_score.update(output, target.float())
+        else:
+            oa.update(output, target.float())
         # score = torch.sigmoid(output).detach()
         # target = F.one_hot(target, num_classes=10)
         # acc1 = (
@@ -644,18 +646,29 @@ def evaluate(data_loader, model, device):
         # )
         # print(acc1, acc5, flush=True)
 
-        acc1 = (
-            multilabel_average_precision(score, target, num_labels=43, average="micro")
-            * 100
-        )
-        acc5 = multilabel_f1_score(score, target, num_labels=43, average="micro") * 100
-        f1 = f1_score(score, target.float()) * 100
+        # acc1 = (
+        #     multilabel_average_precision(score, target, num_labels=43, average="micro")
+        #     * 100
+        # )
+        # acc5 = multilabel_f1_score(score, target, num_labels=43, average="micro") * 100
+        # f1 = f1_score(score, target.float()) * 100
 
-        batch_size = images.shape[0]
-        metric_logger.update(loss=loss.item())
-        metric_logger.meters["acc1"].update(acc1.item(), n=batch_size)
-        metric_logger.meters["acc5"].update(acc5.item(), n=batch_size)
-        metric_logger.meters["f1"].update(f1.item(), n=batch_size)
+        # _, _, f1, _ = precision_recall_fscore_support(
+        #     y_true=target.cpu().numpy(),
+        #     y_pred=score.cpu().numpy(),
+        #     average="micro",
+        #     zero_division=0,
+        # )
+        # f1 = f1 * 100
+
+    metric_logger.update(loss=0)
+    metric_logger.meters["acc5"].update(0)
+    if output.shape[-1] == 43:
+        metric_logger.meters["acc1"].update(0)
+        metric_logger.meters["f1"].update(f1_score.compute().item() * 100)
+    else:
+        metric_logger.meters["acc1"].update(oa.compute().item() * 100)
+        metric_logger.meters["f1"].update(0)
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
     print(
