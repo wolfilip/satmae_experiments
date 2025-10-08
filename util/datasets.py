@@ -743,8 +743,8 @@ class GeoBenchDataset(Dataset):
             image[:3] = [image[2], image[1], image[0]]
 
         image = torch.stack(image, dim=0)
-        image = image / 4095
-        image = np.clip(image, 0, 1)
+        # image = image / 4095
+        # image = np.clip(image, 0, 1)
         image_rgb = image[:3]
         # mask = torch.from_numpy(sample.label.data)
         label = sample.label
@@ -2495,6 +2495,10 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
                 # random
                 del norms[0]
                 del stds[0]
+            elif args.dataset_type == "geobench_so2sat":
+                # random
+                del norms[:8]
+                del stds[:8]
             else:
                 del norms[12]
                 del stds[12]
@@ -2618,13 +2622,15 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
                 # K.RandomCrop(size=(args.input_size, args.input_size)),
                 # K.RandomHorizontalFlip(p=0.5),
                 # K.RandomVerticalFlip(p=0.5),
-                K.Normalize(0.5, 0.5),
+                # K.Normalize(0.5, 0.5),
+                normalize,
                 data_keys=["input"],
             )
             transforms_test = K.AugmentationSequential(
                 K.Resize(size=(args.input_size, args.input_size)),
                 # K.Normalize(0.5, 0.5),
-                K.Normalize(0.5, 0.5),
+                # K.Normalize(0.5, 0.5),
+                normalize,
                 data_keys=["input"],
             )
 
