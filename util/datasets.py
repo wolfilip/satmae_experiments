@@ -746,17 +746,17 @@ class GeoBenchDataset(Dataset):
         # image = image / 4095
         # image = np.clip(image, 0, 1)
         image_rgb = image[:3]
-        # mask = torch.from_numpy(sample.label.data)
-        label = sample.label
+        mask = torch.from_numpy(sample.label.data)
+        # label = sample.label
 
-        # image, mask = self.transform(
-        #     image.float(), mask.unsqueeze(0).unsqueeze(0).float()
-        # )
-        image = self.transform(image)
+        image, mask = self.transform(
+            image.float(), mask.unsqueeze(0).unsqueeze(0).float()
+        )
+        # image = self.transform(image)
 
-        return image.squeeze(0), image_rgb, label
+        return image.squeeze(0), image_rgb, mask.squeeze(0).squeeze(0).long()
 
-    # mask.squeeze(0).squeeze(0).long()
+    # label
 
 
 class SpaceNetDataset(SatelliteDataset):
@@ -2425,40 +2425,40 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
     elif "geobench" in args.dataset_type:
         if data_split == "val":
             data_split = "valid"
-        # for task in geobench.task_iterator(
-        #     benchmark_name="segmentation_v1.0",
-        #     benchmark_dir="/storage/local/ssd/filipwolf-workspace/geobench/segmentation_v1.0/",
-        # ):
-        #     dataset = task.get_dataset(split=data_split)
-        #     if args.dataset_type == "geobench_crop":
-        #         if "crop" in str(dataset.dataset_dir):
-        #             break
-        #     elif args.dataset_type == "geobench_cashew":
-        #         if "cashew" in str(dataset.dataset_dir):
-        #             break
-        #     elif args.dataset_type == "geobench_chesapeake":
-        #         if "chesapeake" in str(dataset.dataset_dir):
-        #             break
-        #     elif args.dataset_type == "geobench_cattle":
-        #         if "cattle" in str(dataset.dataset_dir):
-        #             break
-        #     elif args.dataset_type == "geobench_pv":
-        #         if "pv" in str(dataset.dataset_dir):
-        #             break
-        for task in geobench.task_iterator(benchmark_name="classification_v1.0"):
+        for task in geobench.task_iterator(
+            benchmark_name="segmentation_v1.0",
+            benchmark_dir="/storage/local/ssd/filipwolf-workspace/geobench/segmentation_v1.0/",
+        ):
             dataset = task.get_dataset(split=data_split)
-            if args.dataset_type == "geobench_eurosat":
-                if "eurosat" in str(dataset.dataset_dir):
+            if args.dataset_type == "geobench_crop":
+                if "crop" in str(dataset.dataset_dir):
                     break
-            elif args.dataset_type == "geobench_bigearthnet":
-                if "bigearthnet" in str(dataset.dataset_dir):
+            elif args.dataset_type == "geobench_cashew":
+                if "cashew" in str(dataset.dataset_dir):
                     break
-            elif args.dataset_type == "geobench_forestnet":
-                if "forestnet" in str(dataset.dataset_dir):
+            elif args.dataset_type == "geobench_chesapeake":
+                if "chesapeake" in str(dataset.dataset_dir):
                     break
-            elif args.dataset_type == "geobench_so2sat":
-                if "so2sat" in str(dataset.dataset_dir):
+            elif args.dataset_type == "geobench_cattle":
+                if "cattle" in str(dataset.dataset_dir):
                     break
+            elif args.dataset_type == "geobench_pv":
+                if "pv" in str(dataset.dataset_dir):
+                    break
+        # for task in geobench.task_iterator(benchmark_name="classification_v1.0"):
+        #     dataset = task.get_dataset(split=data_split)
+        #     if args.dataset_type == "geobench_eurosat":
+        #         if "eurosat" in str(dataset.dataset_dir):
+        #             break
+        #     elif args.dataset_type == "geobench_bigearthnet":
+        #         if "bigearthnet" in str(dataset.dataset_dir):
+        #             break
+        #     elif args.dataset_type == "geobench_forestnet":
+        #         if "forestnet" in str(dataset.dataset_dir):
+        #             break
+        #     elif args.dataset_type == "geobench_so2sat":
+        #         if "so2sat" in str(dataset.dataset_dir):
+        #             break
         print(dataset.dataset_dir)
 
         data_json = dataset.dataset_dir / "band_stats.json"
@@ -2472,7 +2472,11 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
                     stds.append(band_stats[band]["std"])
 
         if (
-            (args.model_type == "simdino" or args.model_type == "dinov2_segmentation")
+            (
+                args.model_type == "simdino"
+                or args.model_type == "dinov2_segmentation"
+                or args.model_type == "segmentation"
+            )
             and args.dataset_type != "geobench_cattle"
             and args.dataset_type != "geobench_pv"
             and args.dataset_type != "geobench_chesapeake"
@@ -2598,12 +2602,13 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
                 # K.RandomCrop(size=(args.input_size, args.input_size)),
                 # K.RandomHorizontalFlip(p=0.5),
                 # K.RandomVerticalFlip(p=0.5),
-                # normalize,
+                normalize,
                 data_keys=["input"],
             )
             transforms_test = K.AugmentationSequential(
                 K.Resize(size=(args.input_size, args.input_size)),
                 K.Normalize(0.5, 0.5),
+                normalize,
                 data_keys=["input"],
             )
         elif (

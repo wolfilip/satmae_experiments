@@ -1,6 +1,6 @@
-batch_size: 16
+batch_size: 2
 epochs: 50
-accum_iter: 4
+accum_iter: 1
 visualize_features: false
 lr: 0.0001
 save_images: false
@@ -15,7 +15,7 @@ nb_classes: 2
 output_dir: satmae_experiments/outputs/
 log_dir: satmae_experiments/logs/
 finetune: /home/filip/pretrained_weights/scalemae-vitlarge-800.pth
-wandb: dl4rs-experiments
+# wandb: dl4rs-experiments
 eval: false
 dist_eval: true
 num_workers: 10

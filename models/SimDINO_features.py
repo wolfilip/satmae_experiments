@@ -103,6 +103,17 @@ class SimDINO(nn.Module):
                 Permute([0, 2, 3, 1]),
                 norm_layer_rgb(self.feat_extr.features[0][0].norm1.normalized_shape[0]),
             )
+            self.patch_extract_indices = [0, 2, 4, 6]
+            # create LayerNorms for each extracted patch output and register them
+            ln_modules = []
+            for i in self.patch_extract_indices:
+                try:
+                    ch = self.feat_extr.features[i][0].norm1.normalized_shape[0]
+                except Exception:
+                    # fallback to first feature channel size
+                    ch = self.feat_extr.features[0][0].norm1.normalized_shape[0]
+                ln_modules.append(nn.LayerNorm(ch, eps=1e-5))
+            self.feat_extr.ln_patches = nn.ModuleList(ln_modules)
             # self.feat_extr.proj_rgb = nn.Linear(768, 96)
             # self.feat_extr.ms_process = torchvision_models.__dict__["swin_t"]()
             # self.feat_extr.rgb_process = torchvision_models.__dict__["swin_t"]()
@@ -306,8 +317,9 @@ class SimDINO(nn.Module):
                 # x = x.permute(0, 2, 3, 1)
                 x = layer(x)
                 # if i in [1, 3, 5, 7]:
-                if i in [0, 2, 4, 6]:
-                    features.append(x)
+                if i in self.patch_extract_indices:
+                    pos = self.patch_extract_indices.index(i)
+                    features.append(self.feat_extr.ln_patches[pos](x))
             # rgb_data = self.feat_extr.norm(features[-1])
             # rgb_data = self.feat_extr.permute(rgb_data)
             # rgb_data = self.feat_extr.avgpool(rgb_data)

@@ -5,7 +5,7 @@ visualize_features: false
 lr: 0.0001
 save_images: false
 model_type: croma
-model: swin_t
+model: vit_large_patch16
 input_size: 320
 dataset_type: geobench_pv
 dataset_split: 100

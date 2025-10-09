@@ -71,9 +71,6 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):  # ty
         #     self.embed_dim, self.num_patches, self.num_patches, self.num_classes
         # )
 
-        if self.conv_size > 0:
-            self.up = nn.Upsample(size=(372, 372), mode="bilinear", align_corners=True)
-
         # self.conv = nn.Conv2d(
         #     in_channels=256, out_channels=256, kernel_size=3, stride=2, padding=1
         # )  # 3x3 kernel, stride 2, padding 1
@@ -166,7 +163,7 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):  # ty
             for i, blk in enumerate(self.blocks):
                 x = blk(x)
                 # if i in [3, 11]:
-                if i in [3, 9, 17, 23]:
+                if i in [7, 11, 15, 23]:
                     # if i in [3, 8, 13, 18, 23]:
                     outs.append(x)
 
@@ -252,12 +249,12 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):  # ty
 
     def forward(self, x):
 
-        chunks = torch.split(x, [3, x.shape[1] - 3], dim=1)
+        chunks = torch.split(x, [3, x.shape[1] - 3], dim=1)[0]
 
         conv_embeds = 0
         if self.conv_size > 0:
             conv_embeds = self.encoder_conv(x)
-        features = self.encoder_forward(chunks[0])
+        features = self.encoder_forward(chunks)
         # x = self.decoder_upernet(features, conv_embeds)
         # x = self.encoder_forward(x)
         # print(x.shape, features[0].shape, conv_embeds.shape)
