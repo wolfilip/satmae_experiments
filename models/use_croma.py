@@ -268,7 +268,18 @@ class PretrainedCROMA(nn.Module):
                 dim=1,
             )
             x = F.pad(x, (0, 0, 0, 0, 0, 7), "constant", 0)
-
+        elif x.shape[1] == 13:
+            x = torch.cat([x[:, :10], x[:, 11:]], dim=1)
+        elif x.shape[1] == 10:
+            x = torch.cat(
+                [
+                    torch.zeros_like(x[:, :1]),
+                    x[:, :9],
+                    torch.zeros_like(x[:, :1]),
+                    x[:, 9:],
+                ],
+                dim=1,
+            )
         features = self.forward_croma(optical_images=x)
         output = self.decoder_upernet(features)
 

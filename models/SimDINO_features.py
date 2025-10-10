@@ -107,11 +107,7 @@ class SimDINO(nn.Module):
             # create LayerNorms for each extracted patch output and register them
             ln_modules = []
             for i in self.patch_extract_indices:
-                try:
-                    ch = self.feat_extr.features[i][0].norm1.normalized_shape[0]
-                except Exception:
-                    # fallback to first feature channel size
-                    ch = self.feat_extr.features[0][0].norm1.normalized_shape[0]
+                ch = self.feat_extr.features[i][0].norm1.normalized_shape[0]
                 ln_modules.append(nn.LayerNorm(ch, eps=1e-5))
             self.feat_extr.ln_patches = nn.ModuleList(ln_modules)
             # self.feat_extr.proj_rgb = nn.Linear(768, 96)
@@ -317,9 +313,14 @@ class SimDINO(nn.Module):
                 # x = x.permute(0, 2, 3, 1)
                 x = layer(x)
                 # if i in [1, 3, 5, 7]:
-                if i in self.patch_extract_indices:
-                    pos = self.patch_extract_indices.index(i)
-                    features.append(self.feat_extr.ln_patches[pos](x))
+                if i in [0, 2, 4, 6]:
+                    # if i in self.patch_extract_indices:
+                    #     pos = self.patch_extract_indices.index(i)
+                    #     features.append(self.feat_extr.ln_patches[pos](x))
+                    # else:
+                    features.append(x)
+                    # pos = self.patch_extract_indices.index(i)
+                    # features.append(self.feat_extr.ln_patches[pos](x))
             # rgb_data = self.feat_extr.norm(features[-1])
             # rgb_data = self.feat_extr.permute(rgb_data)
             # rgb_data = self.feat_extr.avgpool(rgb_data)
@@ -462,6 +463,9 @@ class SimDINO(nn.Module):
         # x = self.channel_project(x)
         # x = x.permute(0, 3, 1, 2)
         # print(x.shape)
+
+        if x.shape[1] == 13:
+            x = torch.cat([x[:, 1:4].flip(dims=[1]), x[:, 4:9], x[:, 11:]], dim=1)
 
         # x = self.encoder_forward(x)
         # x = self.decoder_upernet(x, conv_embeds)

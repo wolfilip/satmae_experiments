@@ -726,9 +726,7 @@ def main(args):
     print("accumulate grad iterations: %d" % args.accum_iter)
     print("effective batch size: %d" % eff_batch_size)
 
-    model = DistributedDataParallel(
-        model, device_ids=[global_rank], find_unused_parameters=True
-    )
+    model = DistributedDataParallel(model, device_ids=[global_rank])
     model_without_ddp = model.module
 
     # build optimizer with layer-wise lr decay (lrd)
