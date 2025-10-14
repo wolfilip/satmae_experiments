@@ -249,7 +249,7 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):  # ty
 
     def forward(self, x):
 
-        chunks = torch.split(x, [3, x.shape[1] - 3], dim=1)[0]
+        chunks = x[:, :3].flip(1)
 
         conv_embeds = 0
         if self.conv_size > 0:

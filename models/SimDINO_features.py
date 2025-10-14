@@ -103,13 +103,13 @@ class SimDINO(nn.Module):
                 Permute([0, 2, 3, 1]),
                 norm_layer_rgb(self.feat_extr.features[0][0].norm1.normalized_shape[0]),
             )
-            self.patch_extract_indices = [0, 2, 4, 6]
-            # create LayerNorms for each extracted patch output and register them
-            ln_modules = []
-            for i in self.patch_extract_indices:
-                ch = self.feat_extr.features[i][0].norm1.normalized_shape[0]
-                ln_modules.append(nn.LayerNorm(ch, eps=1e-5))
-            self.feat_extr.ln_patches = nn.ModuleList(ln_modules)
+            # self.patch_extract_indices = [0, 2, 4, 6]
+            # # create LayerNorms for each extracted patch output and register them
+            # ln_modules = []
+            # for i in self.patch_extract_indices:
+            #     ch = self.feat_extr.features[i][0].norm1.normalized_shape[0]
+            #     ln_modules.append(nn.LayerNorm(ch, eps=1e-5))
+            # self.feat_extr.ln_patches = nn.ModuleList(ln_modules)
             # self.feat_extr.proj_rgb = nn.Linear(768, 96)
             # self.feat_extr.ms_process = torchvision_models.__dict__["swin_t"]()
             # self.feat_extr.rgb_process = torchvision_models.__dict__["swin_t"]()
@@ -315,8 +315,8 @@ class SimDINO(nn.Module):
                 # if i in [1, 3, 5, 7]:
                 if i in [0, 2, 4, 6]:
                     # if i in self.patch_extract_indices:
-                    #     pos = self.patch_extract_indices.index(i)
-                    #     features.append(self.feat_extr.ln_patches[pos](x))
+                    # pos = self.patch_extract_indices.index(i)
+                    # features.append(self.feat_extr.ln_patches[pos](x))
                     # else:
                     features.append(x)
                     # pos = self.patch_extract_indices.index(i)
@@ -441,16 +441,16 @@ class SimDINO(nn.Module):
         if x.shape[1] == 4:
             x = torch.split(x, [3, x.shape[1] - 3], dim=1)[0]
 
-        if x.shape[1] == 6:
-            x = F.pad(x, (0, 0, 0, 0, 0, 4), "constant", 0)
-            # c0_2 = x[:, 0:3]  # [B,3,H,W] -> c0,c1,c2
-            # c3 = x[:, 3:4]  # [B,1,H,W] -> c3
-            # c4_5 = x[:, 4:6]  # [B,2,H,W] -> c4,c5
+        # if x.shape[1] == 6:
+        #     x = F.pad(x, (0, 0, 0, 0, 0, 4), "constant", 0)
+        # c0_2 = x[:, 0:3]  # [B,3,H,W] -> c0,c1,c2
+        # c3 = x[:, 3:4]  # [B,1,H,W] -> c3
+        # c4_5 = x[:, 4:6]  # [B,2,H,W] -> c4,c5
 
-            # zeros3 = torch.zeros_like(c0_2)[:, :3]  # [B,3,H,W] three zero channels
-            # zeros1 = torch.zeros_like(c3)
-            # x = torch.cat([c0_2, zeros3, c3, zeros1, c4_5], dim=1)
-            # x = torch.split(x, [3, x.shape[1] - 3], dim=1)[0]
+        # zeros3 = torch.zeros_like(c0_2)[:, :3]  # [B,3,H,W] three zero channels
+        # zeros1 = torch.zeros_like(c3)
+        # x = torch.cat([c0_2, zeros3, c3, zeros1, c4_5], dim=1)
+        # x = torch.split(x, [3, x.shape[1] - 3], dim=1)[0]
 
         # if not self.ms_backbone and x.shape[1] != 3:
         #     chunks = torch.split(x, [3, 7], dim=1)

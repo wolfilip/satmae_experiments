@@ -729,8 +729,11 @@ class GeoBenchDataset(Dataset):
         elif len(sample.bands) == 18:
             band_list = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17]
         else:
-            if self.model_type == "simdino":
-                band_list = [1, 2, 3, 4, 5, 6, 7, 8, 11, 12]
+            if self.model_type == "simdino" or self.model_type == "dinov2_segmentation":
+                if self.dataset == "geobench_crop":
+                    band_list = [1, 2, 3, 4, 5, 6, 7, 8, 10, 11]
+                else:
+                    band_list = [1, 2, 3, 4, 5, 6, 7, 8, 11, 12]
             elif self.model_type == "croma":
                 band_list = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12]
             else:
@@ -746,7 +749,9 @@ class GeoBenchDataset(Dataset):
             if i in band_list:
                 image.append(torch.from_numpy(band.data))
 
-        if len(image) > 4 and self.model_type == "simdino":
+        if len(image) > 4 and (
+            self.model_type == "simdino" or self.model_type == "dinov2_segmentation"
+        ):
             image[:3] = [image[2], image[1], image[0]]
 
         image = torch.stack(image, dim=0)
@@ -2518,6 +2523,13 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
                 del stds[9]
                 del norms[0]
                 del stds[0]
+            elif args.dataset_type == "geobench_crop":
+                del norms[12]
+                del stds[12]
+                del norms[9]
+                del stds[9]
+                del norms[0]
+                del stds[0]
         if args.model_type == "terrafm" and (
             args.dataset_type == "geobench_crop"
             or args.dataset_type == "geobench_cashew"
@@ -2651,15 +2663,15 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
 
         if data_split == "train":
             dataset = GeoBenchDataset(
-                chosen_dataset, transforms_train, task, args.model_type
+                args.dataset_type, transforms_train, task, args.model_type
             )
         elif data_split == "val":
             dataset = GeoBenchDataset(
-                chosen_dataset, transforms_test, task, args.model_type
+                args.dataset_type, transforms_test, task, args.model_type
             )
         else:
             dataset = GeoBenchDataset(
-                chosen_dataset, transforms_test, task, args.model_type
+                args.dataset_type, transforms_test, task, args.model_type
             )
     else:
         raise ValueError(f"Invalid dataset type: {args.dataset_type}")

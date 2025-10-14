@@ -276,6 +276,8 @@ class DINOv2Segmenter(nn.Module):
         #     )
         if imgs.shape[-1] == 320:
             imgs = F.interpolate(imgs, size=308, mode="bilinear", align_corners=True)
+        elif imgs.shape[-1] == 128:
+            imgs = F.interpolate(imgs, size=126, mode="bilinear", align_corners=True)
 
         with torch.no_grad():
             if self.task == "classification":
@@ -445,7 +447,7 @@ class DINOv2Segmenter(nn.Module):
 
     def forward(self, x):
 
-        x = torch.split(x, [3, x.shape[1] - 3], dim=1)[0]
+        x = x[:, :3].flip(1)
 
         conv_embeds = 0
         if self.conv_size > 0:

@@ -6,12 +6,12 @@ lr: 0.01
 save_images: false
 model_type: dinov2_segmentation
 model: base_0
-input_size: 256
-dataset_type: geobench_cashew
+input_size: 128
+dataset_type: PASTIS
 dataset_split: 100
 method_name: dinov2_b
 best_epoch: false
-nb_classes: 7
+nb_classes: 20
 output_dir: satmae_experiments/outputs/
 log_dir: satmae_experiments/logs/
 wandb: dl4rs-experiments
