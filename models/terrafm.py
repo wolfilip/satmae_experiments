@@ -398,13 +398,11 @@ class TerraFM(nn.Module):
         return x
 
     def forward(self, x):
-        outs = []
         x = self.prepare_tokens(x)
-        for i, blk in enumerate(self.blocks):
+        for blk in self.blocks:
             x = blk(x)
-            if i in [3, 5, 8, 11]:
-                outs.append(x[:, 1:])
-        return outs
+        x = self.norm(x)
+        return x[:, 0]
 
     def get_last_selfattention(self, x):
         x = self.prepare_tokens(x)

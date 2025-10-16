@@ -46,17 +46,19 @@ class CopernicusFM(nn.Module):
         if args.input_size % self.patch_size != 0:
             self.do_interpolation = True
 
-        if args.dataset_type == "geobench_eurosat" or args.dataset_type == "rgb":
-            print(self.feat_extr.head)
+        if (
+            args.dataset_type == "geobench_eurosat"
+            or args.dataset_type == "rgb"
+            or args.dataset_type == "geobench_so2sat"
+            or args.dataset_type == "geobench_bigearthnet"
+        ):
+            # print(self.feat_extr.head)
             self.task = "classification"
             # self.classifier = LinearClassifier(
             #     self.embed_dim, self.num_patches, self.num_patches, args.nb_classes
             # )
             # self.classification_head = nn.Linear(self.embed_dim, args.nb_classes)
-            self.classification_head = nn.Sequential(
-                nn.BatchNorm1d(self.feat_extr.head.in_features, affine=False, eps=1e-6),
-                self.feat_extr.head,
-            )
+            self.classification_head = nn.Linear(feature_channels[-1], args.nb_classes)
 
         else:
             self.task = "segmentation"
@@ -148,8 +150,10 @@ class CopernicusFM(nn.Module):
             wvs = [490, 560, 665, 705, 740, 783, 842, 865, 1610, 2190]
             bws = [65, 35, 30, 15, 15, 20, 115, 20, 90, 180]
         elif x.shape[1] == 12:
-            wvs = [443, 490, 560, 665, 705, 740, 783, 842, 865, 945, 1375, 1610]
-            bws = [20, 65, 35, 30, 15, 15, 20, 115, 20, 20, 30, 90]
+            # wvs = [443, 490, 560, 665, 705, 740, 783, 842, 865, 945, 1375, 1610]
+            # bws = [20, 65, 35, 30, 15, 15, 20, 115, 20, 20, 30, 90]
+            wvs = [443, 490, 560, 665, 705, 740, 783, 842, 865, 945, 1610, 2190]
+            bws = [20, 65, 35, 30, 15, 15, 20, 115, 20, 20, 90, 180]
         else:
             wvs = [443, 490, 560, 665, 705, 740, 783, 842, 865, 945, 1375, 1610, 2190]
             bws = [20, 65, 35, 30, 15, 15, 20, 115, 20, 20, 30, 90, 180]
@@ -197,7 +201,8 @@ class CopernicusFM(nn.Module):
         ######## LIFT ###########
 
         # x = self.encoder_forward(x)
-        x = self.decoder_upernet(features[1])
+        x = self.classification_head(features[0])
+        # x = self.decoder_upernet(features[1])
         # new_features = []
 
         # new_features.append(

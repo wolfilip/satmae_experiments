@@ -96,7 +96,12 @@ class DINOv2Segmenter(nn.Module):
         if args.input_size % self.patch_size != 0:
             self.do_interpolation = True
 
-        if args.dataset_type == "geobench_eurosat" or args.dataset_type == "rgb":
+        if (
+            args.dataset_type == "geobench_eurosat"
+            or args.dataset_type == "rgb"
+            or args.dataset_type == "geobench_so2sat"
+            or args.dataset_type == "geobench_bigearthnet"
+        ):
             self.task = "classification"
             # self.classifier = LinearClassifier(
             #     self.embed_dim, self.num_patches, self.num_patches, args.nb_classes
@@ -278,6 +283,10 @@ class DINOv2Segmenter(nn.Module):
             imgs = F.interpolate(imgs, size=308, mode="bilinear", align_corners=True)
         elif imgs.shape[-1] == 128:
             imgs = F.interpolate(imgs, size=126, mode="bilinear", align_corners=True)
+        elif imgs.shape[-1] == 120:
+            imgs = F.interpolate(imgs, size=112, mode="bilinear", align_corners=True)
+        elif imgs.shape[-1] == 32:
+            imgs = F.interpolate(imgs, size=28, mode="bilinear", align_corners=True)
 
         with torch.no_grad():
             if self.task == "classification":
@@ -496,7 +505,8 @@ class DINOv2Segmenter(nn.Module):
         ######## LIFT ###########
 
         # x = self.encoder_forward(x)
-        x = self.decoder_upernet(features, conv_embeds)
+        x = self.classification_head(features)
+        # x = self.decoder_upernet(features, conv_embeds)
         # new_features = []
 
         # new_features.append(

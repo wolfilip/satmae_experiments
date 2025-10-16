@@ -105,37 +105,42 @@ class PretrainedCROMA(nn.Module):
                 depth=self.encoder_depth,
                 in_channels=self.s2_channels,
             )
-            # self.GAP_FFN_s2 = nn.Sequential(
-            #     nn.LayerNorm(self.encoder_dim),
-            #     nn.Linear(
-            #         self.encoder_dim, int(4 * self.encoder_dim)
-            #     ),  # (BSZ, num_patches, inner_dim)
-            #     nn.GELU(),  # (BSZ, num_patches, inner_dim)
-            #     nn.Linear(
-            #         int(4 * self.encoder_dim), self.encoder_dim
-            #     ),  # (BSZ, num_patches, dim)
-            # )
+            self.GAP_FFN_s2 = nn.Sequential(
+                nn.LayerNorm(self.encoder_dim),
+                nn.Linear(
+                    self.encoder_dim, int(4 * self.encoder_dim)
+                ),  # (BSZ, num_patches, inner_dim)
+                nn.GELU(),  # (BSZ, num_patches, inner_dim)
+                nn.Linear(
+                    int(4 * self.encoder_dim), self.encoder_dim
+                ),  # (BSZ, num_patches, dim)
+            )
 
             # load weights
             self.s2_encoder.load_state_dict(torch.load(pretrained_path)["s2_encoder"])
-            # self.GAP_FFN_s2.load_state_dict(torch.load(pretrained_path)["s2_GAP_FFN"])
+            self.GAP_FFN_s2.load_state_dict(torch.load(pretrained_path)["s2_GAP_FFN"])
             self.s2_encoder.eval()
+            self.GAP_FFN_s2.eval()
             for p in self.s2_encoder.parameters():
                 p.requires_grad = False
+            for p in self.GAP_FFN_s2.parameters():
+                p.requires_grad = False
 
-        config = {
-            "pool_scales": [1, 2, 3, 6],
-            "hidden_size": 512,
-            "num_labels": num_labels,
-            "initializer_range": 0.02,
-        }
+        self.classification_head = nn.Linear(self.encoder_dim, num_labels)
 
-        feature_channels = [768, 768, 768, 768]
+        # config = {
+        #     "pool_scales": [1, 2, 3, 6],
+        #     "hidden_size": 512,
+        #     "num_labels": num_labels,
+        #     "initializer_range": 0.02,
+        # }
 
-        self.upernet_head = UperNetHead(config, feature_channels)
+        # feature_channels = [768, 768, 768, 768]
 
-        self.up_1 = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
-        self.up_2 = nn.Upsample(scale_factor=4, mode="bilinear", align_corners=True)
+        # self.upernet_head = UperNetHead(config, feature_channels)
+
+        # self.up_1 = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
+        # self.up_2 = nn.Upsample(scale_factor=4, mode="bilinear", align_corners=True)
 
         # if modality == "both":
         #     print(f"Initializing joint SAR-optical encoder")
@@ -172,9 +177,9 @@ class PretrainedCROMA(nn.Module):
                 imgs=optical_images,
                 attn_bias=self.attn_bias.to(optical_images.device),
             )  # (bsz, num_patches, encoder_dim)
-            # optical_GAP = self.GAP_FFN_s2(
-            #     optical_encodings.mean(dim=1)
-            # )  # (bsz, encoder_dim)
+            optical_GAP = self.GAP_FFN_s2(
+                optical_encodings.mean(dim=1)
+            )  # (bsz, encoder_dim)
             # return_dict["optical_encodings"] = optical_encodings
             # return_dict["optical_GAP"] = optical_GAP
 
@@ -188,7 +193,7 @@ class PretrainedCROMA(nn.Module):
         #     return_dict["joint_encodings"] = joint_encodings
         #     return_dict["joint_GAP"] = joint_GAP
 
-        return optical_encodings
+        return optical_GAP
 
     def decoder_upernet(self, features):
 
@@ -281,7 +286,8 @@ class PretrainedCROMA(nn.Module):
                 dim=1,
             )
         features = self.forward_croma(optical_images=x)
-        output = self.decoder_upernet(features)
+        # output = self.decoder_upernet(features)
+        output = self.classification_head(features)
 
         return output, features
 
@@ -465,19 +471,29 @@ class BaseTransformer(nn.Module):
         if self.final_norm:
             self.norm_out = nn.LayerNorm(dim)
 
+    # def forward(self, x, relative_position_bias=False):
+    #     outputs = []
+    #     for i, layer in enumerate(self.layers):
+    #         self_attn, ffn = layer
+    #         x = self_attn(x, relative_position_bias) + x  # (BSZ, num_patches, dim)
+    #         x = ffn(x) + x  # (BSZ, num_patches, dim)
+    #         if i in [3, 5, 8, 11]:
+    #             outputs.append(x)
+
+    #     # if self.final_norm:
+    #     #     return self.norm_out(x)
+    #     # else:
+    #     return outputs
+
     def forward(self, x, relative_position_bias=False):
-        outputs = []
-        for i, layer in enumerate(self.layers):
-            self_attn, ffn = layer
+        for self_attn, ffn in self.layers:
             x = self_attn(x, relative_position_bias) + x  # (BSZ, num_patches, dim)
             x = ffn(x) + x  # (BSZ, num_patches, dim)
-            if i in [3, 5, 8, 11]:
-                outputs.append(x)
 
-        # if self.final_norm:
-        #     return self.norm_out(x)
-        # else:
-        return outputs
+        if self.final_norm:
+            return self.norm_out(x)
+        else:
+            return x
 
 
 class BaseTransformerCrossAttn(nn.Module):

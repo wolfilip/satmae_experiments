@@ -30,134 +30,21 @@ class TerraFMModel(nn.Module):
 
         self.input_size = (args.input_size, args.input_size)
 
-        config = {
-            "pool_scales": [1, 2, 3, 6],
-            "hidden_size": 512,
-            "num_labels": args.nb_classes,
-            "initializer_range": 0.02,
-        }
+        # config = {
+        #     "pool_scales": [1, 2, 3, 6],
+        #     "hidden_size": 512,
+        #     "num_labels": args.nb_classes,
+        #     "initializer_range": 0.02,
+        # }
 
-        self.upernet_head = UperNetHead(config, feature_channels)
+        # self.upernet_head = UperNetHead(config, feature_channels)
 
-        self.up_1 = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
-        self.up_2 = nn.Upsample(scale_factor=4, mode="bilinear", align_corners=True)
+        # self.up_1 = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
+        # self.up_2 = nn.Upsample(scale_factor=4, mode="bilinear", align_corners=True)
 
-        self.channel_project = nn.Linear(3, 10)  # Define a learnable linear layer
+        # self.channel_project = nn.Linear(3, 10)  # Define a learnable linear layer
 
-        if self.conv_size > 0:
-            if args.dataset_type == "spacenet":
-                self.up = nn.Upsample(
-                    size=(64, 64), mode="bilinear", align_corners=True
-                )
-            elif (
-                args.dataset_type == "sen1floods11"
-                or args.dataset_type == "vaihingen"
-                or args.dataset_type == "potsdam"
-            ):
-                self.up = nn.Upsample(
-                    size=(144, 144), mode="bilinear", align_corners=True
-                )
-            elif args.dataset_type == "isaid":
-                self.up = nn.Upsample(
-                    size=(256, 256), mode="bilinear", align_corners=True
-                )
-            elif args.dataset_type == "mass_roads":
-                self.up = nn.Upsample(
-                    size=(428, 428), mode="bilinear", align_corners=True
-                )
-            # elif  args.dataset_type == "rgb":
-
-        # self.conv = nn.Conv2d(
-        #     in_channels=256, out_channels=256, kernel_size=3, stride=2, padding=1
-        # )  # 3x3 kernel, stride 2, padding 1
-        # self.bn = nn.BatchNorm2d(256)
-        # self.relu = nn.ReLU()
-
-        # self.conv = nn.Conv2d(
-        #     in_channels=32, out_channels=32, kernel_size=3, stride=2, padding=1
-        # )
-        # self.bn = nn.BatchNorm2d(32)
-        # self.relu = nn.ReLU()
-
-        # self.classifier = LinearClassifier(
-        #     self.embed_dim, self.num_patches, self.num_patches, args.nb_classes
-        # )
-
-        if self.conv_size == 32:
-            # Commenting out the original self.conv_layers definition
-            self.conv_layers = nn.Sequential(
-                nn.Conv2d(
-                    in_channels=7, out_channels=16, kernel_size=7, stride=2, padding=3
-                ),
-                nn.BatchNorm2d(16),
-                nn.ReLU(),
-                nn.Conv2d(
-                    in_channels=16, out_channels=32, kernel_size=3, stride=2, padding=1
-                ),
-                nn.BatchNorm2d(32),
-                nn.ReLU(),
-            )
-
-            # Adding the new function to reduce image size by four
-            # self.conv_layers = nn.Sequential(
-            #     nn.Conv2d(
-            #         in_channels=7, out_channels=16, kernel_size=3, stride=2, padding=1
-            #     ),
-            #     nn.BatchNorm2d(16),
-            #     nn.ReLU(),
-            #     nn.Conv2d(
-            #         in_channels=16, out_channels=32, kernel_size=3, stride=2, padding=1
-            #     ),
-            #     nn.BatchNorm2d(32),
-            #     nn.ReLU(),
-            #     nn.Conv2d(
-            #         in_channels=32, out_channels=64, kernel_size=3, stride=2, padding=1
-            #     ),
-            #     nn.BatchNorm2d(64),
-            #     nn.ReLU(),
-            #     nn.Conv2d(
-            #         in_channels=64, out_channels=128, kernel_size=3, stride=2, padding=1
-            #     ),
-            #     nn.BatchNorm2d(128),
-            #     nn.ReLU(),
-            # )
-        elif self.conv_size == 256:
-            self.conv_layers = nn.Sequential(
-                # Conv1: Input [B, 3, 224, 224] -> Output [B, 64, 112, 112]
-                nn.Conv2d(
-                    in_channels=7, out_channels=64, kernel_size=7, stride=2, padding=3
-                ),  # Kernel size 7x7, stride 2, padding 3
-                nn.BatchNorm2d(64),
-                nn.ReLU(),
-                # Conv2: Input [B, 64, 112, 112] -> Output [B, 128, 56, 56]
-                nn.Conv2d(
-                    in_channels=64, out_channels=128, kernel_size=3, stride=2, padding=1
-                ),  # Kernel size 3x3, stride 2, padding 1
-                nn.BatchNorm2d(128),
-                nn.ReLU(),
-                # Conv3: Input [B, 128, 56, 56] -> Output [B, 256, 56, 56]
-                nn.Conv2d(
-                    in_channels=128,
-                    out_channels=256,
-                    kernel_size=3,
-                    stride=1,
-                    padding=1,
-                ),  # Kernel size 3x3, stride 1, padding 1
-                nn.BatchNorm2d(256),
-                nn.ReLU(),
-                # Conv4: Input [B, 256, 56, 56] -> Output [B, 512, 56, 56]
-                # nn.Conv2d(
-                #     in_channels=256, out_channels=512, kernel_size=3, stride=1, padding=1
-                # ),  # Kernel size 3x3, stride 1, padding 1
-                # nn.BatchNorm2d(512),
-                # nn.ReLU(),
-                # Conv5: Input [B, 512, 56, 56] -> Output [B, 1024, 56, 56]
-                # nn.Conv2d(
-                #     in_channels=512, out_channels=1024, kernel_size=3, stride=1, padding=1
-                # ),  # Kernel size 3x3, stride 1, padding 1
-                # nn.BatchNorm2d(1024),
-                # nn.ReLU(),
-            )
+        self.classification_head = nn.Linear(feature_channels[-1], args.nb_classes)
 
     def decoder_upernet(self, features):
 
@@ -203,10 +90,42 @@ class TerraFMModel(nn.Module):
 
     def forward(self, x):
 
-        if x.shape[1] == 3:
-            x = F.pad(x, (0, 0, 0, 0, 0, 9), "constant", 0)
+        if x.shape[1] == 11:
+            x = F.pad(x, (0, 0, 0, 0, 0, 1), "constant", 0)
+        elif x.shape[1] == 3:
+            x = torch.cat(
+                [
+                    torch.zeros_like(x[:, :1]),  # zero channel at index 0
+                    x[:, :4],
+                ],
+                dim=1,
+            )
+            x = F.pad(x, (0, 0, 0, 0, 0, 8), "constant", 0)
+        elif x.shape[1] == 4:
+            x = torch.cat(
+                [
+                    torch.zeros_like(x[:, :1]),  # zero channel at index 0
+                    x[:, :5],
+                ],
+                dim=1,
+            )
+            x = F.pad(x, (0, 0, 0, 0, 0, 7), "constant", 0)
+        elif x.shape[1] == 13:
+            x = torch.cat([x[:, :10], x[:, 11:]], dim=1)
+        elif x.shape[1] == 10:
+            x = torch.cat(
+                [
+                    torch.zeros_like(x[:, :1]),
+                    x[:, :9],
+                    torch.zeros_like(x[:, :1]),
+                    x[:, 9:],
+                ],
+                dim=1,
+            )
 
-        features = self.feat_extr.extract_feature(x)
-        x = self.decoder_upernet(features)
+        # features = self.feat_extr.extract_feature(x)
+        features = self.feat_extr(x)
+        x = self.classification_head(features)
+        # x = self.decoder_upernet(features)
 
         return x, (features, features[-1])

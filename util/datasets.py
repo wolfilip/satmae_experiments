@@ -704,12 +704,20 @@ class PASTIS(Dataset):
 
 
 class GeoBenchDataset(Dataset):
-    def __init__(self, dataset, transform, task="classification", model_type="simdino"):
+    def __init__(
+        self,
+        dataset,
+        dataset_name,
+        transform,
+        task="classification",
+        model_type="simdino",
+    ):
         super().__init__()
 
         self.task = task
         self.transform = transform
         self.dataset = dataset
+        self.dataset_name = dataset_name
         self.model_type = model_type
 
     def __len__(self):
@@ -730,12 +738,22 @@ class GeoBenchDataset(Dataset):
             band_list = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17]
         else:
             if self.model_type == "simdino" or self.model_type == "dinov2_segmentation":
-                if self.dataset == "geobench_crop":
+                if self.dataset_name == "geobench_crop":
                     band_list = [1, 2, 3, 4, 5, 6, 7, 8, 10, 11]
                 else:
                     band_list = [1, 2, 3, 4, 5, 6, 7, 8, 11, 12]
             elif self.model_type == "croma":
-                band_list = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12]
+                if self.dataset_name == "geobench_bigearthnet":
+                    band_list = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+                else:
+                    band_list = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12]
+            elif self.model_type == "terrafm":
+                if self.dataset_name == "geobench_bigearthnet":
+                    band_list = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+                elif self.dataset_name == "geobench_crop":
+                    band_list = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11]
+                else:
+                    band_list = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12]
             else:
                 band_list = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
         # else:
@@ -2504,16 +2522,16 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
                 del norms[0]
                 del stds[0]
             elif args.dataset_type == "geobench_bigearthnet":
+                del norms[10]
+                del stds[10]
                 del norms[9]
                 del stds[9]
                 del norms[0]
                 del stds[0]
             elif args.dataset_type == "geobench_forestnet":
-                # random
                 del norms[0]
                 del stds[0]
             elif args.dataset_type == "geobench_so2sat":
-                # random
                 del norms[:8]
                 del stds[:8]
             elif args.dataset_type == "geobench_cashew":
@@ -2530,21 +2548,37 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
                 del stds[9]
                 del norms[0]
                 del stds[0]
-        if args.model_type == "terrafm" and (
-            args.dataset_type == "geobench_crop"
-            or args.dataset_type == "geobench_cashew"
+        if (
+            args.model_type == "terrafm"
+            and args.dataset_type != "geobench_cattle"
+            and args.dataset_type != "geobench_pv"
+            and args.dataset_type != "geobench_chesapeake"
         ):
-            del norms[12]
-            del stds[12]
-            del norms[10]
-            del stds[10]
-        if args.model_type == "croma" and (
-            args.dataset_type == "geobench_crop"
-            or args.dataset_type == "geobench_cashew"
-        ):
-            del norms[10]
-            del stds[10]
-        #     continue
+            if args.dataset_type == "geobench_crop":
+                del norms[12]
+                del stds[12]
+                del norms[10]
+                del stds[10]
+            elif args.dataset_type == "geobench_cashew":
+                del norms[10]
+                del stds[10]
+            elif args.dataset_type == "geobench_so2sat":
+                del norms[:8]
+                del stds[:8]
+        if args.model_type == "croma":
+            if (
+                args.dataset_type == "geobench_crop"
+                or args.dataset_type == "geobench_cashew"
+            ):
+                del norms[10]
+                del stds[10]
+            elif args.dataset_type == "geobench_so2sat":
+                del norms[:8]
+                del stds[:8]
+        if args.model_type == "copernicusfm":
+            if args.dataset_type == "geobench_so2sat":
+                del norms[:8]
+                del stds[:8]
 
         normalize = K.Normalize(tuple(norms), tuple(stds))
         # if args.dataset_type == "geobench_chesapeake":
@@ -2601,7 +2635,7 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
                 K.RandomVerticalFlip(p=0.5),
                 K.RandomRotation(90),
                 # K.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1),
-                K.Normalize(0.5, 0.5),
+                # K.Normalize(0.5, 0.5),
                 # K.RandomResizedCrop(
                 #     size=(args.input_size, args.input_size), scale=(0.5, 1.0)
                 # ),
@@ -2663,15 +2697,27 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
 
         if data_split == "train":
             dataset = GeoBenchDataset(
-                args.dataset_type, transforms_train, task, args.model_type
+                chosen_dataset,
+                args.dataset_type,
+                transforms_train,
+                task,
+                args.model_type,
             )
         elif data_split == "val":
             dataset = GeoBenchDataset(
-                args.dataset_type, transforms_test, task, args.model_type
+                chosen_dataset,
+                args.dataset_type,
+                transforms_test,
+                task,
+                args.model_type,
             )
         else:
             dataset = GeoBenchDataset(
-                args.dataset_type, transforms_test, task, args.model_type
+                chosen_dataset,
+                args.dataset_type,
+                transforms_test,
+                task,
+                args.model_type,
             )
     else:
         raise ValueError(f"Invalid dataset type: {args.dataset_type}")
