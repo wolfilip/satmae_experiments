@@ -2463,7 +2463,13 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
             dataset = task.get_dataset(split=data_split)
             if args.dataset_type == "geobench_crop":
                 if "crop" in str(dataset.dataset_dir):
-                    chosen_dataset = dataset
+                    if args.dataset_split == "10":
+                        chosen_dataset = task.get_dataset(
+                            split=data_split,
+                            partition_name="0.10x_train",
+                        )
+                    else:
+                        chosen_dataset = dataset
             elif args.dataset_type == "geobench_cashew":
                 if "cashew" in str(dataset.dataset_dir):
                     chosen_dataset = dataset
