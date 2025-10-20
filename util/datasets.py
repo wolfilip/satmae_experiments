@@ -745,6 +745,8 @@ class GeoBenchDataset(Dataset):
             elif self.model_type == "croma":
                 if self.dataset_name == "geobench_bigearthnet":
                     band_list = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+                elif self.dataset_name == "geobench_crop":
+                    band_list = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11]
                 else:
                     band_list = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12]
             elif self.model_type == "terrafm":
@@ -754,6 +756,9 @@ class GeoBenchDataset(Dataset):
                     band_list = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11]
                 else:
                     band_list = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12]
+            elif self.model_type == "copernicusfm":
+                if self.dataset_name == "geobench_crop":
+                    band_list = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
             else:
                 band_list = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
         # else:
@@ -2463,7 +2468,7 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
             dataset = task.get_dataset(split=data_split)
             if args.dataset_type == "geobench_crop":
                 if "crop" in str(dataset.dataset_dir):
-                    if args.dataset_split == "10":
+                    if args.dataset_split == "10" and data_split == "train":
                         chosen_dataset = task.get_dataset(
                             split=data_split,
                             partition_name="0.10x_train",
@@ -2472,7 +2477,13 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
                         chosen_dataset = dataset
             elif args.dataset_type == "geobench_cashew":
                 if "cashew" in str(dataset.dataset_dir):
-                    chosen_dataset = dataset
+                    if args.dataset_split == "10" and data_split == "train":
+                        chosen_dataset = task.get_dataset(
+                            split=data_split,
+                            partition_name="0.10x_train",
+                        )
+                    else:
+                        chosen_dataset = dataset
             elif args.dataset_type == "geobench_chesapeake":
                 if "chesapeake" in str(dataset.dataset_dir):
                     chosen_dataset = dataset
@@ -2572,10 +2583,12 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
                 del norms[:8]
                 del stds[:8]
         if args.model_type == "croma":
-            if (
-                args.dataset_type == "geobench_crop"
-                or args.dataset_type == "geobench_cashew"
-            ):
+            if args.dataset_type == "geobench_crop":
+                del norms[12]
+                del stds[12]
+                del norms[10]
+                del stds[10]
+            elif args.dataset_type == "geobench_cashew":
                 del norms[10]
                 del stds[10]
             elif args.dataset_type == "geobench_so2sat":
@@ -2585,6 +2598,9 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
             if args.dataset_type == "geobench_so2sat":
                 del norms[:8]
                 del stds[:8]
+            elif args.dataset_type == "geobench_crop":
+                del norms[12]
+                del stds[12]
 
         normalize = K.Normalize(tuple(norms), tuple(stds))
         # if args.dataset_type == "geobench_chesapeake":

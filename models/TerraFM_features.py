@@ -30,21 +30,21 @@ class TerraFMModel(nn.Module):
 
         self.input_size = (args.input_size, args.input_size)
 
-        # config = {
-        #     "pool_scales": [1, 2, 3, 6],
-        #     "hidden_size": 512,
-        #     "num_labels": args.nb_classes,
-        #     "initializer_range": 0.02,
-        # }
+        config = {
+            "pool_scales": [1, 2, 3, 6],
+            "hidden_size": 512,
+            "num_labels": args.nb_classes,
+            "initializer_range": 0.02,
+        }
 
-        # self.upernet_head = UperNetHead(config, feature_channels)
+        self.upernet_head = UperNetHead(config, feature_channels)
 
-        # self.up_1 = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
-        # self.up_2 = nn.Upsample(scale_factor=4, mode="bilinear", align_corners=True)
+        self.up_1 = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
+        self.up_2 = nn.Upsample(scale_factor=4, mode="bilinear", align_corners=True)
 
         # self.channel_project = nn.Linear(3, 10)  # Define a learnable linear layer
 
-        self.classification_head = nn.Linear(feature_channels[-1], args.nb_classes)
+        # self.classification_head = nn.Linear(feature_channels[-1], args.nb_classes)
 
     def decoder_upernet(self, features):
 
@@ -123,9 +123,9 @@ class TerraFMModel(nn.Module):
                 dim=1,
             )
 
-        # features = self.feat_extr.extract_feature(x)
-        features = self.feat_extr(x)
-        x = self.classification_head(features)
-        # x = self.decoder_upernet(features)
+        features = self.feat_extr.extract_feature(x)
+        # features = self.feat_extr(x)
+        # x = self.classification_head(features)
+        x = self.decoder_upernet(features)
 
         return x, (features, features[-1])

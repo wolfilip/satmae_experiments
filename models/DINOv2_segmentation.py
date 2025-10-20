@@ -505,8 +505,8 @@ class DINOv2Segmenter(nn.Module):
         ######## LIFT ###########
 
         # x = self.encoder_forward(x)
-        x = self.classification_head(features)
-        # x = self.decoder_upernet(features, conv_embeds)
+        # x = self.classification_head(features)
+        x = self.decoder_upernet(features, conv_embeds)
         # new_features = []
 
         # new_features.append(

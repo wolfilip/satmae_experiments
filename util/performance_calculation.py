@@ -6,10 +6,19 @@ import timeit
 from tqdm import tqdm
 from argparse import ArgumentParser
 
-sys.path.append(".")
 
-from models.DINOv2_segmentation import DINOv2
-from models import models_vit_segmentation
+import sys, os
+
+
+sys.path.append("/home/filip/satmae_experiments")
+
+from ..models import SimDINO_features, models_vit_segmentation
+from .pos_embed import interpolate_pos_embed
+
+
+# from models.SimDINO_features import SimDINO
+# from models.DINOv2_segmentation import DINOv2
+# from models import models_vit_segmentation
 import torch
 
 
@@ -17,11 +26,12 @@ def get_args_parser():
     parser = ArgumentParser("MAE fine-tuning for image classification", add_help=False)
     parser.add_argument(
         "--model",
-        default="base_0",
+        default="swin_b",
         type=str,
         metavar="MODEL",
         help="Name of model to train",
     )
+    parser.add_argument("--finetune", default="", help="finetune from checkpoint")
     parser.add_argument("--input_size", default=224, type=int, help="images input size")
     parser.add_argument(
         "--dataset_type",
@@ -72,31 +82,56 @@ def params():
     print("Total params:", total_params, "Trainable params:", trainable_params)
 
 
-def prepare_image(batched=False):
+def prepare_image(batched=True):
     if batched:
-        img = torch.randn(64, 3, 224, 224, dtype=torch.float16)
+        img = torch.randn(64, 3, 256, 256, dtype=torch.float16)
     else:
-        img = torch.randn(1, 3, 224, 224, dtype=torch.float16)
+        img = torch.randn(1, 3, 256, 256, dtype=torch.float16)
 
     return img
 
 
 def prepare_model(args):
 
-    model = DINOv2(args, "cuda")
+    # model = SimDINO_features.SimDINO(args, "cuda")
 
-    # model = models_vit_segmentation.__dict__[args.model](
-    #     patch_size=16,
-    #     img_size=args.input_size,
-    #     in_chans=3,
-    #     num_classes=args.nb_classes,
-    #     drop_path_rate=0.1,
-    # )
+    model = models_vit_segmentation.__dict__[args.model](
+        patch_size=16,
+        img_size=256,
+        in_chans=3,
+        num_classes=args.nb_classes,
+        drop_path_rate=0.1,
+    )
 
-    # checkpoint = torch.load(
-    #     "../../scale-mae/scalemae-vitlarge-800.pth", map_location="cpu"
-    # )
-    # model.load_state_dict(checkpoint["model"], strict=False)
+    checkpoint = torch.load(args.finetune, map_location="cpu")
+
+    print("Load pre-trained checkpoint from: %s" % args.finetune)
+    checkpoint_model = checkpoint["model"]
+    state_dict = model.state_dict()
+
+    for k in [
+        "pos_embed",
+        "patch_embed.proj.weight",
+        "patch_embed.proj.bias",
+        "head.weight",
+        "head.bias",
+    ]:
+        if k in checkpoint_model and checkpoint_model[k].shape != state_dict[k].shape:
+            print(f"Removing key {k} from pretrained checkpoint")
+            del checkpoint_model[k]
+
+    # interpolate position embedding
+    interpolate_pos_embed(model, checkpoint_model)
+
+    if "cross_scale" in args.finetune:
+        for key in list(checkpoint_model.keys()):
+            checkpoint_model[key.replace("encoder", "blocks")] = checkpoint_model.pop(
+                key
+            )
+
+    # load pre-trained model
+
+    msg = model.load_state_dict(checkpoint_model, strict=False)
 
     model.to("cuda")
     model.to(torch.float16)

@@ -152,6 +152,7 @@ class CopernicusFM(nn.Module):
         elif x.shape[1] == 12:
             # wvs = [443, 490, 560, 665, 705, 740, 783, 842, 865, 945, 1375, 1610]
             # bws = [20, 65, 35, 30, 15, 15, 20, 115, 20, 20, 30, 90]
+            # crop
             wvs = [443, 490, 560, 665, 705, 740, 783, 842, 865, 945, 1610, 2190]
             bws = [20, 65, 35, 30, 15, 15, 20, 115, 20, 20, 90, 180]
         else:
@@ -201,8 +202,8 @@ class CopernicusFM(nn.Module):
         ######## LIFT ###########
 
         # x = self.encoder_forward(x)
-        x = self.classification_head(features[0])
-        # x = self.decoder_upernet(features[1])
+        # x = self.classification_head(features[0])
+        x = self.decoder_upernet(features[1])
         # new_features = []
 
         # new_features.append(
