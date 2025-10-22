@@ -38,10 +38,10 @@ class DINOv2Segmenter(nn.Module):
             )
         if self.model_size == "basev3":
             self.feat_extr = torch.hub.load(
-                "/home/filip/dinov3",
+                "dinov3",
                 "dinov3_vitb16",
                 source="local",
-                weights="https://dinov3.llamameta.net/dinov3_vitb16/dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth?Policy=eyJTdGF0ZW1lbnQiOlt7InVuaXF1ZV9oYXNoIjoiYXc4czlsdTFzOGM5ZmplMXB6eHBqeGtuIiwiUmVzb3VyY2UiOiJodHRwczpcL1wvZGlub3YzLmxsYW1hbWV0YS5uZXRcLyoiLCJDb25kaXRpb24iOnsiRGF0ZUxlc3NUaGFuIjp7IkFXUzpFcG9jaFRpbWUiOjE3NTcxNTgwODl9fX1dfQ__&Signature=YKAeRDd0tWkt3P7E%7ECdPIFpKVzUkrvN%7E3gvWKvuclcNm9LcbDhSSRikDB1R8CS02EuICZL1UPm9R5I7xzobUqUQ-%7EViHdPdaHlcIprbn5coceH8%7E79g0N2FTZ36ssLHl5ptBgClOLRX7gbFLCDMfzVBgmrXAxKEyIvVBkepnfrkkzlE4lSCMAwYjIHNFU84Z-Mc2FE7D7unuXf89NIdihIp0hEZQiVhKs93Cl7mY3Et-cfPXyYH-jjtpGtgeaSGAA5K9dMcp7Wlpaabxs4EitEv%7EFDGCvp8etBuDrZ8SYkDhgr7jIGJ4VEOqWtO6JWZeia9DAqNNcQWcZ-kObnhqBQ__&Key-Pair-Id=K15QRJLYKIFSLZ&Download-Request-ID=1140958134613743",
+                weights="https://dinov3.llamameta.net/dinov3_vitb16/dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth?Policy=eyJTdGF0ZW1lbnQiOlt7InVuaXF1ZV9oYXNoIjoiMWVxcmZxNjN4dm9wYWQ0c2R1aGhub2xsIiwiUmVzb3VyY2UiOiJodHRwczpcL1wvZGlub3YzLmxsYW1hbWV0YS5uZXRcLyoiLCJDb25kaXRpb24iOnsiRGF0ZUxlc3NUaGFuIjp7IkFXUzpFcG9jaFRpbWUiOjE3NTg5NTY2MTZ9fX1dfQ__&Signature=E5v0nFXV2-DP1CHw-o1bB9a0Tn9W5-92gqR9BpSKczSPS2goVt7qT4y8Wsqc06SdXrsbMz%7EAnSi96RuVtWqvuVQj2AsOPQwt5lp4QidRuhB6H2JJScQ40jBL-da7JryKtiqrn1uBvC9momk7hCG1J3tgoZ2%7EjSolYKbes1Xyium-KCX7hfGAAtGmWS-9JGKWiXjEFsYpmTcU-HaOo%7Eeypm6UD0hQNhFHIAtfh3OEmgn-V1Vc6oVmrWepoImQ-4GvLYJg9lEhpVXD7c7rY2tt8p5OZApM7rS3boLpg%7EPQ7BGwX8CWWa5APUpOfhZt7m3vYs4Nh3s7-pqeKbSPqgdqFQ__&Key-Pair-Id=K15QRJLYKIFSLZ&Download-Request-ID=1130240101863629",
             )
         if self.model_size == "basev3conv":
             self.feat_extr = torch.hub.load(
@@ -265,28 +265,28 @@ class DINOv2Segmenter(nn.Module):
         # layer = self.layer_num[0] # TODO: make it a list
         # layers = []
         # if self.do_interpolation:
-        if imgs.shape[-1] == 500:
-            imgs = F.interpolate(imgs, size=490, mode="bilinear", align_corners=True)
-        # elif imgs.shape[-1] == 512 or imgs.shape[-1] == 500:
-        #     imgs = F.interpolate(
-        #         imgs, size=504, mode="bilinear", align_corners=True
-        #     )
-        if imgs.shape[-1] == 64:
-            imgs = F.interpolate(imgs, size=56, mode="bilinear", align_corners=True)
-        elif imgs.shape[-1] == 256:
-            imgs = F.interpolate(imgs, size=252, mode="bilinear", align_corners=True)
-        # elif imgs.shape[-1] == 1500:
-        #     imgs = F.interpolate(
-        #         imgs, size=1498, mode="bilinear", align_corners=True
-        #     )
-        if imgs.shape[-1] == 320:
-            imgs = F.interpolate(imgs, size=308, mode="bilinear", align_corners=True)
-        elif imgs.shape[-1] == 128:
-            imgs = F.interpolate(imgs, size=126, mode="bilinear", align_corners=True)
-        elif imgs.shape[-1] == 120:
-            imgs = F.interpolate(imgs, size=112, mode="bilinear", align_corners=True)
-        elif imgs.shape[-1] == 32:
-            imgs = F.interpolate(imgs, size=28, mode="bilinear", align_corners=True)
+        # if imgs.shape[-1] == 500:
+        #     imgs = F.interpolate(imgs, size=496, mode="bilinear", align_corners=True)
+        # # elif imgs.shape[-1] == 512 or imgs.shape[-1] == 500:
+        # #     imgs = F.interpolate(
+        # #         imgs, size=504, mode="bilinear", align_corners=True
+        # #     )
+        # if imgs.shape[-1] == 64:
+        #     imgs = F.interpolate(imgs, size=56, mode="bilinear", align_corners=True)
+        # elif imgs.shape[-1] == 256:
+        #     imgs = F.interpolate(imgs, size=252, mode="bilinear", align_corners=True)
+        # # elif imgs.shape[-1] == 1500:
+        # #     imgs = F.interpolate(
+        # #         imgs, size=1498, mode="bilinear", align_corners=True
+        # #     )
+        # if imgs.shape[-1] == 320:
+        #     imgs = F.interpolate(imgs, size=308, mode="bilinear", align_corners=True)
+        # elif imgs.shape[-1] == 128:
+        #     imgs = F.interpolate(imgs, size=126, mode="bilinear", align_corners=True)
+        # elif imgs.shape[-1] == 120:
+        #     imgs = F.interpolate(imgs, size=112, mode="bilinear", align_corners=True)
+        # elif imgs.shape[-1] == 32:
+        #     imgs = F.interpolate(imgs, size=28, mode="bilinear", align_corners=True)
 
         with torch.no_grad():
             if self.task == "classification":
