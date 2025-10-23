@@ -759,6 +759,8 @@ class GeoBenchDataset(Dataset):
             elif self.model_type == "copernicusfm":
                 if self.dataset_name == "geobench_crop":
                     band_list = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+                else:
+                    band_list = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
             else:
                 band_list = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
         # else:
@@ -789,7 +791,7 @@ class GeoBenchDataset(Dataset):
             return image.squeeze(0), image_rgb, mask.squeeze(0).squeeze(0).long()
         else:
             label = sample.label
-            image = self.transform(image)
+            image = self.transform(image.float())
             return image.squeeze(0), image_rgb, label
 
 
@@ -2531,14 +2533,11 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
         ):
             norms_1, norms_3 = norms[1], norms[3]
             norms[1], norms[3] = norms_3, norms_1
-            if args.dataset_type == "geobench_eurosat":
-                del norms[12]
-                del stds[12]
-                del norms[9]
-                del stds[9]
-                del norms[0]
-                del stds[0]
-            elif args.dataset_type == "geobench_bigearthnet":
+            if (
+                args.dataset_type == "geobench_bigearthnet"
+                or args.dataset_type == "geobench_eurosat"
+                or args.dataset_type == "geobench_cashew"
+            ):
                 del norms[10]
                 del stds[10]
                 del norms[9]
@@ -2551,13 +2550,6 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
             elif args.dataset_type == "geobench_so2sat":
                 del norms[:8]
                 del stds[:8]
-            elif args.dataset_type == "geobench_cashew":
-                del norms[10]
-                del stds[10]
-                del norms[9]
-                del stds[9]
-                del norms[0]
-                del stds[0]
             elif args.dataset_type == "geobench_crop":
                 del norms[12]
                 del stds[12]
@@ -2576,7 +2568,10 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
                 del stds[12]
                 del norms[10]
                 del stds[10]
-            elif args.dataset_type == "geobench_cashew":
+            elif (
+                args.dataset_type == "geobench_cashew"
+                or args.dataset_type == "geobench_eurosat"
+            ):
                 del norms[10]
                 del stds[10]
             elif args.dataset_type == "geobench_so2sat":
@@ -2588,7 +2583,10 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
                 del stds[12]
                 del norms[10]
                 del stds[10]
-            elif args.dataset_type == "geobench_cashew":
+            elif (
+                args.dataset_type == "geobench_cashew"
+                or args.dataset_type == "geobench_eurosat"
+            ):
                 del norms[10]
                 del stds[10]
             elif args.dataset_type == "geobench_so2sat":
@@ -2676,6 +2674,7 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
         elif (
             args.dataset_type == "geobench_forestnet"
             or args.dataset_type == "geobench_so2sat"
+            or args.dataset_type == "geobench_eurosat"
         ):
             transforms_train = K.AugmentationSequential(
                 K.RandomHorizontalFlip(p=0.5),

@@ -30,17 +30,31 @@ class TerraFMModel(nn.Module):
 
         self.input_size = (args.input_size, args.input_size)
 
-        config = {
-            "pool_scales": [1, 2, 3, 6],
-            "hidden_size": 512,
-            "num_labels": args.nb_classes,
-            "initializer_range": 0.02,
-        }
+        if (
+            args.dataset_type == "geobench_eurosat"
+            or args.dataset_type == "rgb"
+            or args.dataset_type == "geobench_bigearthnet"
+            or args.dataset_type == "geobench_forestnet"
+            or args.dataset_type == "geobench_so2sat"
+        ):
+            self.task = "classification"
+            # self.classifier = LinearClassifier(
+            #     self.embed_dim, self.num_patches, self.num_patches, args.nb_classes
+            # )
+            self.classification_head = nn.Linear(feature_channels[-1], args.nb_classes)
+        else:
+            self.task = "segmentation"
+            self.up_1 = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
+            self.up_2 = nn.Upsample(scale_factor=4, mode="bilinear", align_corners=True)
 
-        self.upernet_head = UperNetHead(config, feature_channels)
+            config = {
+                "pool_scales": [1, 2, 3, 6],
+                "hidden_size": 512,
+                "num_labels": args.nb_classes,
+                "initializer_range": 0.02,
+            }
 
-        self.up_1 = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
-        self.up_2 = nn.Upsample(scale_factor=4, mode="bilinear", align_corners=True)
+            self.upernet_head = UperNetHead(config, feature_channels)
 
         # self.channel_project = nn.Linear(3, 10)  # Define a learnable linear layer
 
@@ -122,10 +136,11 @@ class TerraFMModel(nn.Module):
                 ],
                 dim=1,
             )
-
-        features = self.feat_extr.extract_feature(x)
-        # features = self.feat_extr(x)
-        # x = self.classification_head(features)
-        x = self.decoder_upernet(features)
+        if self.task == "classification":
+            features = self.feat_extr(x)
+            x = self.classification_head(features)
+        else:
+            features = self.feat_extr.extract_feature(x)
+            x = self.decoder_upernet(features)
 
         return x, (features, features[-1])

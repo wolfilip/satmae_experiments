@@ -607,9 +607,9 @@ def main(args):
         model = PretrainedCROMA(
             pretrained_path=args.finetune,
             size="base",
-            modality="optical",
             image_resolution=args.input_size,
             num_labels=args.nb_classes,
+            dataset=args.dataset_type,
         ).to(device)
     elif args.model_type == "terrafm":
         model = TerraFMModel(args, "cuda")

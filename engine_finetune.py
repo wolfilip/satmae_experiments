@@ -604,7 +604,7 @@ def evaluate(data_loader, model, device):
     # criterion = torch.nn.CrossEntropyLoss()
     oa = Accuracy(
         task="multiclass",
-        num_classes=17,
+        num_classes=10,
         average="micro",
     ).to(device)
 
