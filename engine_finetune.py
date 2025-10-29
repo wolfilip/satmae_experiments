@@ -602,9 +602,15 @@ def train_one_epoch_segmentation(
 @torch.no_grad()
 def evaluate(data_loader, model, device):
     # criterion = torch.nn.CrossEntropyLoss()
-    oa = Accuracy(
+    oa_eurosat = Accuracy(
         task="multiclass",
         num_classes=10,
+        average="micro",
+    ).to(device)
+
+    oa_so2sat = Accuracy(
+        task="multiclass",
+        num_classes=17,
         average="micro",
     ).to(device)
 
@@ -637,8 +643,10 @@ def evaluate(data_loader, model, device):
         # score = torch.sigmoid(output) > 0.5
         if output.shape[-1] == 43:
             f1_score.update(output, target.float())
+        elif output.shape[-1] == 10:
+            oa_eurosat.update(output, target.float())
         else:
-            oa.update(output, target.float())
+            oa_so2sat.update(output, target.float())
         # score = torch.sigmoid(output).detach()
         # target = F.one_hot(target, num_classes=10)
         # acc1 = (
@@ -667,8 +675,11 @@ def evaluate(data_loader, model, device):
     if output.shape[-1] == 43:
         metric_logger.meters["acc1"].update(0)
         metric_logger.meters["f1"].update(f1_score.compute().item() * 100)
+    elif output.shape[-1] == 10:
+        metric_logger.meters["acc1"].update(oa_eurosat.compute().item() * 100)
+        metric_logger.meters["f1"].update(0)
     else:
-        metric_logger.meters["acc1"].update(oa.compute().item() * 100)
+        metric_logger.meters["acc1"].update(oa_so2sat.compute().item() * 100)
         metric_logger.meters["f1"].update(0)
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()

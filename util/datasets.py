@@ -2494,7 +2494,13 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
                     chosen_dataset = dataset
             elif args.dataset_type == "geobench_pv":
                 if "pv" in str(dataset.dataset_dir):
-                    chosen_dataset = dataset
+                    if args.dataset_split == "10" and data_split == "train":
+                        chosen_dataset = task.get_dataset(
+                            split=data_split,
+                            partition_name="0.10x_train",
+                        )
+                    else:
+                        chosen_dataset = dataset
         for task in geobench.task_iterator(benchmark_name="classification_v1.0"):
             dataset = task.get_dataset(split=data_split)
             if args.dataset_type == "geobench_eurosat":
@@ -2502,7 +2508,13 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
                     chosen_dataset = dataset
             elif args.dataset_type == "geobench_bigearthnet":
                 if "bigearthnet" in str(dataset.dataset_dir):
-                    chosen_dataset = dataset
+                    if args.dataset_split == "10" and data_split == "train":
+                        chosen_dataset = task.get_dataset(
+                            split=data_split,
+                            partition_name="0.10x_train",
+                        )
+                    else:
+                        chosen_dataset = dataset
             elif args.dataset_type == "geobench_forestnet":
                 if "forestnet" in str(dataset.dataset_dir):
                     chosen_dataset = dataset

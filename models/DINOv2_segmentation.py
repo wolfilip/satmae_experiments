@@ -41,7 +41,7 @@ class DINOv2Segmenter(nn.Module):
                 "dinov3",
                 "dinov3_vitb16",
                 source="local",
-                weights="https://dinov3.llamameta.net/dinov3_vitb16/dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth?Policy=eyJTdGF0ZW1lbnQiOlt7InVuaXF1ZV9oYXNoIjoiMWVxcmZxNjN4dm9wYWQ0c2R1aGhub2xsIiwiUmVzb3VyY2UiOiJodHRwczpcL1wvZGlub3YzLmxsYW1hbWV0YS5uZXRcLyoiLCJDb25kaXRpb24iOnsiRGF0ZUxlc3NUaGFuIjp7IkFXUzpFcG9jaFRpbWUiOjE3NTg5NTY2MTZ9fX1dfQ__&Signature=E5v0nFXV2-DP1CHw-o1bB9a0Tn9W5-92gqR9BpSKczSPS2goVt7qT4y8Wsqc06SdXrsbMz%7EAnSi96RuVtWqvuVQj2AsOPQwt5lp4QidRuhB6H2JJScQ40jBL-da7JryKtiqrn1uBvC9momk7hCG1J3tgoZ2%7EjSolYKbes1Xyium-KCX7hfGAAtGmWS-9JGKWiXjEFsYpmTcU-HaOo%7Eeypm6UD0hQNhFHIAtfh3OEmgn-V1Vc6oVmrWepoImQ-4GvLYJg9lEhpVXD7c7rY2tt8p5OZApM7rS3boLpg%7EPQ7BGwX8CWWa5APUpOfhZt7m3vYs4Nh3s7-pqeKbSPqgdqFQ__&Key-Pair-Id=K15QRJLYKIFSLZ&Download-Request-ID=1130240101863629",
+                weights="https://dinov3.llamameta.net/dinov3_vitb16/dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth?Policy=eyJTdGF0ZW1lbnQiOlt7InVuaXF1ZV9oYXNoIjoibzRiZzBmdnRyZTg2eW9sa3ZhNjIwc2FsIiwiUmVzb3VyY2UiOiJodHRwczpcL1wvZGlub3YzLmxsYW1hbWV0YS5uZXRcLyoiLCJDb25kaXRpb24iOnsiRGF0ZUxlc3NUaGFuIjp7IkFXUzpFcG9jaFRpbWUiOjE3NjE3Mjg1MTZ9fX1dfQ__&Signature=BsI-fV6AslEW4xLy376VlOmfl-BMJCDCXdUigt5s8RsjTuk14J-yp-hfZYYz8wyb6P19%7EdXaKWAh1sa0p53rJAEK6W4heOIpBsVWbvoF1OnE5VZ8rlrka%7EGCRN%7EH4Ar6j-uFGivv-4U3DxWp7dwoKmxW1LeS2p1FDM3b6O29H5XjPzRyN8D8Yl5VIpu5trLppRcSJo5rMSmPGCXqtQ96W95O5SYQPw-R6qgzLXPAPE4KNetWU9agNHyP9aXsFLiOuRosKCaLQfyCIfobPfN6dUXW1hFuVD487uMObxwPMeXaWvT2vgRM%7EnsiwiwKCiFayYbtiHUdszBdlCfUMeufrQ__&Key-Pair-Id=K15QRJLYKIFSLZ&Download-Request-ID=1158290322926543",
             )
         if self.model_size == "basev3conv":
             self.feat_extr = torch.hub.load(
@@ -283,8 +283,8 @@ class DINOv2Segmenter(nn.Module):
         #     imgs = F.interpolate(imgs, size=308, mode="bilinear", align_corners=True)
         # elif imgs.shape[-1] == 128:
         #     imgs = F.interpolate(imgs, size=126, mode="bilinear", align_corners=True)
-        # elif imgs.shape[-1] == 120:
-        #     imgs = F.interpolate(imgs, size=112, mode="bilinear", align_corners=True)
+        if imgs.shape[-1] == 120:
+            imgs = F.interpolate(imgs, size=112, mode="bilinear", align_corners=True)
         # elif imgs.shape[-1] == 32:
         #     imgs = F.interpolate(imgs, size=28, mode="bilinear", align_corners=True)
 
@@ -456,7 +456,8 @@ class DINOv2Segmenter(nn.Module):
 
     def forward(self, x):
 
-        x = x[:, :3].flip(1)
+        if x.shape[1] > 3:
+            x = x[:, :3]
 
         conv_embeds = 0
         if self.conv_size > 0:
@@ -505,8 +506,10 @@ class DINOv2Segmenter(nn.Module):
         ######## LIFT ###########
 
         # x = self.encoder_forward(x)
-        # x = self.classification_head(features)
-        x = self.decoder_upernet(features, conv_embeds)
+        if self.task == "classification":
+            x = self.classification_head(features)
+        else:
+            x = self.decoder_upernet(features, conv_embeds)
         # new_features = []
 
         # new_features.append(
