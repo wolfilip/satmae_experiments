@@ -438,8 +438,8 @@ class SimDINO(nn.Module):
         # if x.shape[1] == 4:
         #     x = F.pad(x, (0, 0, 0, 0, 0, 6), "constant", 0)
 
-        # if x.shape[1] == 4:
-        x = torch.split(x, [3, x.shape[1] - 3], dim=1)[0]
+        if x.shape[1] == 4:
+            x = torch.split(x, [3, x.shape[1] - 3], dim=1)[0]
 
         # if x.shape[1] == 6:
         #     x = F.pad(x, (0, 0, 0, 0, 0, 4), "constant", 0)
