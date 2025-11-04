@@ -554,6 +554,7 @@ def main(args):
         )
     elif args.model_type == "segmentation":
         model = models_vit_segmentation.__dict__[args.model](
+            dataset_type=args.dataset_type,
             patch_size=args.patch_size,
             img_size=args.input_size,
             in_chans=3,

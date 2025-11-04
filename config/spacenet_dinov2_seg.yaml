@@ -1,6 +1,6 @@
-batch_size: 32
+batch_size: 64
 epochs: 50
-accum_iter: 2
+accum_iter: 1
 lr: 0.0001
 visualize_features: false
 save_images: false
@@ -8,7 +8,7 @@ model_type: dinov2_segmentation
 model: largev3_0
 input_size: 224
 dataset_type: spacenet
-dataset_split: 100
+dataset_split: 10
 method_name: dinov3_l_SAT
 best_epoch: false
 nb_classes: 2

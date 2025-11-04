@@ -737,7 +737,7 @@ class GeoBenchDataset(Dataset):
         elif len(sample.bands) == 18:
             band_list = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17]
         else:
-            if self.model_type == "simdino" or self.model_type == "dinov2_segmentation":
+            if self.model_type == "simdino" or self.model_type == "dinov2_segmentation" or self.model_type == "segmentation":
                 if self.dataset_name == "geobench_crop":
                     band_list = [1, 2, 3, 4, 5, 6, 7, 8, 10, 11]
                 elif self.dataset_name == "geobench_bigearthnet":

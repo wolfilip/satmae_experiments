@@ -12,7 +12,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from UPerNet.UPerNetHead import UperNetHead
-from util.linear_calssifier import LinearClassifier
 from util.pos_embed import get_2d_sincos_pos_embed
 
 
@@ -20,6 +19,8 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):  # ty
     """Vision Transformer with support for global average pooling"""
 
     def __init__(self, **kwargs):
+        # Remove custom args not accepted by timm's VisionTransformer
+        dataset_type = kwargs.pop("dataset_type", "rgb")
         super(VisionTransformer, self).__init__(**kwargs)
 
         # Added by Samar, need default pos embedding
@@ -51,18 +52,32 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):  # ty
 
         if self.input_size % 16 != 0:
             self.do_interpolation = True
+        
+        if (
+            dataset_type == "geobench_eurosat"
+            or dataset_type == "rgb"
+            or dataset_type == "geobench_so2sat"
+            or dataset_type == "geobench_bigearthnet"
+        ):
+            self.task = "classification"
+            # self.classifier = LinearClassifier(
+            #     self.embed_dim, self.num_patches, self.num_patches, kwargs["num_classes"]
+            # )
+            self.classification_head = nn.Linear(self.embed_dim, kwargs["num_classes"])
+        else:
+            self.task = "segmentation"
 
-        config = {
-            "pool_scales": [1, 2, 3, 6],
-            "hidden_size": 512,
-            "num_labels": kwargs["num_classes"],
-            "initializer_range": 0.02,
-        }
+            self.up_1 = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
+            self.up_2 = nn.Upsample(scale_factor=4, mode="bilinear", align_corners=True)
 
-        self.upernet_head = UperNetHead(config, feature_channels)
+            config = {
+                "pool_scales": [1, 2, 3, 6],
+                "hidden_size": 512,
+                "num_labels": kwargs["num_classes"],
+                "initializer_range": 0.02,
+            }
 
-        self.up_1 = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
-        self.up_2 = nn.Upsample(scale_factor=4, mode="bilinear", align_corners=True)
+            self.upernet_head = UperNetHead(config, feature_channels)
         # self.up_3 = nn.Upsample(scale_factor=8, mode="bilinear", align_corners=True)
         # self.up_4 = nn.Upsample(scale_factor=16, mode="bilinear", align_corners=True)
         # self.sigmoid = nn.Sigmoid()
@@ -169,6 +184,27 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):  # ty
 
         return outs
 
+    def forward_features(self, x):
+        with torch.no_grad():
+            B = x.shape[0]
+            x = self.patch_embed(x)
+
+            cls_tokens = self.cls_token.expand(  # type: ignore
+                B, -1, -1
+            )  # stole cls_tokens impl from Phil Wang, thanks
+            x = torch.cat((cls_tokens, x), dim=1)
+            x = x + self.pos_embed
+            x = self.pos_drop(x)
+
+            for blk in self.blocks:
+                x = blk(x)
+
+            x = self.norm(x)
+            outcome = x[:, 0]
+
+            return outcome
+
+
     def decoder_upernet(self, features, conv_embeds):
 
         new_features = []
@@ -243,23 +279,25 @@ class VisionTransformer(timm.models.vision_transformer.VisionTransformer):  # ty
         return x
 
     def decoder_linear(self, x, conv_embeds):
-        x = self.classifier(x)
+        x = self.classification_head(x)
         x = F.interpolate(x, size=self.input_size, mode="bilinear", align_corners=False)
         return x
 
     def forward(self, x):
 
-        chunks = x[:, :3].flip(1)
+        if x.shape[1] > 3:
+            x = x[:, :3]
 
         conv_embeds = 0
         if self.conv_size > 0:
             conv_embeds = self.encoder_conv(x)
-        features = self.encoder_forward(chunks)
-        # x = self.decoder_upernet(features, conv_embeds)
-        # x = self.encoder_forward(x)
-        # print(x.shape, features[0].shape, conv_embeds.shape)
-        x = self.decoder_upernet(features, conv_embeds)
-        # x = self.decoder_linear(features[-1], conv_embeds)
+        features = self.encoder_forward(x)
+        if self.task == "classification":
+            features = self.forward_features(x)
+            x = self.classification_head(features)
+        else:
+            features = self.encoder_forward(x)
+            x = self.decoder_upernet(features, conv_embeds)
         return x, (conv_embeds, features[-1])
 
 
