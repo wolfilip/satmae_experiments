@@ -414,29 +414,29 @@ class BaseTransformer(nn.Module):
         if self.final_norm:
             self.norm_out = nn.LayerNorm(dim)
 
-    def forward(self, x, relative_position_bias=False):
-        outputs = []
-        for i, layer in enumerate(self.layers):
-            self_attn, ffn = layer
-            x = self_attn(x, relative_position_bias) + x  # (BSZ, num_patches, dim)
-            x = ffn(x) + x  # (BSZ, num_patches, dim)
-            if i in [3, 5, 8, 11]:
-                outputs.append(x)
-
-        # if self.final_norm:
-        #     return self.norm_out(x)
-        # else:
-        return outputs
-
     # def forward(self, x, relative_position_bias=False):
-    #     for self_attn, ffn in self.layers:
+    #     outputs = []
+    #     for i, layer in enumerate(self.layers):
+    #         self_attn, ffn = layer
     #         x = self_attn(x, relative_position_bias) + x  # (BSZ, num_patches, dim)
     #         x = ffn(x) + x  # (BSZ, num_patches, dim)
+    #         if i in [3, 5, 8, 11]:
+    #             outputs.append(x)
 
-    #     if self.final_norm:
-    #         return self.norm_out(x)
-    #     else:
-    #         return x
+    #     # if self.final_norm:
+    #     #     return self.norm_out(x)
+    #     # else:
+    #     return outputs
+
+    def forward(self, x, relative_position_bias=False):
+        for self_attn, ffn in self.layers:
+            x = self_attn(x, relative_position_bias) + x  # (BSZ, num_patches, dim)
+            x = ffn(x) + x  # (BSZ, num_patches, dim)
+
+        if self.final_norm:
+            return self.norm_out(x)
+        else:
+            return x
 
 
 class BaseTransformerCrossAttn(nn.Module):

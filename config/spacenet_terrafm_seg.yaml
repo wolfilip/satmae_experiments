@@ -8,7 +8,7 @@ model_type: terrafm
 model: vit_b
 input_size: 224
 dataset_type: spacenet
-dataset_split: 100
+dataset_split: 10
 method_name: terrafm_vit_b
 best_epoch: false
 nb_classes: 2

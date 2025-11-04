@@ -362,7 +362,7 @@ class SimDINO(nn.Module):
                 # x = x.permute(0, 2, 3, 1)
                 x = layer(x)
                 # if i in [1, 3, 5, 7]:
-            # rgb_data = self.feat_extr.norm(x)
+            rgb_data = self.feat_extr.norm(x)
             rgb_data = self.feat_extr.permute(x)
             rgb_data = self.feat_extr.avgpool(rgb_data)
             rgb_data = self.feat_extr.flatten(rgb_data)

@@ -740,6 +740,8 @@ class GeoBenchDataset(Dataset):
             if self.model_type == "simdino" or self.model_type == "dinov2_segmentation":
                 if self.dataset_name == "geobench_crop":
                     band_list = [1, 2, 3, 4, 5, 6, 7, 8, 10, 11]
+                elif self.dataset_name == "geobench_bigearthnet":
+                    band_list = [1, 2, 3, 4, 5, 6, 7, 8, 10, 11]
                 else:
                     band_list = [1, 2, 3, 4, 5, 6, 7, 8, 11, 12]
             elif self.model_type == "croma":
@@ -2546,8 +2548,7 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
             norms_1, norms_3 = norms[1], norms[3]
             norms[1], norms[3] = norms_3, norms_1
             if (
-                args.dataset_type == "geobench_bigearthnet"
-                or args.dataset_type == "geobench_eurosat"
+                args.dataset_type == "geobench_eurosat"
                 or args.dataset_type == "geobench_cashew"
             ):
                 del norms[10]
@@ -2565,6 +2566,11 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
             elif args.dataset_type == "geobench_crop":
                 del norms[12]
                 del stds[12]
+                del norms[9]
+                del stds[9]
+                del norms[0]
+                del stds[0]
+            elif args.dataset_type == "geobench_bigearthnet":
                 del norms[9]
                 del stds[9]
                 del norms[0]
@@ -2679,7 +2685,7 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
             )
             transforms_test = K.AugmentationSequential(
                 K.Resize(size=(args.input_size, args.input_size)),
-                K.Normalize(0.5, 0.5),
+                # K.Normalize(0.5, 0.5),
                 normalize,
                 data_keys=["input"],
             )
