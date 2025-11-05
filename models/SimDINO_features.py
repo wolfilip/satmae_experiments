@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from models.simdino_models.utils import load_pretrained_weights
 from torchvision import models as torchvision_models
 from UPerNet.UPerNetHead import UperNetHead
+from util import misc
 
 from .simdino_models import vision_transformer as vits
 from torchvision.ops.misc import Permute
@@ -138,7 +139,7 @@ class SimDINO(nn.Module):
             # )
             self.ms_backbone = True
 
-        if args.finetune:
+        if args.finetune and not args.eval:
             load_pretrained_weights(
                 self.feat_extr, args.finetune, "student", args.model, 16
             )

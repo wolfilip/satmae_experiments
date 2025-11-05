@@ -273,8 +273,8 @@ class DINOv2Segmenter(nn.Module):
         # #     )
         if imgs.shape[-1] == 64:
             imgs = F.interpolate(imgs, size=56, mode="bilinear", align_corners=True)
-        # elif imgs.shape[-1] == 256:
-        #     imgs = F.interpolate(imgs, size=252, mode="bilinear", align_corners=True)
+        elif imgs.shape[-1] == 256:
+            imgs = F.interpolate(imgs, size=252, mode="bilinear", align_corners=True)
         # # elif imgs.shape[-1] == 1500:
         # #     imgs = F.interpolate(
         # #         imgs, size=1498, mode="bilinear", align_corners=True

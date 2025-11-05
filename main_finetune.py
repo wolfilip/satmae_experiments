@@ -782,15 +782,16 @@ def main(args):
         wandb.watch(model)
 
     if args.eval:
+        misc.load_best_model(args, model)
         if args.model_type == "temporal":
-            test_stats = evaluate_temporal(data_loader_val, model, device)
+            test_stats = evaluate_temporal(data_loader_test, model, device)
         elif (
             args.dataset_type == "geobench_eurosat"
             or args.dataset_type == "geobench_bigearthnet"
             or args.dataset_type == "geobench_forestnet"
             or args.dataset_type == "geobench_so2sat"
         ):
-            test_stats = evaluate(data_loader_val, model, device)
+            test_stats = evaluate(data_loader_test, model, device)
         elif (
             args.model_type == "segmentation"
             or args.model_type == "dinov2_segmentation"
@@ -804,7 +805,7 @@ def main(args):
             or "simdino" in args.model_type
         ):
             test_stats, max_iou = evaluate_segmentation(
-                data_loader_val, model, device, 0, 0, args
+                data_loader_test, True, model, device, 0, 0, args
             )
 
         if (
@@ -944,7 +945,7 @@ def main(args):
             or "simdino" in args.model_type
         ):
             test_stats, max_iou = evaluate_segmentation(
-                data_loader_val, model, device, epoch, max_iou, args
+                data_loader_val, False, model, device, epoch, max_iou, args
             )
 
             if max_iou > current_iou:
@@ -1075,7 +1076,7 @@ def main(args):
         and args.dataset_type != "geobench_so2sat"
     ):
         test_stats, max_iou = evaluate_segmentation(
-            data_loader_test, model, device, epoch, max_iou, args
+            data_loader_test, True, model, device, epoch, max_iou, args
         )
 
         if log_writer is not None:

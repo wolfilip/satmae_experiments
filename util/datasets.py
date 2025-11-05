@@ -737,7 +737,11 @@ class GeoBenchDataset(Dataset):
         elif len(sample.bands) == 18:
             band_list = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17]
         else:
-            if self.model_type == "simdino" or self.model_type == "dinov2_segmentation" or self.model_type == "segmentation":
+            if (
+                self.model_type == "simdino"
+                or self.model_type == "dinov2_segmentation"
+                or self.model_type == "segmentation"
+            ):
                 if self.dataset_name == "geobench_crop":
                     band_list = [1, 2, 3, 4, 5, 6, 7, 8, 10, 11]
                 elif self.dataset_name == "geobench_bigearthnet":
@@ -868,8 +872,8 @@ class SpaceNetDataset(SatelliteDataset):
         if self.is_train:
             # img_rgb, img_depth, mask = self.transforms_train(img_rgb, img_depth, mask)
             # img_rgb, img_depth = self.transforms_distort(img_rgb, img_depth)
-            img_rgb, mask = self.transforms_train(img_rgb, mask)
-            img_rgb = self.transforms_distort(img_rgb)
+            img, mask = self.transforms_train(img_rgb, mask)
+            img = self.transforms_distort(img)
             # img_rgb, img_depth, mask = self.transforms_val(img_rgb, img_depth, mask)
 
             # f, axarr = plt.subplots(2)
@@ -879,7 +883,7 @@ class SpaceNetDataset(SatelliteDataset):
             # plt.savefig("img.png", dpi=600)
             # plt.close()
         else:
-            img_rgb, mask = self.transforms_val(img_rgb, mask)
+            img, mask = self.transforms_val(img_rgb, mask)
             # f, axarr = plt.subplots(2)
             # axarr[0].imshow(img_rgb.permute(1, 2, 0), interpolation="none")
             # axarr[1].imshow(img_depth.permute(1, 2, 0), interpolation="none")
@@ -901,7 +905,7 @@ class SpaceNetDataset(SatelliteDataset):
         # img, mask = torch.split(image_and_mask, [3, 1])
         # image_and_mask = self.transforms_val(image_and_mask)
         # img_rgb = torch.flip(img_rgb, dims=[1])
-        return img_rgb.squeeze(0), mask.squeeze(0).squeeze(0).long()
+        return img.squeeze(0), img_rgb, mask.squeeze(0).squeeze(0).long()
 
 
 class Sen1Floods11Dataset(Dataset):

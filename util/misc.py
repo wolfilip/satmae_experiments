@@ -391,7 +391,7 @@ def save_model(args, epoch, model, model_without_ddp, optimizer, loss_scaler):
 
 def save_best_model(args, epoch, model, model_without_ddp, optimizer, loss_scaler):
     output_dir = Path(args.output_dir + args.method_name)
-    epoch_name = "best_model_checkpoint"
+    epoch_name = f"best_model_checkpoint_{args.dataset_type}_{args.dataset_split}"
     if loss_scaler is not None:
         checkpoint_paths = [output_dir / ("%s.pth" % epoch_name)]
         for checkpoint_path in checkpoint_paths:
@@ -440,11 +440,21 @@ def load_model(args, model_without_ddp, optimizer, loss_scaler):
 def load_best_model(args, model):
 
     checkpoint = torch.load(
-        args.output_dir + args.method_name + "/best_model_checkpoint.pth",
+        args.output_dir
+        + args.method_name
+        + f"/best_model_checkpoint_{args.dataset_type}_{args.dataset_split}.pth",
         map_location="cpu",
     )
 
-    model.load_state_dict(checkpoint["model"], strict=False)
+    state_dict = checkpoint["model"]
+
+    # Ensure every key starts with "module."
+    new_state_dict = {
+        (k if k.startswith("module.") else "module." + k): v
+        for k, v in state_dict.items()
+    }
+
+    model.load_state_dict(new_state_dict, strict=True)
 
 
 def all_reduce_mean(x):

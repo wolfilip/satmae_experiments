@@ -440,7 +440,8 @@ def train_one_epoch_segmentation(
 
     if epoch == 0:
         if not os.path.exists(
-            "satmae_experiments/"
+            args.output_dir
+            + "images/"
             + args.dataset_type  # type: ignore
             + "_"
             + str(args.dataset_split)  # type: ignore
@@ -448,7 +449,8 @@ def train_one_epoch_segmentation(
             + args.method_name  # type: ignore
         ):
             os.makedirs(
-                "satmae_experiments/"
+                args.output_dir
+                + "images/"
                 + args.dataset_type  # type: ignore
                 + "_"
                 + str(args.dataset_split)  # type: ignore
@@ -456,7 +458,8 @@ def train_one_epoch_segmentation(
                 + args.method_name  # type: ignore
             )
         if not os.path.exists(
-            "satmae_experiments/"
+            args.output_dir
+            + "images/"
             + args.dataset_type  # type: ignore
             + "_"
             + str(args.dataset_split)  # type: ignore
@@ -464,7 +467,8 @@ def train_one_epoch_segmentation(
             + args.method_name  # type: ignore
         ):
             os.makedirs(
-                "satmae_experiments/"
+                args.output_dir
+                + "images/"
                 + args.dataset_type  # type: ignore
                 + "_"
                 + str(args.dataset_split)  # type: ignore
@@ -766,7 +770,7 @@ def evaluate_temporal(data_loader, model, device):
 
 
 @torch.no_grad()
-def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
+def evaluate_segmentation(data_loader, is_test, model, device, epoch, max_iou, args):
 
     metric_logger = misc.MetricLogger(delimiter="  ")
     header = "Test:"
@@ -778,7 +782,8 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
 
     if args.eval:
         if not os.path.exists(
-            "satmae_experiments/"
+            args.output_dir
+            + "images/"
             + args.dataset_type
             + "_"
             + str(args.dataset_split)
@@ -786,7 +791,8 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
             + args.method_name
         ):
             os.makedirs(
-                "satmae_experiments/"
+                args.output_dir
+                + "images/"
                 + args.dataset_type
                 + "_"
                 + str(args.dataset_split)
@@ -794,7 +800,8 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
                 + args.method_name
             )
         if not os.path.exists(
-            "satmae_experiments/"
+            args.output_dir
+            + "images/"
             + args.dataset_type
             + "_"
             + str(args.dataset_split)
@@ -802,7 +809,8 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
             + args.method_name
         ):
             os.makedirs(
-                "satmae_experiments/"
+                args.output_dir
+                + "images/"
                 + args.dataset_type
                 + "_"
                 + str(args.dataset_split)
@@ -1007,6 +1015,12 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
         f1 = f1_score.compute().item()
         oa = overall_accuracy.compute().item()
 
+    if is_test:
+        print(f"Test IoU: {miou:.4f}")
+    else:
+        max_iou = max(max_iou, miou)
+        print(f"Max IoU: {max_iou:.4f}")
+
     if args.save_images:
         cnt = 0
         if args.best_epoch:
@@ -1043,9 +1057,10 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
                         else:
                             save_images(data, mask, pred, features, cnt, args)
                     cnt += data.shape[0]
-        elif epoch == args.epochs - 1 or args.eval:
+        elif args.eval or is_test:
             for batch in data_loader:
                 data = batch[0]
+                rgb_data = batch[1]
                 if args.dataset_type == "sen1floods11":
                     data_viz = batch[1]
                     data_viz = data_viz.to(device, non_blocking=True)
@@ -1070,12 +1085,9 @@ def evaluate_segmentation(data_loader, model, device, epoch, max_iou, args):
                     if args.dataset_type == "sen1floods11":
                         save_images(data_viz, mask, pred, features, cnt, args)
                     else:
-                        save_images(data, mask, pred, features, cnt, args)
+                        save_images(rgb_data, mask, pred, features, cnt, args)
 
                 cnt += data.shape[0]
-
-    max_iou = max(max_iou, miou)
-    print(f"Max IoU: {max_iou:.4f}")
 
     metric_logger.synchronize_between_processes()
 
@@ -1121,7 +1133,8 @@ def save_results(mask, pred, device, epoch, cnt, miou_test, args):
     miou_temp = miou_temp.to(device)
 
     f = open(
-        "satmae_experiments/"
+        args.output_dir
+        + "images/"
         + args.dataset_type
         + "_"
         + str(args.dataset_split)
@@ -1188,8 +1201,20 @@ def save_images(data, mask, pred, features, cnt, args):
             or args.dataset_type == "isaid"
             or args.dataset_type == "mass_roads"
         ):
-            axarr[1].imshow(mask[i].cpu(), interpolation="none")
-            axarr[2].imshow(pred.argmax(1).cpu()[i], interpolation="none")
+            color_list = [
+                "#000000",  # Background – black
+                "#e31a1c",  # Building footprint – strong red
+            ]
+            mask_array_1 = np.array(mask[i].cpu())
+            mask_array_2 = np.array(pred.argmax(1).cpu()[i])
+            cmap_1 = matplotlib.colors.ListedColormap(
+                [color_list[j] for j in np.unique(mask_array_1)]
+            )
+            cmap_2 = matplotlib.colors.ListedColormap(
+                [color_list[j] for j in np.unique(mask_array_2)]
+            )
+            axarr[1].imshow(mask[i].cpu(), cmap=cmap_1, interpolation="none")
+            axarr[2].imshow(pred.argmax(1).cpu()[i], cmap=cmap_2, interpolation="none")
         elif args.dataset_type == "sen1floods11":
             color_list = ["white", "grey", "blue"]
             mask_array_1 = np.array(mask[i].cpu())
@@ -1204,16 +1229,16 @@ def save_images(data, mask, pred, features, cnt, args):
             axarr[2].imshow(pred.argmax(1).cpu()[i], cmap=cmap_2, interpolation="none")
         elif "geobench" in args.dataset_type:
             color_list = [
-                "red",
-                "blue",
-                "green",
-                "yellow",
-                "purple",
-                "orange",
-                "pink",
-                "brown",
-                "black",
-                "white",
+                "#000000",  # No Data – black
+                "#1b9e77",  # Lucerne/Medics – teal green
+                "#66a61e",  # Planted pastures (perennial) – olive green
+                "#e6ab02",  # Fallow – mustard yellow
+                "#7570b3",  # Wine grapes – violet
+                "#d95f02",  # Weeds – orange
+                "#a6761d",  # Small grain grazing – brownish ochre
+                "#e7298a",  # Wheat – magenta
+                "#1f78b4",  # Canola – medium blue
+                "#b2df8a",  # Rooibos – light green
             ]
             mask_array_1 = np.array(mask[i].cpu())
             mask_array_2 = np.array(pred.argmax(1).cpu()[i])
@@ -1254,7 +1279,8 @@ def save_images(data, mask, pred, features, cnt, args):
 
             if features[0] == 0:
                 plt.savefig(
-                    "satmae_experiments/"
+                    args.output_dir
+                    + "images/"
                     + args.dataset_type
                     + "_"
                     + str(args.dataset_split)
@@ -1270,7 +1296,8 @@ def save_images(data, mask, pred, features, cnt, args):
                 )
             else:
                 plt.savefig(
-                    "satmae_experiments/"
+                    args.output_dir
+                    + "images/"
                     + args.dataset_type
                     + "_"
                     + str(args.dataset_split)
@@ -1287,7 +1314,8 @@ def save_images(data, mask, pred, features, cnt, args):
 
         else:
             plt.savefig(
-                "satmae_experiments/"
+                args.output_dir
+                + "images/"
                 + args.dataset_type
                 + "_"
                 + str(args.dataset_split)
