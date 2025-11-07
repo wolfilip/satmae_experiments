@@ -26,6 +26,7 @@ from models.DINOv2_detection import DINOv2Detector
 from models.DINOv2_segmentation import DINOv2Segmenter
 
 # from models.OmniSat import LTAE, Omni, OmniSat
+from models.GFM import GFMModel
 from models.SimDINO_features import SimDINO
 
 # from models.SimDINOv2_features import SimDINOv2
@@ -120,6 +121,7 @@ def get_args_parser():
             "croma",
             "terrafm",
             "copernicusfm",
+            "gfm",
         ],
         help="Use channel model",
     )
@@ -612,6 +614,8 @@ def main(args):
             num_labels=args.nb_classes,
             dataset=args.dataset_type,
         ).to(device)
+    elif args.model_type == "gfm":
+        model = GFMModel(args, "cuda")
     elif args.model_type == "terrafm":
         model = TerraFMModel(args, "cuda")
     else:
@@ -632,6 +636,7 @@ def main(args):
         and args.model_type != "croma"
         and args.model_type != "terrafm"
         and args.model_type != "copernicusfm"
+        and args.model_type != "gfm"
         and "simdino" not in args.model_type
     ):
         checkpoint = torch.load(args.finetune, map_location="cpu")
@@ -744,6 +749,7 @@ def main(args):
         or args.model_type == "croma"
         or args.model_type == "terrafm"
         or args.model_type == "copernicusfm"
+        or args.model_type == "gfm"
         or "simdino" in args.model_type
     ):
         param_groups = model_without_ddp.parameters()
@@ -802,6 +808,7 @@ def main(args):
             or args.model_type == "croma"
             or args.model_type == "terrafm"
             or args.model_type == "copernicusfm"
+            or args.model_type == "gfm"
             or "simdino" in args.model_type
         ):
             test_stats, max_iou = evaluate_segmentation(
@@ -817,6 +824,7 @@ def main(args):
             or args.model_type == "swin"
             or args.model_type == "terrafm"
             or args.model_type == "copernicusfm"
+            or args.model_type == "gfm"
             or "simdino" in args.model_type
         ):
             print(
@@ -873,6 +881,7 @@ def main(args):
                 or args.model_type == "croma"
                 or args.model_type == "terrafm"
                 or args.model_type == "copernicusfm"
+                or args.model_type == "gfm"
                 or "simdino" in args.model_type
             ):
                 # test_stats = evaluate_segmentation(data_loader_val, model, device)
@@ -942,6 +951,7 @@ def main(args):
             or args.model_type == "croma"
             or args.model_type == "terrafm"
             or args.model_type == "copernicusfm"
+            or args.model_type == "gfm"
             or "simdino" in args.model_type
         ):
             test_stats, max_iou = evaluate_segmentation(
@@ -975,6 +985,7 @@ def main(args):
                 or args.model_type == "croma"
                 or args.model_type == "terrafm"
                 or args.model_type == "copernicusfm"
+                or args.model_type == "gfm"
                 or "simdino" in args.model_type
             )
             and args.dataset_type != "geobench_eurosat"

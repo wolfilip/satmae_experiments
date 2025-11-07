@@ -109,12 +109,12 @@ class CopernicusFM(nn.Module):
         # new_features[3] = torch.permute(new_features[3], (0, 3, 1, 2))
         # swin_embeds = torch.permute(swin_embeds, (0, 3, 1, 2))
 
-        features[-1] = F.interpolate(
-            features[-1], scale_factor=0.5, mode="bilinear", align_corners=True
-        )
-        # features[2] = self.up_1(features[2])
-        features[1] = self.up_1(features[1])
-        features[0] = self.up_2(features[0])
+        # features[-1] = F.interpolate(
+        #     features[-1], scale_factor=0.5, mode="bilinear", align_corners=True
+        # )
+        # # features[2] = self.up_1(features[2])
+        # features[1] = self.up_1(features[1])
+        # features[0] = self.up_2(features[0])
 
         # new_features[0] = torch.cat((new_features[0], self.up(swin_embeds)), 1)
 
@@ -240,5 +240,5 @@ class CopernicusFM(nn.Module):
 
         # x = self.decoder_upernet(x[1])
 
-        return x, (0, features[-1])
+        return x, (0, features[1])
         # return x

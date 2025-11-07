@@ -1,9 +1,9 @@
-batch_size: 64
+batch_size: 1
 epochs: 50
 accum_iter: 1
-visualize_features: false
+visualize_features: true
 lr: 0.0001
-save_images: true
+save_images: false
 model_type: simdino
 model: swin_b
 input_size: 256
@@ -14,8 +14,8 @@ best_epoch: false
 nb_classes: 10
 output_dir: /home/filip/satmae_experiments/outputs/
 log_dir: /home/filip/satmae_experiments/logs/
-finetune: /home/filip/satmae_experiments/outputs/swin_bm_ms_fmow_hr_500k_100e_dinov3p34c_rgb_head_dconv_aug/best_model_checkpoint_spacenet_100.pth
+finetune: /home/filip/pretrained_weights/simdino_checkpoints/swin_bm_ms_fmow_hr_500k_100e_dinov3p34c_rgb_head_dconv_aug.pth
 # wandb: dl4rs-experiments
-eval: false
+eval: true
 dist_eval: true
 num_workers: 10

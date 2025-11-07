@@ -15,6 +15,6 @@ nb_classes: 10
 output_dir: /home/filip/satmae_experiments/outputs/
 log_dir: /home/filip/satmae_experiments/logs/
 # wandb: dl4rs-experiments
-eval: false
+eval: true
 dist_eval: true
 num_workers: 10

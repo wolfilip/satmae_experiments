@@ -741,6 +741,7 @@ class GeoBenchDataset(Dataset):
                 self.model_type == "simdino"
                 or self.model_type == "dinov2_segmentation"
                 or self.model_type == "segmentation"
+                or self.model_type == "gfm"
             ):
                 if self.dataset_name == "geobench_crop":
                     band_list = [1, 2, 3, 4, 5, 6, 7, 8, 10, 11]
@@ -2544,6 +2545,7 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
                 args.model_type == "simdino"
                 or args.model_type == "dinov2_segmentation"
                 or args.model_type == "segmentation"
+                or args.model_type == "gfm"
             )
             and args.dataset_type != "geobench_cattle"
             and args.dataset_type != "geobench_pv"

@@ -7,7 +7,7 @@ save_images: false
 model_type: simdino
 model: swin_b
 input_size: 128
-dataset_type: PASTIS
+dataset_type: PASTIS  
 dataset_split: 100
 method_name: swin_bm_ms_fmow_350k_100e_dinov2lp34cn_rgb_head_dconv_aug
 best_epoch: false

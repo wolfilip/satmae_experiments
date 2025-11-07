@@ -39,6 +39,91 @@ from torchmetrics.functional.classification import (
 )
 
 # from util.visualize_features import visualize_features
+from sklearn.decomposition import PCA
+
+
+def visualize_features(features, is_swin=False):
+    """
+    Create DINOv2-style PCA feature visualizations for ViT or Swin Transformer features.
+
+    Args:
+        features: Feature tensor
+            - ViT/DINOv2: (B, N, C) where N = num_patches (e.g., 196 for 14x14)
+            - Swin: (B, C, H, W) or (B, N, C) depending on layer
+        is_swin: Whether features are from Swin Transformer (may be in (B, C, H, W) format)
+
+    Returns:
+        Two visualization tensors (for alternating images) of shape (3, H, W)
+    """
+    # Check if features are None or a placeholder value (0 or scalar)
+    if features is None:
+        dummy = torch.zeros(3, 224, 224)
+        return dummy, dummy
+
+    # Check if features is a scalar 0 (used as placeholder in some models)
+    if isinstance(features, (int, float)) and features == 0:
+        dummy = torch.zeros(3, 224, 224)
+        return dummy, dummy
+
+    with torch.no_grad():
+        features = features.detach().cpu()
+
+        # Handle different feature shapes
+        if len(features.shape) == 4:
+            # Format: (B, C, H, W) - typical for Swin or conv layers
+            B, C, H, W = features.shape
+            # Reshape to (B*H*W, C) for PCA
+            features_flat = features.permute(0, 2, 3, 1).reshape(-1, C).numpy()
+        elif len(features.shape) == 3:
+            # Format: (B, N, C) - typical for ViT/DINOv2/Swin patch features
+            B, N, C = features.shape
+            # Calculate spatial dimensions (assume square grid)
+            H = W = int(np.sqrt(N))
+            if H * W != N:
+                # Handle non-square grids (e.g., Swin with shifted windows)
+                # Try common aspect ratios
+                for h in range(int(np.sqrt(N)), 0, -1):
+                    if N % h == 0:
+                        H = h
+                        W = N // h
+                        break
+            # Reshape to (B*N, C) for PCA
+            features_flat = features.reshape(-1, C).numpy()
+        else:
+            raise ValueError(
+                f"Unexpected feature shape: {features.shape}. Expected (B, C, H, W) or (B, N, C)"
+            )
+
+        # PCA Visualization (DINOv2 style)
+        # Reduce to 3 components for RGB visualization
+        pca = PCA(n_components=3)
+        features_pca = pca.fit_transform(features_flat)
+
+        # Reshape back to spatial dimensions
+        features_pca = features_pca.reshape(B, H, W, 3)
+
+        # Normalize each channel to [0, 1] for visualization
+        pca_viz = []
+        for i in range(B):
+            pca_img = features_pca[i].copy()
+            # Normalize each RGB channel independently
+            for c in range(3):
+                channel = pca_img[:, :, c]
+                pmin, pmax = channel.min(), channel.max()
+                if pmax > pmin:
+                    pca_img[:, :, c] = (channel - pmin) / (pmax - pmin)
+                else:
+                    pca_img[:, :, c] = 0
+
+            # Convert to torch tensor (H, W, 3) -> (3, H, W)
+            pca_tensor = torch.from_numpy(pca_img).permute(2, 0, 1).float()
+            pca_viz.append(pca_tensor)
+
+        # Ensure we have at least 2 visualizations (for alternating display)
+        if len(pca_viz) == 1:
+            return pca_viz[0], pca_viz[0]
+        else:
+            return pca_viz[0], pca_viz[1] if len(pca_viz) > 1 else pca_viz[0]
 
 
 class SegPangaea(Metric):
@@ -817,6 +902,24 @@ def evaluate_segmentation(data_loader, is_test, model, device, epoch, max_iou, a
                 + "pc_results/per_image/"
                 + args.method_name
             )
+        if not os.path.exists(
+            args.output_dir
+            + "images/"
+            + args.dataset_type
+            + "_"
+            + str(args.dataset_split)
+            + "pc_results/PCA/"
+            + args.method_name
+        ):
+            os.makedirs(
+                args.output_dir
+                + "images/"
+                + args.dataset_type
+                + "_"
+                + str(args.dataset_split)
+                + "pc_results/PCA/"
+                + args.method_name
+            )
 
     if args.dataset_type == "spacenet" or args.dataset_type == "mass_roads":  # type: ignore
         miou_metric = JaccardIndex(task="multiclass", num_classes=args.nb_classes)  # type: ignore
@@ -898,130 +1001,130 @@ def evaluate_segmentation(data_loader, is_test, model, device, epoch, max_iou, a
 
     miou_test = 0
 
-    for batch in metric_logger.log_every(data_loader, 50, header):
-        data = batch[0]
-        mask = batch[-1]
-        # print('images and targets')
-        # if len(data) == 2:
-        #     data_rgb = data[0].to(device, non_blocking=True)
-        #     data_depth = data[1].to(device, non_blocking=True)
-        # else:
-        data = data.to(device, non_blocking=True)
-        mask = mask.to(device, non_blocking=True)
+    # for batch in metric_logger.log_every(data_loader, 50, header):
+    #     data = batch[0]
+    #     mask = batch[-1]
+    #     # print('images and targets')
+    #     # if len(data) == 2:
+    #     #     data_rgb = data[0].to(device, non_blocking=True)
+    #     #     data_depth = data[1].to(device, non_blocking=True)
+    #     # else:
+    #     data = data.to(device, non_blocking=True)
+    #     mask = mask.to(device, non_blocking=True)
 
-        # print("before pass model")
-        # compute output
-        with torch.amp.autocast("cuda"):  # type: ignore
-            # data = data.to(device)
-            # print(data.shape)
-            # if len(data) == 2:
-            #     pred, _ = model((data_rgb, data_depth))
-            # else:
-            pred, _ = model(data)
-            # pred = torch.full_like(
-            #     mask, fill_value=mask.flatten().mode().values.item(), device=device
-            # )  # Predict the majority class
+    #     # print("before pass model")
+    #     # compute output
+    #     with torch.amp.autocast("cuda"):  # type: ignore
+    #         # data = data.to(device)
+    #         # print(data.shape)
+    #         # if len(data) == 2:
+    #         #     pred, _ = model((data_rgb, data_depth))
+    #         # else:
+    #         pred, _ = model(data)
+    #         # pred = torch.full_like(
+    #         #     mask, fill_value=mask.flatten().mode().values.item(), device=device
+    #         # )  # Predict the majority class
 
-            # _, axarr = plt.subplots(3)
+    #         # _, axarr = plt.subplots(3)
 
-            # axarr[0].imshow(data[0].cpu().squeeze().permute(1, 2, 0))
-            # axarr[1].imshow(mask[0].cpu(), interpolation="none")
-            # axarr[2].imshow(pred[0].argmax(0).cpu(), interpolation="none")
+    #         # axarr[0].imshow(data[0].cpu().squeeze().permute(1, 2, 0))
+    #         # axarr[1].imshow(mask[0].cpu(), interpolation="none")
+    #         # axarr[2].imshow(pred[0].argmax(0).cpu(), interpolation="none")
 
-            # plt.savefig(
-            #     "satmae_experiments/"
-            #     + args.dataset_type
-            #     + "_"
-            #     + str(args.dataset_split)
-            #     + "pc_results/images/"
-            #     + args.method_name
-            #     + "/img_"
-            #     + str(cnt)
-            #     + ".png",
-            #     figsize=(3, 1),
-            #     bbox_inches="tight",
-            #     pad_inches=0.1,
-            #     dpi=600,
-            # )
+    #         # plt.savefig(
+    #         #     "satmae_experiments/"
+    #         #     + args.dataset_type
+    #         #     + "_"
+    #         #     + str(args.dataset_split)
+    #         #     + "pc_results/images/"
+    #         #     + args.method_name
+    #         #     + "/img_"
+    #         #     + str(cnt)
+    #         #     + ".png",
+    #         #     figsize=(3, 1),
+    #         #     bbox_inches="tight",
+    #         #     pad_inches=0.1,
+    #         #     dpi=600,
+    #         # )
 
-            if (
-                args.dataset_type == "loveda"
-                or args.dataset_type == "vaihingen"
-                or args.dataset_type == "potsdam"
-            ):
-                mask = mask.squeeze(1)
+    #         if (
+    #             args.dataset_type == "loveda"
+    #             or args.dataset_type == "vaihingen"
+    #             or args.dataset_type == "potsdam"
+    #         ):
+    #             mask = mask.squeeze(1)
 
-            if args.dataset_type != "geobench_eurosat" and args.dataset_type != "geobench_bigearthnet":  # type: ignore
-                mask_one_hot = F.one_hot(mask, num_classes=args.nb_classes).permute(
-                    0, 3, 1, 2
-                )
-            if (
-                args.dataset_type == "geobench_eurosat"
-                or args.dataset_type == "geobench_bigearthnet"
-            ):
-                loss = F.cross_entropy(pred, mask.long())
-            else:
-                loss = get_bce_loss(pred, mask_one_hot.float())
-            # loss = 2
-            # dice_loss = DiceLoss()
-            # loss_2 = dice_loss(pred, mask_one_hot.float())
-            miou_metric.update(pred.argmax(1), mask)
-            # miou_metric.update(pred, mask)
-            if (
-                args.dataset_type != "spacenet"
-                and args.dataset_type != "sen1floods11"
-                and args.dataset_type != "mass_roads"
-                and args.dataset_type != "geobench_eurosat"
-                and args.dataset_type != "geobench_bigearthnet"
-            ):
-                miou_metric_2.update(pred.argmax(1), mask)
-                # miou_metric_3.update(pred.argmax(1), mask)
-                # miou_metric_4.update(pred.argmax(1), mask)
-                f1_score.update(pred.argmax(1), mask)
-                overall_accuracy.update(pred.argmax(1), mask)
+    #         if args.dataset_type != "geobench_eurosat" and args.dataset_type != "geobench_bigearthnet":  # type: ignore
+    #             mask_one_hot = F.one_hot(mask, num_classes=args.nb_classes).permute(
+    #                 0, 3, 1, 2
+    #             )
+    #         if (
+    #             args.dataset_type == "geobench_eurosat"
+    #             or args.dataset_type == "geobench_bigearthnet"
+    #         ):
+    #             loss = F.cross_entropy(pred, mask.long())
+    #         else:
+    #             loss = get_bce_loss(pred, mask_one_hot.float())
+    #         # loss = 2
+    #         # dice_loss = DiceLoss()
+    #         # loss_2 = dice_loss(pred, mask_one_hot.float())
+    #         miou_metric.update(pred.argmax(1), mask)
+    #         # miou_metric.update(pred, mask)
+    #         if (
+    #             args.dataset_type != "spacenet"
+    #             and args.dataset_type != "sen1floods11"
+    #             and args.dataset_type != "mass_roads"
+    #             and args.dataset_type != "geobench_eurosat"
+    #             and args.dataset_type != "geobench_bigearthnet"
+    #         ):
+    #             miou_metric_2.update(pred.argmax(1), mask)
+    #             # miou_metric_3.update(pred.argmax(1), mask)
+    #             # miou_metric_4.update(pred.argmax(1), mask)
+    #             f1_score.update(pred.argmax(1), mask)
+    #             overall_accuracy.update(pred.argmax(1), mask)
 
-            miou_test = save_results(mask, pred, device, epoch, cnt, miou_test, args)
+    #         miou_test = save_results(mask, pred, device, epoch, cnt, miou_test, args)
 
-        cnt += args.batch_size
+    #     cnt += args.batch_size
 
-        # batch_size = images.shape[0]
-        metric_logger.update(loss=loss)
-        # metric_logger.meters['IoU'].update(IoU, n=batch_size)
+    #     # batch_size = images.shape[0]
+    #     metric_logger.update(loss=loss)
+    #     # metric_logger.meters['IoU'].update(IoU, n=batch_size)
 
-    if args.dataset_type == "spacenet":
-        print("miou test: " + str(miou_test * args.world_size / 1940))
-    elif args.dataset_type == "vaihingen":
-        print("miou test: " + str(miou_test * args.world_size / 398))
-    elif args.dataset_type == "potsdam":
-        print("miou test: " + str(miou_test * args.world_size / 2016))
-    elif args.dataset_type == "sen1floods11":
-        print("miou test: " + str(miou_test * args.world_size / 89))
-    elif args.dataset_type == "isaid":
-        print("miou test: " + str(miou_test * args.world_size / 11644))
-    elif args.dataset_type == "mass_roads":
-        print("miou test: " + str(miou_test * args.world_size / 49))
+    # if args.dataset_type == "spacenet":
+    #     print("miou test: " + str(miou_test * args.world_size / 1940))
+    # elif args.dataset_type == "vaihingen":
+    #     print("miou test: " + str(miou_test * args.world_size / 398))
+    # elif args.dataset_type == "potsdam":
+    #     print("miou test: " + str(miou_test * args.world_size / 2016))
+    # elif args.dataset_type == "sen1floods11":
+    #     print("miou test: " + str(miou_test * args.world_size / 89))
+    # elif args.dataset_type == "isaid":
+    #     print("miou test: " + str(miou_test * args.world_size / 11644))
+    # elif args.dataset_type == "mass_roads":
+    #     print("miou test: " + str(miou_test * args.world_size / 49))
 
-    # gather the stats from all processes
-    miou = miou_metric.compute().item()
+    # # gather the stats from all processes
+    # miou = miou_metric.compute().item()
 
-    if (
-        args.dataset_type != "spacenet"
-        and args.dataset_type != "sen1floods11"
-        and args.dataset_type != "mass_roads"
-    ):
-        miou_2 = miou_metric_2.compute().item()
-        # miou_3 = miou_metric_3.compute().item()
-        # miou_4 = miou_metric_4.compute().item()
-        f1 = f1_score.compute().item()
-        oa = overall_accuracy.compute().item()
+    # if (
+    #     args.dataset_type != "spacenet"
+    #     and args.dataset_type != "sen1floods11"
+    #     and args.dataset_type != "mass_roads"
+    # ):
+    #     miou_2 = miou_metric_2.compute().item()
+    #     # miou_3 = miou_metric_3.compute().item()
+    #     # miou_4 = miou_metric_4.compute().item()
+    #     f1 = f1_score.compute().item()
+    #     oa = overall_accuracy.compute().item()
 
-    if is_test:
-        print(f"Test IoU: {miou:.4f}")
-    else:
-        max_iou = max(max_iou, miou)
-        print(f"Max IoU: {max_iou:.4f}")
+    # if is_test:
+    #     print(f"Test IoU: {miou:.4f}")
+    # else:
+    #     max_iou = max(max_iou, miou)
+    #     print(f"Max IoU: {max_iou:.4f}")
 
-    if args.save_images:
+    if args.save_images or args.visualize_features:
         cnt = 0
         if args.best_epoch:
             if (miou > max_iou and epoch > -1) or epoch == -1:
@@ -1171,11 +1274,14 @@ def save_images(data, mask, pred, features, cnt, args):
 
     for i in range(data.shape[0]):
 
+        # if args.save_images:
         if args.visualize_features:
             _, axarr = plt.subplots(5)
-            if features[0] != 0:
-                viz_conv_1, viz_conv_2 = visualize_features(features[0], True)
-            viz_vit_1, viz_vit_2 = visualize_features(features[1], False)
+            # features[0] can be from conv layers or earlier transformer layers
+            # features[1] is typically the main backbone (ViT or Swin)
+            viz_feat1_1, _ = visualize_features(features[1][-1])
+            viz_feat1_2, _ = visualize_features(features[1][2])
+
         else:
             _, axarr = plt.subplots(3)
 
@@ -1240,16 +1346,22 @@ def save_images(data, mask, pred, features, cnt, args):
                 "#1f78b4",  # Canola – medium blue
                 "#b2df8a",  # Rooibos – light green
             ]
-            mask_array_1 = np.array(mask[i].cpu())
-            mask_array_2 = np.array(pred.argmax(1).cpu()[i])
-            cmap_1 = matplotlib.colors.ListedColormap(
-                [color_list[j] for j in np.unique(mask_array_1)]
+            # Create colormaps with all classes, not just unique values
+            cmap = matplotlib.colors.ListedColormap(color_list[: args.nb_classes])
+            axarr[1].imshow(
+                mask[i].cpu(),
+                cmap=cmap,
+                vmin=0,
+                vmax=args.nb_classes - 1,
+                interpolation="none",
             )
-            cmap_2 = matplotlib.colors.ListedColormap(
-                [color_list[j] for j in np.unique(mask_array_2)]
+            axarr[2].imshow(
+                pred.argmax(1).cpu()[i],
+                cmap=cmap,
+                vmin=0,
+                vmax=args.nb_classes - 1,
+                interpolation="none",
             )
-            axarr[1].imshow(mask[i].cpu(), cmap=cmap_1, interpolation="none")
-            axarr[2].imshow(pred.argmax(1).cpu()[i], cmap=cmap_2, interpolation="none")
         elif (
             args.dataset_type == "loveda"
             or args.dataset_type == "vaihingen"
@@ -1268,28 +1380,31 @@ def save_images(data, mask, pred, features, cnt, args):
             axarr[2].imshow(pred.argmax(1).cpu()[i], cmap=cmap_2, interpolation="none")
 
         if args.visualize_features:
+            # Display feature visualizations (alternating between first/second image in batch)
             if i % 2 == 0:
-                axarr[3].imshow(viz_vit_1.permute(1, 2, 0))
-                if features[0] != 0:
-                    axarr[4].imshow(viz_conv_1.permute(1, 2, 0))
-            else:
-                axarr[3].imshow(viz_vit_2.permute(1, 2, 0))
-                if features[0] != 0:
-                    axarr[4].imshow(viz_conv_2.permute(1, 2, 0))
+                axarr[3].imshow(viz_feat1_1.permute(1, 2, 0))
+                axarr[3].set_title("last layer features", fontsize=10)
+                axarr[4].imshow(viz_feat1_2.permute(1, 2, 0))
+                axarr[4].set_title("intermediate layer features", fontsize=10)
 
-            if features[0] == 0:
+            plt.suptitle(
+                f"{args.method_name} - PCA Features - Image {cnt + i}",
+                fontsize=14,
+                y=0.98,
+            )
+
+            if isinstance(features[0], (int, float)) and features[0] == 0:
                 plt.savefig(
                     args.output_dir
                     + "images/"
                     + args.dataset_type
                     + "_"
                     + str(args.dataset_split)
-                    + "pc_results/images/"
+                    + "pc_results/PCA/"
                     + args.method_name
                     + "/img_"
                     + str(cnt + i)
                     + ".png",
-                    figsize=(4, 1),
                     bbox_inches="tight",
                     pad_inches=0.1,
                     dpi=600,
@@ -1301,12 +1416,11 @@ def save_images(data, mask, pred, features, cnt, args):
                     + args.dataset_type
                     + "_"
                     + str(args.dataset_split)
-                    + "pc_results/images/"
+                    + "pc_results/PCA/"
                     + args.method_name
                     + "/img_"
                     + str(cnt + i)
                     + ".png",
-                    figsize=(5, 1),
                     bbox_inches="tight",
                     pad_inches=0.1,
                     dpi=600,
@@ -1324,7 +1438,6 @@ def save_images(data, mask, pred, features, cnt, args):
                 + "/img_"
                 + str(cnt + i)
                 + ".png",
-                figsize=(3, 1),
                 bbox_inches="tight",
                 pad_inches=0.1,
                 dpi=600,

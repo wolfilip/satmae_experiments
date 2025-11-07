@@ -522,4 +522,4 @@ class SimDINO(nn.Module):
 
         # x = self.decoder_upernet(x[1])
 
-        return x, (0, features[-1])
+        return x, (0, features)
