@@ -1498,14 +1498,13 @@ class LoveDADataset(SatelliteDataset):
         return image, mask
 
 
-class CustomDatasetFromImages(SatelliteDataset):
+class CustomDatasetFromImagesRGB(SatelliteDataset):
     # resics
-    mean = [0.368, 0.381, 0.3436]
-    std = [0.2035, 0.1854, 0.1849]
+
     # mean = [0.4182007312774658, 0.4214799106121063, 0.3991275727748871]
     # std = [0.28774282336235046, 0.27541765570640564, 0.2764017581939697]
 
-    def __init__(self, csv_path, transform):
+    def __init__(self, args, path):
         """
         Creates Dataset for regular RGB image classification (usually used for fMoW-RGB dataset).
         :param csv_path: csv_path (string): path to csv file.
@@ -1513,32 +1512,66 @@ class CustomDatasetFromImages(SatelliteDataset):
         """
         super().__init__(in_c=3)
         torch.set_num_threads(1)
+        mean = [0.368, 0.381, 0.3436]
+        std = [0.2035, 0.1854, 0.1849]
         # Transforms
-        self.transforms = transform
-        # Read the csv file
-        self.data_info = pd.read_csv(csv_path, header=0)
-        # First column contains the image paths
-        self.image_arr = np.asarray(self.data_info.iloc[:, 1])
-        # Second column is the labels
-        self.label_arr = np.asarray(self.data_info.iloc[:, 0])
-        # Calculate len
-        self.data_len = len(self.data_info.index)
+        self.transform = transforms.Compose(
+            [
+                transforms.ToImage(),
+                transforms.ToDtype(torch.float32, scale=True),
+                transforms.Normalize(mean, std),
+            ]
+        )
+        # Read the csv file and scan for all _rgb.jpg files
+        Image.MAX_IMAGE_PIXELS = None
+        self.image_paths = []
+        for root, dirs, files in os.walk(path):
+            for file in files:
+                if file.endswith("_rgb.jpg"):
+                    img_path = os.path.join(root, file)
+                    # Check image size - only skip if smaller than 2000x2000
+                    try:
+                        with Image.open(img_path) as img:
+                            w, h = img.size
+                            if w >= 2000 and h >= 2000:
+                                self.image_paths.append(img_path)
+                    except Exception as e:
+                        print(f"Error processing {img_path}: {e}")
+                        continue
 
-        # self.totensor = transforms.ToTensor()
-        # self.scale = transforms.Resize((224, 224))
+        self.image_paths = sorted(self.image_paths)  # Sort for consistency
+        print(f"Found {len(self.image_paths)} valid images (>= 2000x2000)")
+
+        self.totensor = transforms.ToTensor()
+        self.crop_size = (args.input_size, args.input_size)
 
     def __getitem__(self, index):
         # Get image name from the pandas df
-        single_image_name = self.image_arr[index]
         # Open image
-        img_as_img = Image.open(single_image_name)  # type: ignore
+        img_as_img = Image.open(self.image_paths[index])  # type: ignore
+
+        # If image is larger than 5000x5000, center crop to 5000x5000
+        w, h = img_as_img.size
+        if w > 5000 or h > 5000:
+            # Center crop to 5000x5000
+            left = (w - 5000) // 2 if w > 5000 else 0
+            top = (h - 5000) // 2 if h > 5000 else 0
+            right = left + min(w, 5000)
+            bottom = top + min(h, 5000)
+            img_as_img = img_as_img.crop((left, top, right, bottom))
+
         # Transform the image
-        img_as_tensor = self.transforms(img_as_img)
+        transformed_img = self.transform(img_as_img)
+        # Get random crop parameters once
+        # i, j, h, w = transforms.RandomCrop.get_params(transformed_img, output_size=self.crop_size)
+        # img_as_tensor = transforms.functional.crop(transformed_img, i, j, h, w)
+        # Also apply same crop to the original tensor version
+        totensor_img = self.totensor(img_as_img)
+        # totensor_img_cropped = transforms.functional.crop(totensor_img, i, j, h, w)
         # Get label(class) of the image based on the cropped pandas column
-        single_image_label = self.label_arr[index]
         # cv2.imwrite(
         #     os.path.join("/home/filip/satmae_experiments", "object_result.png"),
-        #     (255 * self.scale(self.totensor(img_as_img)))
+        #     (255 * totensor_img_cropped)
         #     .to(torch.uint8)
         #     .cpu()
         #     .detach()
@@ -1547,13 +1580,257 @@ class CustomDatasetFromImages(SatelliteDataset):
         # )
 
         return (
-            img_as_tensor,
-            single_image_label,
-            # self.scale(self.totensor(img_as_img)),
+            transformed_img,
+            totensor_img,
+            0,
         )
 
     def __len__(self):
-        return self.data_len
+        return len(self.image_paths)
+
+
+class CustomDatasetFromImages(SatelliteDataset):
+    # resics
+
+    # mean = [0.4182007312774658, 0.4214799106121063, 0.3991275727748871]
+    # std = [0.28774282336235046, 0.27541765570640564, 0.2764017581939697]
+
+    def __init__(self, args, path):
+        """
+        Creates Dataset for regular RGB image classification (usually used for fMoW-RGB dataset).
+        :param csv_path: csv_path (string): path to csv file.
+        :param transform: pytorch transforms for transforms and tensor conversion.
+        """
+        super().__init__(in_c=3)
+        torch.set_num_threads(1)
+        mean = [0.368, 0.381, 0.3436]
+        std = [0.2035, 0.1854, 0.1849]
+        # Transforms
+        self.transform = transforms.Compose(
+            [
+                transforms.ToImage(),
+                transforms.ToDtype(torch.float32, scale=True),
+                transforms.Normalize(mean, std),
+            ]
+        )
+        # Read the csv file and scan for all TIF files from subfolders
+        # Increase PIL's decompression bomb limit for large satellite images
+        Image.MAX_IMAGE_PIXELS = None  # Remove limit entirely for satellite imagery
+
+        self.image_paths = []
+        for root, dirs, files in os.walk(path):
+            for file in files:
+                if file.endswith(".tif") or file.endswith(".tiff"):
+                    img_path = os.path.join(root, file)
+                    self.image_paths.append(img_path)
+                    # Check image size - only skip if smaller than 2000x2000
+                    # try:
+                    #     with rio.open(img_path) as src:
+                    #         w, h = src.width, src.height
+                    #         if w >= 2000 and h >= 2000:
+                    #             self.image_paths.append(img_path)
+                    # except Exception as e:
+                    #     print(f"Error processing {img_path}: {e}")
+                    #     continue
+
+        self.image_paths = sorted(self.image_paths)  # Sort for consistency
+        print(f"Found {len(self.image_paths)} valid images (>= 2000x2000)")
+
+        self.totensor = transforms.ToTensor()
+        self.crop_size = (args.input_size, args.input_size)
+
+        # Normalization for 10 selected bands (RGB + 7 other sentinel bands)
+        # Bands selected: [1, 2, 3, 4, 5, 6, 7, 8, 11, 12] from 13-band imagery
+        self.normalize_hr = transforms.Normalize(
+            (
+                # RGB norms (bands 1, 2, 3)
+                0.4182007312774658,
+                0.4214799106121063,
+                0.3991275727748871,
+                # Other selected bands (4, 5, 6, 7, 8, 11, 12)
+                1263.73947144,
+                1645.40315151,
+                1846.87040806,
+                1762.59530783,
+                1972.62420416,
+                1732.16362238,
+                1247.91870117,
+            ),
+            (
+                # RGB stds (bands 1, 2, 3)
+                0.28774282336235046,
+                0.27541765570640564,
+                0.2764017581939697,
+                # Other selected bands (4, 5, 6, 7, 8, 11, 12)
+                948.9819932,
+                1108.06650639,
+                1258.36394548,
+                1233.1492281,
+                1364.38688993,
+                1310.36996126,
+                1087.6020813,
+            ),
+        )
+        self.normalize_s2 = transforms.Normalize(
+            (
+                # original order
+                # 1184.382,
+                # 1120.771,
+                # 1136.260,
+                # reversed order
+                1136.26026392,
+                1120.77120066,
+                1184.3824625,
+                # rgb norms
+                # 0.4182007312774658,
+                # 0.4214799106121063,
+                # 0.3991275727748871,
+                1263.73947144,
+                1645.40315151,
+                1846.87040806,
+                1762.59530783,
+                1972.62420416,
+                1732.16362238,
+                1247.91870117,
+            ),
+            (
+                # original order
+                # 650.2842772,
+                # 712.12507725,
+                # 965.23119807,
+                # reversed order
+                965.23119807,
+                712.12507725,
+                650.2842772,
+                # rgb norms
+                # 0.28774282336235046,
+                # 0.27541765570640564,
+                # 0.2764017581939697,
+                948.9819932,
+                1108.06650639,
+                1258.36394548,
+                1233.1492281,
+                1364.38688993,
+                1310.36996126,
+                1087.6020813,
+            ),
+        )
+
+    def __getitem__(self, index):
+        # Open image with rasterio for TIF files
+        with rio.open(self.image_paths[index]) as src:
+            # Read all bands
+            img_data = src.read()  # Shape: (bands, height, width)
+
+            # Get dimensions
+            num_bands, h, w = img_data.shape
+
+            # Crop to square based on smaller dimension
+            min_dim = min(h, w)
+            top = (h - min_dim) // 2
+            left = (w - min_dim) // 2
+            img_data = img_data[:, top : top + min_dim, left : left + min_dim]
+
+            # Select bands [1, 2, 3, 4, 5, 6, 7, 8, 11, 12] (0-indexed: [0, 1, 2, 3, 4, 5, 6, 7, 10, 11])
+            # This assumes we have at least 12 bands
+            if num_bands >= 12:
+                selected_bands = [1, 2, 3, 4, 5, 6, 7, 8, 11, 12]  # 10 bands total
+                img_data_selected = img_data[selected_bands]
+                img_data_selected[:3] = img_data_selected[[2, 1, 0]]
+            else:
+                # If fewer bands, just use what we have
+                img_data_selected = img_data
+
+            # Extract RGB (first 3 bands) for visualization
+            # rgb_data = img_data_selected[:3].transpose(1, 2, 0)  # (H, W, 3)
+
+            # Normalize RGB to 0-255 range if needed
+            # if rgb_data.max() > 255:
+            #     rgb_data = (rgb_data / rgb_data.max() * 255).astype(np.uint8)
+            # else:
+            #     rgb_data = rgb_data.astype(np.uint8)
+
+            # Convert RGB to PIL Image for compatibility with existing transforms
+            # rgb_img = Image.fromarray(rgb_data)
+
+        # If image is larger than 5000x5000, center crop to 5000x5000
+        # w_rgb, h_rgb = rgb_img.size
+        # if w_rgb > 5000 or h_rgb > 5000:
+        #     # Center crop to 5000x5000
+        #     left = (w_rgb - 5000) // 2 if w_rgb > 5000 else 0
+        #     top = (h_rgb - 5000) // 2 if h_rgb > 5000 else 0
+        #     right = left + min(w_rgb, 5000)
+        #     bottom = top + min(h_rgb, 5000)
+        #     rgb_img = rgb_img.crop((left, top, right, bottom))
+
+        # Apply same crop to multi-band data
+        # img_data_selected = img_data_selected[:, top:bottom, left:right]
+
+        # Transform RGB for visualization
+        # rgb_tensor = self.totensor(rgb_data)
+
+        # orig_scale = img_data_selected[:3].max().item()
+        # rgb_img = (
+        #     img_data_selected[:3] / orig_scale
+        #     if orig_scale > 0.1
+        #     else img_data_selected[:3]
+        # )
+
+        # Convert multi-band data to tensor and normalize
+        multispectral_tensor = torch.from_numpy(img_data_selected.astype(np.float32))
+        orig_scale = multispectral_tensor[:3].max().item()
+        rgb_img = (
+            multispectral_tensor[:3] / orig_scale
+            if orig_scale > 0.1
+            else multispectral_tensor[:3]
+        )
+
+        multispectral_normalized = self.normalize_hr(multispectral_tensor)
+        # multispectral_normalized[:3] = self.totensor(rgb_img)
+
+        # # OLD CODE - Open with PIL (for JPG files)
+        # # Get image name from the pandas df
+        # # Open image
+        # img_as_img = Image.open(self.image_paths[index])  # type: ignore
+        #
+        # # If image is larger than 5000x5000, center crop to 5000x5000
+        # w, h = img_as_img.size
+        # if w > 5000 or h > 5000:
+        #     # Center crop to 5000x5000
+        #     left = (w - 5000) // 2 if w > 5000 else 0
+        #     top = (h - 5000) // 2 if h > 5000 else 0
+        #     right = left + min(w, 5000)
+        #     bottom = top + min(h, 5000)
+        #     img_as_img = img_as_img.crop((left, top, right, bottom))
+        #
+        # # Transform the image
+        # transformed_img = self.transform(img_as_img)
+        # # Get random crop parameters once
+        # # i, j, h, w = transforms.RandomCrop.get_params(transformed_img, output_size=self.crop_size)
+        # # img_as_tensor = transforms.functional.crop(transformed_img, i, j, h, w)
+        # # Also apply same crop to the original tensor version
+        # totensor_img = self.totensor(img_as_img)
+        # # totensor_img_cropped = transforms.functional.crop(totensor_img, i, j, h, w)
+
+        # Get label(class) of the image based on the cropped pandas column
+        # cv2.imwrite(
+        #     os.path.join("/home/filip/satmae_experiments", "object_result.png"),
+        #     (255 * totensor_img_cropped)
+        #     .to(torch.uint8)
+        #     .cpu()
+        #     .detach()
+        #     .numpy()
+        #     .transpose(),
+        # )
+
+        return (
+            multispectral_normalized,
+            multispectral_normalized[:3],
+            0,
+        )
+
+    def __len__(self):
+        return len(self.image_paths)
 
 
 class FMoWTemporalStacked(SatelliteDataset):
@@ -2189,6 +2466,16 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
             is_train, args.input_size, mean, std
         )
         dataset = CustomDatasetFromImages(csv_path, transform)
+    if args.dataset_type == "fmow_example":
+        # location = "/home/filip/datasets/fMoW-Temporal/train/amusement_park/amusement_park_1/amusement_park_1_0_rgb.jpg"
+        # location = "/home/filip/datasets/fMoW-Temporal/train/amusement_park/amusement_park_112/amusement_park_112_0_rgb.jpg"
+        # location = "/home/filip/datasets/fMoW-Temporal/train/airport/airport_23/airport_23_5_rgb.jpg"
+        # location = "/home/filip/datasets/fMoW-Temporal/train/airport/airport_90/airport_90wad_4_rgb.jpg"
+        # location = "/home/filip/datasets/fMoW-Temporal/train/airport/airport_124/airport_124_0_rgb.jpg"
+        # location = "/home/filip/datasets/high_res_paired/"
+        # location = "/home/filip/datasets/fMoW-Sentinel/fmow-sentinel/train/airport/"
+        location = "/storage/datasets/fMoW/train/airport/"
+        dataset = CustomDatasetFromImagesRGB(args, location)
     elif args.dataset_type == "rgb_scale":
         mean = CustomDatasetFromImages.mean
         std = CustomDatasetFromImages.std

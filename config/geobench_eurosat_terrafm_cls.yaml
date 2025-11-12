@@ -12,8 +12,8 @@ dataset_split: 100
 method_name: terrafm_vit_b
 best_epoch: false
 nb_classes: 10
-output_dir: satmae_experiments/outputs/
-log_dir: satmae_experiments/logs/
+output_dir: /home/filip/satmae_experiments/outputs/
+log_dir: /home/filip/satmae_experiments/logs/
 finetune: /home/filip/pretrained_weights/TerraFM-B.pth
 wandb: dl4rs-experiments
 eval: false

@@ -42,7 +42,7 @@ from torchmetrics.functional.classification import (
 from sklearn.decomposition import PCA
 
 
-def visualize_features(features, is_swin=False):
+def visualize_features(args, features, is_swin=False):
     """
     Create DINOv2-style PCA feature visualizations for ViT or Swin Transformer features.
 
@@ -56,6 +56,7 @@ def visualize_features(features, is_swin=False):
         Two visualization tensors (for alternating images) of shape (3, H, W)
     """
     # Check if features are None or a placeholder value (0 or scalar)
+
     if features is None:
         dummy = torch.zeros(3, 224, 224)
         return dummy, dummy
@@ -66,14 +67,58 @@ def visualize_features(features, is_swin=False):
         return dummy, dummy
 
     with torch.no_grad():
-        features = features.detach().cpu()
+        features = (
+            features.detach().cpu().float()
+        )  # Convert to float for quantile calculation
+
+        # # Print feature statistics
+        # print("\n" + "="*60)
+        # print("Feature Statistics:")
+        # print("="*60)
+        # print(f"Shape: {features.shape}")
+        # print(f"Data type: {features.dtype}")
+        # print(f"Min value: {features.min().item():.6f}")
+        # print(f"Max value: {features.max().item():.6f}")
+        # print(f"Mean: {features.mean().item():.6f}")
+        # print(f"Std: {features.std().item():.6f}")
+        # print(f"L2 norm (mean): {torch.norm(features, dim=-1).mean().item():.6f}")
+        # print(f"% zeros: {(features == 0).float().mean().item() * 100:.2f}%")
+        # print(f"% negative: {(features < 0).float().mean().item() * 100:.2f}%")
+        # print("="*60 + "\n")
+
+        # Remove outliers by clipping to percentiles
+        # This makes PCA visualization more stable and interpretable
+        # lower_percentile = torch.quantile(features, 0.01)
+        # upper_percentile = torch.quantile(features, 0.99)
+        # features = torch.clamp(features, min=lower_percentile, max=upper_percentile)
+
+        # print("\n" + "=" * 60)
+        # print("Feature Statistics:")
+        # print("=" * 60)
+        # print(f"Shape: {features.shape}")
+        # print(f"Data type: {features.dtype}")
+        # print(f"Min value: {features.min().item():.6f}")
+        # print(f"Max value: {features.max().item():.6f}")
+        # print(f"Mean: {features.mean().item():.6f}")
+        # print(f"Std: {features.std().item():.6f}")
+        # print(f"L2 norm (mean): {torch.norm(features, dim=-1).mean().item():.6f}")
+        # print(f"% zeros: {(features == 0).float().mean().item() * 100:.2f}%")
+        # print(f"% negative: {(features < 0).float().mean().item() * 100:.2f}%")
+        # print("=" * 60 + "\n")
 
         # Handle different feature shapes
         if len(features.shape) == 4:
             # Format: (B, C, H, W) - typical for Swin or conv layers
-            B, C, H, W = features.shape
-            # Reshape to (B*H*W, C) for PCA
-            features_flat = features.permute(0, 2, 3, 1).reshape(-1, C).numpy()
+            if args.model_type == "simdino":
+                B, H, W, C = features.shape
+                # B, C, H, W = features.shape
+                # Reshape to (B*H*W, C) for PCA
+                # features_flat = features.permute(0, 2, 3, 1).reshape(-1, C).numpy()
+                features_flat = features.reshape(-1, C).numpy()
+            elif args.model_type == "copernicusfm":
+                B, C, H, W = features.shape
+                # Reshape to (B*H*W, C) for PCA
+                features_flat = features.permute(0, 2, 3, 1).reshape(-1, C).numpy()
         elif len(features.shape) == 3:
             # Format: (B, N, C) - typical for ViT/DINOv2/Swin patch features
             B, N, C = features.shape
@@ -1001,131 +1046,158 @@ def evaluate_segmentation(data_loader, is_test, model, device, epoch, max_iou, a
 
     miou_test = 0
 
-    # for batch in metric_logger.log_every(data_loader, 50, header):
-    #     data = batch[0]
-    #     mask = batch[-1]
-    #     # print('images and targets')
-    #     # if len(data) == 2:
-    #     #     data_rgb = data[0].to(device, non_blocking=True)
-    #     #     data_depth = data[1].to(device, non_blocking=True)
-    #     # else:
-    #     data = data.to(device, non_blocking=True)
-    #     mask = mask.to(device, non_blocking=True)
+    for batch in metric_logger.log_every(data_loader, 50, header):
+        data = batch[0]
+        mask = batch[-1]
+        # print('images and targets')
+        # if len(data) == 2:
+        #     data_rgb = data[0].to(device, non_blocking=True)
+        #     data_depth = data[1].to(device, non_blocking=True)
+        # else:
+        data = data.to(device, non_blocking=True)
+        mask = mask.to(device, non_blocking=True)
 
-    #     # print("before pass model")
-    #     # compute output
-    #     with torch.amp.autocast("cuda"):  # type: ignore
-    #         # data = data.to(device)
-    #         # print(data.shape)
-    #         # if len(data) == 2:
-    #         #     pred, _ = model((data_rgb, data_depth))
-    #         # else:
-    #         pred, _ = model(data)
-    #         # pred = torch.full_like(
-    #         #     mask, fill_value=mask.flatten().mode().values.item(), device=device
-    #         # )  # Predict the majority class
+        # print("before pass model")
+        # compute output
+        with torch.amp.autocast("cuda"):  # type: ignore
+            # data = data.to(device)
+            # print(data.shape)
+            # if len(data) == 2:
+            #     pred, _ = model((data_rgb, data_depth))
+            # else:
+            pred, _ = model(data)
+            # pred = torch.full_like(
+            #     mask, fill_value=mask.flatten().mode().values.item(), device=device
+            # )  # Predict the majority class
 
-    #         # _, axarr = plt.subplots(3)
+            # _, axarr = plt.subplots(3)
 
-    #         # axarr[0].imshow(data[0].cpu().squeeze().permute(1, 2, 0))
-    #         # axarr[1].imshow(mask[0].cpu(), interpolation="none")
-    #         # axarr[2].imshow(pred[0].argmax(0).cpu(), interpolation="none")
+            # axarr[0].imshow(data[0].cpu().squeeze().permute(1, 2, 0))
+            # axarr[1].imshow(mask[0].cpu(), interpolation="none")
+            # axarr[2].imshow(pred[0].argmax(0).cpu(), interpolation="none")
 
-    #         # plt.savefig(
-    #         #     "satmae_experiments/"
-    #         #     + args.dataset_type
-    #         #     + "_"
-    #         #     + str(args.dataset_split)
-    #         #     + "pc_results/images/"
-    #         #     + args.method_name
-    #         #     + "/img_"
-    #         #     + str(cnt)
-    #         #     + ".png",
-    #         #     figsize=(3, 1),
-    #         #     bbox_inches="tight",
-    #         #     pad_inches=0.1,
-    #         #     dpi=600,
-    #         # )
+            # plt.savefig(
+            #     "satmae_experiments/"
+            #     + args.dataset_type
+            #     + "_"
+            #     + str(args.dataset_split)
+            #     + "pc_results/images/"
+            #     + args.method_name
+            #     + "/img_"
+            #     + str(cnt)
+            #     + ".png",
+            #     figsize=(3, 1),
+            #     bbox_inches="tight",
+            #     pad_inches=0.1,
+            #     dpi=600,
+            # )
 
-    #         if (
-    #             args.dataset_type == "loveda"
-    #             or args.dataset_type == "vaihingen"
-    #             or args.dataset_type == "potsdam"
-    #         ):
-    #             mask = mask.squeeze(1)
+            if (
+                args.dataset_type == "loveda"
+                or args.dataset_type == "vaihingen"
+                or args.dataset_type == "potsdam"
+            ):
+                mask = mask.squeeze(1)
 
-    #         if args.dataset_type != "geobench_eurosat" and args.dataset_type != "geobench_bigearthnet":  # type: ignore
-    #             mask_one_hot = F.one_hot(mask, num_classes=args.nb_classes).permute(
-    #                 0, 3, 1, 2
-    #             )
-    #         if (
-    #             args.dataset_type == "geobench_eurosat"
-    #             or args.dataset_type == "geobench_bigearthnet"
-    #         ):
-    #             loss = F.cross_entropy(pred, mask.long())
-    #         else:
-    #             loss = get_bce_loss(pred, mask_one_hot.float())
-    #         # loss = 2
-    #         # dice_loss = DiceLoss()
-    #         # loss_2 = dice_loss(pred, mask_one_hot.float())
-    #         miou_metric.update(pred.argmax(1), mask)
-    #         # miou_metric.update(pred, mask)
-    #         if (
-    #             args.dataset_type != "spacenet"
-    #             and args.dataset_type != "sen1floods11"
-    #             and args.dataset_type != "mass_roads"
-    #             and args.dataset_type != "geobench_eurosat"
-    #             and args.dataset_type != "geobench_bigearthnet"
-    #         ):
-    #             miou_metric_2.update(pred.argmax(1), mask)
-    #             # miou_metric_3.update(pred.argmax(1), mask)
-    #             # miou_metric_4.update(pred.argmax(1), mask)
-    #             f1_score.update(pred.argmax(1), mask)
-    #             overall_accuracy.update(pred.argmax(1), mask)
+            if args.dataset_type != "geobench_eurosat" and args.dataset_type != "geobench_bigearthnet":  # type: ignore
+                mask_one_hot = F.one_hot(mask, num_classes=args.nb_classes).permute(
+                    0, 3, 1, 2
+                )
+            if (
+                args.dataset_type == "geobench_eurosat"
+                or args.dataset_type == "geobench_bigearthnet"
+            ):
+                loss = F.cross_entropy(pred, mask.long())
+            else:
+                loss = get_bce_loss(pred, mask_one_hot.float())
+            # loss = 2
+            # dice_loss = DiceLoss()
+            # loss_2 = dice_loss(pred, mask_one_hot.float())
+            miou_metric.update(pred.argmax(1), mask)
+            # miou_metric.update(pred, mask)
+            if (
+                args.dataset_type != "spacenet"
+                and args.dataset_type != "sen1floods11"
+                and args.dataset_type != "mass_roads"
+                and args.dataset_type != "geobench_eurosat"
+                and args.dataset_type != "geobench_bigearthnet"
+            ):
+                miou_metric_2.update(pred.argmax(1), mask)
+                # miou_metric_3.update(pred.argmax(1), mask)
+                # miou_metric_4.update(pred.argmax(1), mask)
+                f1_score.update(pred.argmax(1), mask)
+                overall_accuracy.update(pred.argmax(1), mask)
 
-    #         miou_test = save_results(mask, pred, device, epoch, cnt, miou_test, args)
+            miou_test = save_results(mask, pred, device, epoch, cnt, miou_test, args)
 
-    #     cnt += args.batch_size
+        cnt += args.batch_size
 
-    #     # batch_size = images.shape[0]
-    #     metric_logger.update(loss=loss)
-    #     # metric_logger.meters['IoU'].update(IoU, n=batch_size)
+        # batch_size = images.shape[0]
+        metric_logger.update(loss=loss)
+        # metric_logger.meters['IoU'].update(IoU, n=batch_size)
 
-    # if args.dataset_type == "spacenet":
-    #     print("miou test: " + str(miou_test * args.world_size / 1940))
-    # elif args.dataset_type == "vaihingen":
-    #     print("miou test: " + str(miou_test * args.world_size / 398))
-    # elif args.dataset_type == "potsdam":
-    #     print("miou test: " + str(miou_test * args.world_size / 2016))
-    # elif args.dataset_type == "sen1floods11":
-    #     print("miou test: " + str(miou_test * args.world_size / 89))
-    # elif args.dataset_type == "isaid":
-    #     print("miou test: " + str(miou_test * args.world_size / 11644))
-    # elif args.dataset_type == "mass_roads":
-    #     print("miou test: " + str(miou_test * args.world_size / 49))
+    if args.dataset_type == "spacenet":
+        print("miou test: " + str(miou_test * args.world_size / 1940))
+    elif args.dataset_type == "vaihingen":
+        print("miou test: " + str(miou_test * args.world_size / 398))
+    elif args.dataset_type == "potsdam":
+        print("miou test: " + str(miou_test * args.world_size / 2016))
+    elif args.dataset_type == "sen1floods11":
+        print("miou test: " + str(miou_test * args.world_size / 89))
+    elif args.dataset_type == "isaid":
+        print("miou test: " + str(miou_test * args.world_size / 11644))
+    elif args.dataset_type == "mass_roads":
+        print("miou test: " + str(miou_test * args.world_size / 49))
 
-    # # gather the stats from all processes
-    # miou = miou_metric.compute().item()
+    # gather the stats from all processes
+    miou = miou_metric.compute().item()
 
-    # if (
-    #     args.dataset_type != "spacenet"
-    #     and args.dataset_type != "sen1floods11"
-    #     and args.dataset_type != "mass_roads"
-    # ):
-    #     miou_2 = miou_metric_2.compute().item()
-    #     # miou_3 = miou_metric_3.compute().item()
-    #     # miou_4 = miou_metric_4.compute().item()
-    #     f1 = f1_score.compute().item()
-    #     oa = overall_accuracy.compute().item()
+    if (
+        args.dataset_type != "spacenet"
+        and args.dataset_type != "sen1floods11"
+        and args.dataset_type != "mass_roads"
+    ):
+        miou_2 = miou_metric_2.compute().item()
+        # miou_3 = miou_metric_3.compute().item()
+        # miou_4 = miou_metric_4.compute().item()
+        f1 = f1_score.compute().item()
+        oa = overall_accuracy.compute().item()
 
-    # if is_test:
-    #     print(f"Test IoU: {miou:.4f}")
-    # else:
-    #     max_iou = max(max_iou, miou)
-    #     print(f"Max IoU: {max_iou:.4f}")
+    if is_test:
+        print(f"Test IoU: {miou:.4f}")
+    else:
+        max_iou = max(max_iou, miou)
+        print(f"Max IoU: {max_iou:.4f}")
 
     if args.save_images or args.visualize_features:
         cnt = 0
+
+        # Initialize feature accumulator if visualize_features is enabled
+        feature_accumulator = None
+        if args.visualize_features:
+            feature_accumulator = {"features": [], "labels": [], "image_ids": []}
+
+        # Create unique folder structure once at the start
+        from datetime import datetime
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        folder_name = f"{args.method_name}_{timestamp}"
+
+        base_output_dir = os.path.join(
+            args.output_dir,
+            "images",
+            args.dataset_type + "_" + str(args.dataset_split) + "pc_results",
+            "individual_images",
+            folder_name,
+        )
+
+        # Create subdirectories for different image types
+        os.makedirs(os.path.join(base_output_dir, "rgb"), exist_ok=True)
+        os.makedirs(os.path.join(base_output_dir, "gt_mask"), exist_ok=True)
+        os.makedirs(os.path.join(base_output_dir, "pred_mask"), exist_ok=True)
+        if args.visualize_features:
+            os.makedirs(os.path.join(base_output_dir, "features"), exist_ok=True)
+
         if args.best_epoch:
             if (miou > max_iou and epoch > -1) or epoch == -1:
                 for batch in data_loader:
@@ -1156,10 +1228,55 @@ def evaluate_segmentation(data_loader, is_test, model, device, epoch, max_iou, a
                             args.dataset_type == "sen1floods11"
                             or "geobench" in args.dataset_type
                         ):
-                            save_images(data_viz, mask, pred, features, cnt, args)
+                            save_images(
+                                data_viz,
+                                mask,
+                                pred,
+                                features,
+                                cnt,
+                                args,
+                                feature_accumulator,
+                                base_output_dir,
+                            )
                         else:
-                            save_images(data, mask, pred, features, cnt, args)
+                            save_images(
+                                data,
+                                mask,
+                                pred,
+                                features,
+                                cnt,
+                                args,
+                                feature_accumulator,
+                                base_output_dir,
+                            )
                     cnt += data.shape[0]
+
+                    # Save accumulated features once after all batches
+                    if args.visualize_features and feature_accumulator is not None:
+                        all_features = torch.cat(feature_accumulator["features"], dim=0)
+                        all_labels = torch.cat(feature_accumulator["labels"], dim=0)
+
+                        save_path = os.path.join(
+                            args.output_dir,
+                            "images",
+                            args.dataset_type
+                            + "_"
+                            + str(args.dataset_split)
+                            + "pc_results",
+                            "PCA",
+                            args.method_name,
+                            f"class_features_epoch_{epoch}.npz",
+                        )
+
+                        save_class_features_for_tsne(
+                            features=(
+                                all_features,
+                            ),  # Wrap in tuple to match expected format
+                            labels=all_labels,
+                            image_ids=feature_accumulator["image_ids"],
+                            save_path=save_path,
+                        )
+
         elif args.eval or is_test:
             for batch in data_loader:
                 data = batch[0]
@@ -1186,11 +1303,50 @@ def evaluate_segmentation(data_loader, is_test, model, device, epoch, max_iou, a
                         mask = mask.squeeze(1)
 
                     if args.dataset_type == "sen1floods11":
-                        save_images(data_viz, mask, pred, features, cnt, args)
+                        save_images(
+                            data_viz,
+                            mask,
+                            pred,
+                            features,
+                            cnt,
+                            args,
+                            feature_accumulator,
+                            base_output_dir,
+                        )
                     else:
-                        save_images(rgb_data, mask, pred, features, cnt, args)
+                        save_images(
+                            rgb_data,
+                            mask,
+                            pred,
+                            features,
+                            cnt,
+                            args,
+                            feature_accumulator,
+                            base_output_dir,
+                        )
 
                 cnt += data.shape[0]
+
+                # # Save accumulated features once after all batches
+                # if args.visualize_features and feature_accumulator is not None:
+                #     all_features = torch.cat(feature_accumulator['features'], dim=0)
+                #     all_labels = torch.cat(feature_accumulator['labels'], dim=0)
+                #     print(len(all_features))
+                #     save_path = os.path.join(
+                #         args.output_dir,
+                #         "images",
+                #         args.dataset_type + "_" + str(args.dataset_split) + "pc_results",
+                #         "PCA",
+                #         args.method_name,
+                #         f"class_features_epoch_{epoch}.npz"
+                #     )
+
+                #     save_class_features_for_tsne(
+                #         features=(all_features,),  # Wrap in tuple to match expected format
+                #         labels=all_labels,
+                #         image_ids=feature_accumulator['image_ids'],
+                #         save_path=save_path
+                # )
 
     metric_logger.synchronize_between_processes()
 
@@ -1270,179 +1426,258 @@ def sentinel2_l2a_to_rgb(image):
     return rgb_image
 
 
-def save_images(data, mask, pred, features, cnt, args):
+def save_class_features_for_tsne(features, labels, image_ids, save_path):
+    """
+    Save class features (from model output) in NumPy format for t-SNE visualization.
+
+    Args:
+        features: Tensor or list containing class features
+                 If list, expects features[-1] to be class features
+                 Shape should be (batch_size, feature_dim) or (batch_size, num_classes, feature_dim)
+        labels: Ground truth labels/masks for the batch
+        image_ids: List of image identifiers (e.g., ['img_0', 'img_1', ...])
+        save_path: Path to save the .npz file
+
+    The saved file can be loaded with:
+        data = np.load('features.npz', allow_pickle=True)
+        features = data['features']  # (N, D) array
+        labels = data['labels']      # (N,) array
+        image_ids = data['image_ids'] # (N,) array
+    """
+    import numpy as np
+    import torch
+
+    # Extract class features from features list
+    if isinstance(features, (list, tuple)):
+        class_features = features[-1]  # Last element contains class features
+    else:
+        class_features = features
+
+    # Convert to numpy
+    if isinstance(class_features, torch.Tensor):
+        class_features = class_features.detach().cpu().numpy()
+
+    # Handle different feature shapes
+    if len(class_features.shape) == 3:
+        # Shape: (batch_size, num_classes, feature_dim)
+        # Option 1: Take mean across classes
+        class_features = class_features.mean(axis=1)  # -> (batch_size, feature_dim)
+        # Option 2 (alternative): Flatten
+        # batch_size = class_features.shape[0]
+        # class_features = class_features.reshape(batch_size, -1)
+    elif len(class_features.shape) == 2:
+        # Shape: (batch_size, feature_dim) - already correct
+        pass
+    else:
+        raise ValueError(f"Unexpected feature shape: {class_features.shape}")
+
+    # Process labels (aggregate to image-level if needed)
+    if isinstance(labels, torch.Tensor):
+        labels = labels.cpu().numpy()
+
+    if len(labels.shape) > 1:
+        # For segmentation masks, take the most common class per image
+        labels_agg = []
+        for label in labels:
+            # Flatten and get mode (most common value)
+            flat = label.flatten()
+            unique, counts = np.unique(flat, return_counts=True)
+            labels_agg.append(unique[counts.argmax()])
+        labels = np.array(labels_agg)
+
+    # Save to npz file
+    np.savez_compressed(
+        save_path, features=class_features, labels=labels, image_ids=np.array(image_ids)
+    )
+
+    return class_features.shape
+
+
+def save_images(
+    data,
+    mask,
+    pred,
+    features,
+    cnt,
+    args,
+    feature_accumulator=None,
+    base_output_dir=None,
+):
+    """
+    Args:
+        feature_accumulator: Optional dict to accumulate features across batches
+                            {'features': [], 'labels': [], 'image_ids': []}
+        base_output_dir: Base directory for saving images. If None, uses default path.
+    """
+
+    # Use provided base_output_dir or create default path
+    if base_output_dir is None:
+        base_output_dir = os.path.join(
+            args.output_dir,
+            "images",
+            args.dataset_type + "_" + str(args.dataset_split) + "pc_results",
+            "images",
+            args.method_name,
+        )
 
     for i in range(data.shape[0]):
+        img_id = cnt + i
 
-        # if args.save_images:
-        if args.visualize_features:
-            _, axarr = plt.subplots(5)
-            # features[0] can be from conv layers or earlier transformer layers
-            # features[1] is typically the main backbone (ViT or Swin)
-            viz_feat1_1, _ = visualize_features(features[1][-1])
-            viz_feat1_2, _ = visualize_features(features[1][2])
-
-        else:
-            _, axarr = plt.subplots(3)
-
-        for ax in axarr:
-            ax.axis("off")
-
-        # bla = sentinel2_l2a_to_rgb(data.cpu()[i])
+        # Save RGB image
+        fig_rgb, ax_rgb = plt.subplots(1, 1, figsize=(8, 8))
+        ax_rgb.axis("off")
 
         if args.dataset_type == "sen1floods11":
-            axarr[0].imshow(sentinel2_l2a_to_rgb(data[i].cpu()).permute(1, 2, 0))
+            ax_rgb.imshow(sentinel2_l2a_to_rgb(data[i].cpu()).permute(1, 2, 0))
         elif "geobench" in args.dataset_type:
             if "cashew" in args.dataset_type:
-                axarr[0].imshow(
+                ax_rgb.imshow(
                     sentinel2_l2a_to_rgb(data[i][:3, ...].cpu()).permute(1, 2, 0)
                 )
             else:
-                axarr[0].imshow(data[i][:3, ...].cpu().permute(1, 2, 0))
+                ax_rgb.imshow(data[i][:3, ...].cpu().permute(1, 2, 0))
         else:
-            axarr[0].imshow(data[i].cpu().permute(1, 2, 0))
+            ax_rgb.imshow(data[i].cpu().permute(1, 2, 0))
 
-        if (
-            args.dataset_type == "spacenet"
-            or args.dataset_type == "isaid"
-            or args.dataset_type == "mass_roads"
-        ):
-            color_list = [
-                "#000000",  # Background – black
-                "#e31a1c",  # Building footprint – strong red
-            ]
-            mask_array_1 = np.array(mask[i].cpu())
-            mask_array_2 = np.array(pred.argmax(1).cpu()[i])
-            cmap_1 = matplotlib.colors.ListedColormap(
-                [color_list[j] for j in np.unique(mask_array_1)]
-            )
-            cmap_2 = matplotlib.colors.ListedColormap(
-                [color_list[j] for j in np.unique(mask_array_2)]
-            )
-            axarr[1].imshow(mask[i].cpu(), cmap=cmap_1, interpolation="none")
-            axarr[2].imshow(pred.argmax(1).cpu()[i], cmap=cmap_2, interpolation="none")
-        elif args.dataset_type == "sen1floods11":
-            color_list = ["white", "grey", "blue"]
-            mask_array_1 = np.array(mask[i].cpu())
-            mask_array_2 = np.array(pred.argmax(1).cpu()[i])
-            cmap_1 = matplotlib.colors.ListedColormap(
-                [color_list[j] for j in np.unique(mask_array_1)]
-            )
-            cmap_2 = matplotlib.colors.ListedColormap(
-                [color_list[j] for j in np.unique(mask_array_2)]
-            )
-            axarr[1].imshow(mask[i].cpu(), cmap=cmap_1, interpolation="none")
-            axarr[2].imshow(pred.argmax(1).cpu()[i], cmap=cmap_2, interpolation="none")
-        elif "geobench" in args.dataset_type:
-            color_list = [
-                "#000000",  # No Data – black
-                "#1b9e77",  # Lucerne/Medics – teal green
-                "#66a61e",  # Planted pastures (perennial) – olive green
-                "#e6ab02",  # Fallow – mustard yellow
-                "#7570b3",  # Wine grapes – violet
-                "#d95f02",  # Weeds – orange
-                "#a6761d",  # Small grain grazing – brownish ochre
-                "#e7298a",  # Wheat – magenta
-                "#1f78b4",  # Canola – medium blue
-                "#b2df8a",  # Rooibos – light green
-            ]
-            # Create colormaps with all classes, not just unique values
-            cmap = matplotlib.colors.ListedColormap(color_list[: args.nb_classes])
-            axarr[1].imshow(
-                mask[i].cpu(),
-                cmap=cmap,
-                vmin=0,
-                vmax=args.nb_classes - 1,
-                interpolation="none",
-            )
-            axarr[2].imshow(
-                pred.argmax(1).cpu()[i],
-                cmap=cmap,
-                vmin=0,
-                vmax=args.nb_classes - 1,
-                interpolation="none",
-            )
-        elif (
-            args.dataset_type == "loveda"
-            or args.dataset_type == "vaihingen"
-            or args.dataset_type == "potsdam"
-        ):
-            mask_array_1 = np.array(mask[i].cpu())
-            mask_array_2 = np.array(pred.argmax(1).cpu()[i])
-            color_list = ["white", "red", "yellow", "blue", "violet", "green"]
-            cmap_1 = matplotlib.colors.ListedColormap(
-                [color_list[j] for j in np.unique(mask_array_1)]
-            )
-            cmap_2 = matplotlib.colors.ListedColormap(
-                [color_list[j] for j in np.unique(mask_array_2)]
-            )
-            axarr[1].imshow(mask[i].cpu(), cmap=cmap_1, interpolation="none")
-            axarr[2].imshow(pred.argmax(1).cpu()[i], cmap=cmap_2, interpolation="none")
+        plt.savefig(
+            os.path.join(base_output_dir, "rgb", f"img_{img_id}.png"),
+            bbox_inches="tight",
+            pad_inches=0.0,
+            dpi=300,
+        )
+        plt.close(fig_rgb)
 
+        # Prepare colormaps based on dataset type
+        # if (
+        #     args.dataset_type == "spacenet"
+        #     or args.dataset_type == "isaid"
+        #     or args.dataset_type == "mass_roads"
+        # ):
+        #     color_list = [
+        #         "#000000",  # Background – black
+        #         "#e31a1c",  # Building footprint – strong red
+        #     ]
+        #     mask_array_1 = np.array(mask[i].cpu())
+        #     mask_array_2 = np.array(pred.argmax(1).cpu()[i])
+        #     cmap_gt = matplotlib.colors.ListedColormap(
+        #         [color_list[j] for j in np.unique(mask_array_1)]
+        #     )
+        #     cmap_pred = matplotlib.colors.ListedColormap(
+        #         [color_list[j] for j in np.unique(mask_array_2)]
+        #     )
+        # elif args.dataset_type == "sen1floods11":
+        #     color_list = ["white", "grey", "blue"]
+        #     mask_array_1 = np.array(mask[i].cpu())
+        #     mask_array_2 = np.array(pred.argmax(1).cpu()[i])
+        #     cmap_gt = matplotlib.colors.ListedColormap(
+        #         [color_list[j] for j in np.unique(mask_array_1)]
+        #     )
+        #     cmap_pred = matplotlib.colors.ListedColormap(
+        #         [color_list[j] for j in np.unique(mask_array_2)]
+        #     )
+        # elif "geobench" in args.dataset_type:
+        #     color_list = [
+        #         "#000000",  # No Data – black
+        #         "#1b9e77",  # Lucerne/Medics – teal green
+        #         "#66a61e",  # Planted pastures (perennial) – olive green
+        #         "#e6ab02",  # Fallow – mustard yellow
+        #         "#7570b3",  # Wine grapes – violet
+        #         "#d95f02",  # Weeds – orange
+        #         "#a6761d",  # Small grain grazing – brownish ochre
+        #         "#e7298a",  # Wheat – magenta
+        #         "#1f78b4",  # Canola – medium blue
+        #         "#b2df8a",  # Rooibos – light green
+        #     ]
+        #     cmap_gt = matplotlib.colors.ListedColormap(color_list[: args.nb_classes])
+        #     cmap_pred = cmap_gt
+        # elif (
+        #     args.dataset_type == "loveda"
+        #     or args.dataset_type == "vaihingen"
+        #     or args.dataset_type == "potsdam"
+        # ):
+        #     mask_array_1 = np.array(mask[i].cpu())
+        #     mask_array_2 = np.array(pred.argmax(1).cpu()[i])
+        #     color_list = ["white", "red", "yellow", "blue", "violet", "green"]
+        #     cmap_gt = matplotlib.colors.ListedColormap(
+        #         [color_list[j] for j in np.unique(mask_array_1)]
+        #     )
+        #     cmap_pred = matplotlib.colors.ListedColormap(
+        #         [color_list[j] for j in np.unique(mask_array_2)]
+        #     )
+        # else:
+        #     cmap_gt = None
+        #     cmap_pred = None
+
+        # # Save ground truth mask
+        # fig_gt, ax_gt = plt.subplots(1, 1, figsize=(8, 8))
+        # ax_gt.axis("off")
+        # if "geobench" in args.dataset_type and cmap_gt is not None:
+        #     ax_gt.imshow(
+        #         mask[i].cpu(),
+        #         cmap=cmap_gt,
+        #         vmin=0,
+        #         vmax=args.nb_classes - 1,
+        #         interpolation="none",
+        #     )
+        # elif cmap_gt is not None:
+        #     ax_gt.imshow(mask[i].cpu(), cmap=cmap_gt, interpolation="none")
+        # else:
+        #     ax_gt.imshow(mask[i].cpu(), interpolation="none")
+
+        # plt.savefig(
+        #     os.path.join(base_output_dir, "gt_mask", f"img_{img_id}.png"),
+        #     bbox_inches="tight",
+        #     pad_inches=0.0,
+        #     dpi=300
+        # )
+        # plt.close(fig_gt)
+
+        # Save prediction mask
+        # fig_pred, ax_pred = plt.subplots(1, 1, figsize=(8, 8))
+        # ax_pred.axis("off")
+        # if "geobench" in args.dataset_type and cmap_pred is not None:
+        #     ax_pred.imshow(
+        #         pred.argmax(1).cpu()[i],
+        #         cmap=cmap_pred,
+        #         vmin=0,
+        #         vmax=args.nb_classes - 1,
+        #         interpolation="none",
+        #     )
+        # elif cmap_pred is not None:
+        #     ax_pred.imshow(pred.argmax(1).cpu()[i], cmap=cmap_pred, interpolation="none")
+        # else:
+        #     ax_pred.imshow(pred.argmax(1).cpu()[i], interpolation="none")
+
+        # plt.savefig(
+        #     os.path.join(base_output_dir, "pred_mask", f"img_{img_id}.png"),
+        #     bbox_inches="tight",
+        #     pad_inches=0.0,
+        #     dpi=300
+        # )
+        # plt.close(fig_pred)
+
+        # Save feature visualizations if enabled
         if args.visualize_features:
-            # Display feature visualizations (alternating between first/second image in batch)
-            if i % 2 == 0:
-                axarr[3].imshow(viz_feat1_1.permute(1, 2, 0))
-                axarr[3].set_title("last layer features", fontsize=10)
-                axarr[4].imshow(viz_feat1_2.permute(1, 2, 0))
-                axarr[4].set_title("intermediate layer features", fontsize=10)
+            if args.model_type == "simdino":
+                viz_feat1_2, _ = visualize_features(args, features[1][2])
+            elif (
+                args.model_type == "copernicusfm"
+                or args.model_type == "dinov2_segmentation"
+            ):
+                viz_feat1_2, _ = visualize_features(args, features[1][3])
 
-            plt.suptitle(
-                f"{args.method_name} - PCA Features - Image {cnt + i}",
-                fontsize=14,
-                y=0.98,
-            )
+            fig_feat, ax_feat = plt.subplots(1, 1, figsize=(8, 8))
+            ax_feat.axis("off")
+            ax_feat.imshow(viz_feat1_2.permute(1, 2, 0))
+            # ax_feat.set_title(f"PCA Features - img_{img_id}", fontsize=10)
 
-            if isinstance(features[0], (int, float)) and features[0] == 0:
-                plt.savefig(
-                    args.output_dir
-                    + "images/"
-                    + args.dataset_type
-                    + "_"
-                    + str(args.dataset_split)
-                    + "pc_results/PCA/"
-                    + args.method_name
-                    + "/img_"
-                    + str(cnt + i)
-                    + ".png",
-                    bbox_inches="tight",
-                    pad_inches=0.1,
-                    dpi=600,
-                )
-            else:
-                plt.savefig(
-                    args.output_dir
-                    + "images/"
-                    + args.dataset_type
-                    + "_"
-                    + str(args.dataset_split)
-                    + "pc_results/PCA/"
-                    + args.method_name
-                    + "/img_"
-                    + str(cnt + i)
-                    + ".png",
-                    bbox_inches="tight",
-                    pad_inches=0.1,
-                    dpi=600,
-                )
-
-        else:
             plt.savefig(
-                args.output_dir
-                + "images/"
-                + args.dataset_type
-                + "_"
-                + str(args.dataset_split)
-                + "pc_results/images/"
-                + args.method_name
-                + "/img_"
-                + str(cnt + i)
-                + ".png",
+                os.path.join(base_output_dir, "features", f"img_{img_id}.png"),
                 bbox_inches="tight",
-                pad_inches=0.1,
-                dpi=600,
+                pad_inches=0.0,
+                dpi=300,
             )
-        plt.close()
+            plt.close(fig_feat)
 
 
 def train_one_epoch_frcnn(

@@ -1,4 +1,4 @@
-batch_size: 1
+batch_size: 32
 epochs: 50
 accum_iter: 1
 visualize_features: true

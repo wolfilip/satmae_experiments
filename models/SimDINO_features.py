@@ -137,9 +137,9 @@ class SimDINO(nn.Module):
             #     kernel_size=(4, 4),
             #     stride=(4, 4),
             # )
-            self.ms_backbone = True
+            # self.ms_backbone = True
 
-        if args.finetune and not args.eval:
+        if args.finetune:
             load_pretrained_weights(
                 self.feat_extr, args.finetune, "student", args.model, 16
             )
@@ -327,6 +327,10 @@ class SimDINO(nn.Module):
             # rgb_data = self.feat_extr.avgpool(rgb_data)
             # rgb_data = self.feat_extr.flatten(rgb_data)
             # features = self.feat_extr.head(rgb_data)
+            # features.append(self.feat_extr.norm(features[-1]))
+            # features[-1] = self.feat_extr.permute(features[-1])
+            # features[-1] = self.feat_extr.avgpool(features[-1])
+            # features[-1] = self.feat_extr.flatten(features[-1])
         return features
 
     def forward_swin_cls(self, x):

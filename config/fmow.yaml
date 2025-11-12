@@ -1,0 +1,26 @@
+batch_size: 1
+epochs: 1
+accum_iter: 1
+visualize_features: true
+lr: 0.0001
+save_images: false
+# model_type: simdino
+# model_type: copernicusfm
+model_type: dinov2_segmentation
+# model: swin_b
+model: largev3sat_0
+input_size: 5000
+dataset_type: fmow_example
+dataset_split: 100
+# method_name: swin_bm_ms_fmow_hr_280k_100e_dinov3p34c_rgb_head_dconv_aug
+method_name: dinov3sat_l
+# method_name: copernicusfm_vit_b
+best_epoch: false
+nb_classes: 10
+output_dir: /home/filip/satmae_experiments/outputs/
+log_dir: /home/filip/satmae_experiments/logs/
+# finetune: /home/filip/pretrained_weights/simdino_checkpoints/swin_bm_ms_fmow_hr_280k_100e_dinov3p34c_rgb_head_dconv_aug.pth
+# finetune: /home/filip/pretrained_weights/CopernicusFM_ViT_base_varlang_e100.pth
+eval: true
+dist_eval: true
+num_workers: 10

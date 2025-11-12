@@ -1,7 +1,7 @@
-batch_size: 1
+batch_size: 16
 epochs: 50
-accum_iter: 1
-visualize_features: true
+accum_iter: 4
+visualize_features: false
 lr: 0.0001
 save_images: false
 model_type: simdino
@@ -15,7 +15,7 @@ nb_classes: 10
 output_dir: /home/filip/satmae_experiments/outputs/
 log_dir: /home/filip/satmae_experiments/logs/
 finetune: /home/filip/pretrained_weights/simdino_checkpoints/swin_bm_ms_fmow_hr_500k_100e_dinov3p34c_rgb_head_dconv_aug.pth
-# wandb: dl4rs-experiments
-eval: true
+wandb: dl4rs-experiments
+eval: false
 dist_eval: true
 num_workers: 10

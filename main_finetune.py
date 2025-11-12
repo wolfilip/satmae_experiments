@@ -324,6 +324,7 @@ def get_args_parser():
             "geobench_forestnet",
             "geobench_so2sat",
             "PASTIS",
+            "fmow_example"
         ],
         help="Whether to use fmow rgb, sentinel, or other dataset.",
     )
@@ -788,7 +789,8 @@ def main(args):
         wandb.watch(model)
 
     if args.eval:
-        misc.load_best_model(args, model)
+        if args.dataset_type != "fmow_example":
+            misc.load_best_model(args, model)
         if args.model_type == "temporal":
             test_stats = evaluate_temporal(data_loader_test, model, device)
         elif (
@@ -810,6 +812,7 @@ def main(args):
             or args.model_type == "copernicusfm"
             or args.model_type == "gfm"
             or "simdino" in args.model_type
+            or args.dataset_type == "fmow_example"
         ):
             test_stats, max_iou = evaluate_segmentation(
                 data_loader_test, True, model, device, 0, 0, args
@@ -1026,6 +1029,7 @@ def main(args):
             elif (
                 args.dataset_type == "geobench_forestnet"
                 or args.dataset_type == "geobench_so2sat"
+                or args.dataset_type == "geobench_eurosat"
             ):
                 if test_stats["acc1"] > max_accuracy or epoch == 0:
                     max_accuracy = test_stats["acc1"]

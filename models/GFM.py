@@ -267,7 +267,7 @@ class GFMModel(nn.Module):
         #         dim=1,
         #     )
         if self.task == "classification":
-            features = self.feat_extr(x)
+            features = self.feat_extr.forward_features_cls(x)
             x = self.classification_head(features)
         else:
             features = self.feat_extr.forward_features_seg(x)

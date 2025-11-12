@@ -38,7 +38,7 @@ class DINOv2Segmenter(nn.Module):
             )
         if self.model_size == "basev3":
             self.feat_extr = torch.hub.load(
-                "dinov3",
+                "/home/filip/dinov3",
                 "dinov3_vitb16",
                 source="local",
                 weights="https://dinov3.llamameta.net/dinov3_vitb16/dinov3_vitb16_pretrain_lvd1689m-73cec8be.pth?Policy=eyJTdGF0ZW1lbnQiOlt7InVuaXF1ZV9oYXNoIjoiaWk0NzU3OGJhOThobmsweDQzMnkzYWxwIiwiUmVzb3VyY2UiOiJodHRwczpcL1wvZGlub3YzLmxsYW1hbWV0YS5uZXRcLyoiLCJDb25kaXRpb24iOnsiRGF0ZUxlc3NUaGFuIjp7IkFXUzpFcG9jaFRpbWUiOjE3NjIzMzUwMTV9fX1dfQ__&Signature=hiwjT0RLVzPs9NXYXyISTcjdFvSqPvW8NybKkdy--%7Eg36qNpmHcBFaeBhHvQcaDnzhzimnDC4Dhcm08L05EUTimw1B0bf8tYB-ZSw17W9E39NttD0a2f7nnoEBu1FAoA1ZHZLQoHjrmX05fPBo-gpyCG-PkVoYW0Tsp5AqYXtZ8iWtButTeaeVCox3eGlnI4tLQfwfsn-V1oCowWW-v%7EcRgnaDNQXZpkPnAVdWIpc1nNHl6pqA5ITBmIk4HrXLUY1vpQ4FDtc1uOFWpTl2ioLEusuQ-jLzz63tFSuq%7EzMGxk7wjs7ryD55-WMQl4BJOrmRLGfIcNAgmsmISZXfp-Kg__&Key-Pair-Id=K15QRJLYKIFSLZ&Download-Request-ID=1156481202648884",
@@ -459,9 +459,9 @@ class DINOv2Segmenter(nn.Module):
         if x.shape[1] > 3:
             x = x[:, :3]
 
-        conv_embeds = 0
-        if self.conv_size > 0:
-            conv_embeds = self.encoder_conv(x)
+        # conv_embeds = 0
+        # if self.conv_size > 0:
+        #     conv_embeds = self.encoder_conv(x)
         # x = self.encoder_forward(x)
         # x = self.decoder_upernet(x, conv_embeds)
         features = self.get_features(x)
@@ -506,10 +506,10 @@ class DINOv2Segmenter(nn.Module):
         ######## LIFT ###########
 
         # x = self.encoder_forward(x)
-        if self.task == "classification":
-            x = self.classification_head(features)
-        else:
-            x = self.decoder_upernet(features, conv_embeds)
+        # if self.task == "classification":
+        #     x = self.classification_head(features)
+        # else:
+        #     x = self.decoder_upernet(features, conv_embeds)
         # new_features = []
 
         # new_features.append(
@@ -544,5 +544,5 @@ class DINOv2Segmenter(nn.Module):
 
         # x = self.decoder_upernet(x[1])
 
-        return x, (conv_embeds, features[-1])
+        return x, (0, features)
         # return x
