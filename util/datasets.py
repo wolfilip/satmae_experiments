@@ -1745,15 +1745,15 @@ class CustomDatasetFromImages(SatelliteDataset):
             # rgb_data = img_data_selected[:3].transpose(1, 2, 0)  # (H, W, 3)
 
             # Normalize RGB to 0-255 range if needed
-            # if rgb_data.max() > 255:
-            #     rgb_data = (rgb_data / rgb_data.max() * 255).astype(np.uint8)
-            # else:
-            #     rgb_data = rgb_data.astype(np.uint8)
+        #     if rgb_data.max() > 255:
+        #         rgb_data = (rgb_data / rgb_data.max() * 255).astype(np.uint8)
+        #     else:
+        #         rgb_data = rgb_data.astype(np.uint8)
 
-            # Convert RGB to PIL Image for compatibility with existing transforms
-            # rgb_img = Image.fromarray(rgb_data)
+        #     # Convert RGB to PIL Image for compatibility with existing transforms
+        #     rgb_img = Image.fromarray(rgb_data)
 
-        # If image is larger than 5000x5000, center crop to 5000x5000
+        # # If image is larger than 5000x5000, center crop to 5000x5000
         # w_rgb, h_rgb = rgb_img.size
         # if w_rgb > 5000 or h_rgb > 5000:
         #     # Center crop to 5000x5000
@@ -1763,7 +1763,7 @@ class CustomDatasetFromImages(SatelliteDataset):
         #     bottom = top + min(h_rgb, 5000)
         #     rgb_img = rgb_img.crop((left, top, right, bottom))
 
-        # Apply same crop to multi-band data
+        # # Apply same crop to multi-band data
         # img_data_selected = img_data_selected[:, top:bottom, left:right]
 
         # Transform RGB for visualization
@@ -1778,12 +1778,12 @@ class CustomDatasetFromImages(SatelliteDataset):
 
         # Convert multi-band data to tensor and normalize
         multispectral_tensor = torch.from_numpy(img_data_selected.astype(np.float32))
-        orig_scale = multispectral_tensor[:3].max().item()
-        rgb_img = (
-            multispectral_tensor[:3] / orig_scale
-            if orig_scale > 0.1
-            else multispectral_tensor[:3]
-        )
+        # orig_scale = multispectral_tensor[:3].max().item()
+        # rgb_img = (
+        #     multispectral_tensor[:3] / orig_scale
+        #     if orig_scale > 0.1
+        #     else multispectral_tensor[:3]
+        # )
 
         multispectral_normalized = self.normalize_hr(multispectral_tensor)
         # multispectral_normalized[:3] = self.totensor(rgb_img)
@@ -2472,10 +2472,10 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
         # location = "/home/filip/datasets/fMoW-Temporal/train/airport/airport_23/airport_23_5_rgb.jpg"
         # location = "/home/filip/datasets/fMoW-Temporal/train/airport/airport_90/airport_90wad_4_rgb.jpg"
         # location = "/home/filip/datasets/fMoW-Temporal/train/airport/airport_124/airport_124_0_rgb.jpg"
-        # location = "/home/filip/datasets/high_res_paired/"
+        location = "/home/filip/datasets/high_res_paired/"
         # location = "/home/filip/datasets/fMoW-Sentinel/fmow-sentinel/train/airport/"
-        location = "/storage/datasets/fMoW/train/airport/"
-        dataset = CustomDatasetFromImagesRGB(args, location)
+        # location = "/storage/datasets/fMoW/train/airport/"
+        dataset = CustomDatasetFromImages(args, location)
     elif args.dataset_type == "rgb_scale":
         mean = CustomDatasetFromImages.mean
         std = CustomDatasetFromImages.std

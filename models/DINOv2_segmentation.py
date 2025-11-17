@@ -457,11 +457,11 @@ class DINOv2Segmenter(nn.Module):
     def forward(self, x):
 
         if x.shape[1] > 3:
-            x = x[:, :3]
+            x = x[:, 1:4].flip(1)
 
-        # conv_embeds = 0
-        # if self.conv_size > 0:
-        #     conv_embeds = self.encoder_conv(x)
+        conv_embeds = 0
+        if self.conv_size > 0:
+            conv_embeds = self.encoder_conv(x)
         # x = self.encoder_forward(x)
         # x = self.decoder_upernet(x, conv_embeds)
         features = self.get_features(x)

@@ -487,7 +487,7 @@ class SimDINO(nn.Module):
                     else:
                         features = self.forward_swin(x)
 
-                x = self.decoder_upernet_swin(features)
+                # x = self.decoder_upernet_swin(features)
             else:
                 with torch.no_grad():
                     x = self.prepare_tokens(x)
