@@ -632,6 +632,7 @@ class PASTIS(Dataset):
         self.transform = transform
         self.modalities = modalities
         self.nb_split = nb_split
+        self.num_channels = 10
 
         self.meta_patch = gpd.read_file(os.path.join(self.path, "metadata.geojson"))
 
@@ -711,6 +712,7 @@ class GeoBenchDataset(Dataset):
         transform,
         task="classification",
         model_type="simdino",
+        num_channels=None,
     ):
         super().__init__()
 
@@ -719,6 +721,7 @@ class GeoBenchDataset(Dataset):
         self.dataset = dataset
         self.dataset_name = dataset_name
         self.model_type = model_type
+        self.num_channels = num_channels
 
     def __len__(self):
         return len(self.dataset)
@@ -822,6 +825,7 @@ class SpaceNetDataset(SatelliteDataset):
         self.raster_list_depth = raster_list_depth
         self.mask_list = mask_list
         self.s = args.input_size
+        self.num_channels = 3
 
         self.is_train = is_train
 
@@ -938,6 +942,7 @@ class Sen1Floods11Dataset(Dataset):
         self.transform = transform
         self.split = split
         self.num_classes = num_classes
+        self.num_channels = 13
 
         self.ignore_index = ignore_index
 
@@ -3034,6 +3039,7 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
                 transforms_train,
                 task,
                 args.model_type,
+                len(norms),
             )
         elif data_split == "val":
             dataset = GeoBenchDataset(
@@ -3042,6 +3048,7 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
                 transforms_test,
                 task,
                 args.model_type,
+                len(norms),
             )
         else:
             dataset = GeoBenchDataset(
@@ -3050,6 +3057,7 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
                 transforms_test,
                 task,
                 args.model_type,
+                len(norms),
             )
     else:
         raise ValueError(f"Invalid dataset type: {args.dataset_type}")

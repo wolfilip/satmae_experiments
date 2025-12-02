@@ -1,21 +1,21 @@
-batch_size: 16
+batch_size: 64
 epochs: 50
-accum_iter: 4
+accum_iter: 1
 visualize_features: false
 lr: 0.0001
 save_images: false
 model_type: simdino
-model: swin_b
+model: swin_t
 input_size: 256
 dataset_type: geobench_crop
 dataset_split: 100
-method_name: swin_bm_ms_fmow_hr_500k_100e_dinov3p34c_rgb_head_dconv_aug
+method_name: simmim_swin_t_ms_fmow_hr280_50k_50e
 best_epoch: false
 nb_classes: 10
 output_dir: /home/filip/satmae_experiments/outputs/
 log_dir: /home/filip/satmae_experiments/logs/
-finetune: /home/filip/pretrained_weights/simdino_checkpoints/swin_bm_ms_fmow_hr_500k_100e_dinov3p34c_rgb_head_dconv_aug.pth
-wandb: dl4rs-experiments
+finetune: /home/filip/pretrained_weights/simdino_checkpoints/simmim_swin_t_ms_fmow_hr280_50k_50e.pth
+# wandb: dl4rs-experiments
 eval: false
 dist_eval: true
 num_workers: 10

@@ -202,10 +202,10 @@ class CopernicusFM(nn.Module):
         ######## LIFT ###########
 
         # x = self.encoder_forward(x)
-        # if self.task == "classification":
-        #     x = self.classification_head(features[0])
-        # else:
-        #     x = self.decoder_upernet(features[1])
+        if self.task == "classification":
+            x = self.classification_head(features[0])
+        else:
+            x = self.decoder_upernet(features[1])
         # new_features = []
 
         # new_features.append(

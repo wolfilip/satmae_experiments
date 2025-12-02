@@ -117,6 +117,22 @@ class SimDINO(nn.Module):
             # del self.feat_extr.ms_process.features[0]
             # del self.feat_extr.rgb_process.features[0]
             self.ms_backbone = True
+        elif "simmim" in args.finetune:
+            self.feat_extr = torchvision_models.swin_t()
+            del self.feat_extr.features[0]
+            self.feat_extr.patch_embed = nn.Sequential(
+                nn.Conv2d(
+                    10,
+                    self.feat_extr.features[0][0].norm1.normalized_shape[0],
+                    kernel_size=4,
+                    stride=4,
+                ),
+                Permute([0, 2, 3, 1]),
+                nn.LayerNorm(
+                    self.feat_extr.features[0][0].norm1.normalized_shape[0], eps=1e-5
+                ),
+                nn.Flatten(1, 2),
+            )
         elif "ms" in args.finetune:
             self.feat_extr = torchvision_models.__dict__[args.model]()
             del self.feat_extr.features[0]
@@ -282,10 +298,13 @@ class SimDINO(nn.Module):
     def forward_swin(self, x):
         with torch.no_grad():
             features = []
-            if x.shape[1] == 10:
-                x = self.feat_extr.conv_ms(x)
-            else:
-                x = self.feat_extr.conv_rgb(x)
+            # if x.shape[1] == 10:
+            #     x = self.feat_extr.conv_ms(x)
+            # else:
+            #     x = self.feat_extr.conv_rgb(x)
+            x = self.feat_extr.patch_embed(x)
+            B, L, _ = x.shape
+            x = x.reshape(B, int(L**0.5), int(L**0.5), -1)
             for i, layer in enumerate(self.feat_extr.features):
                 # for i, layer_ms in enumerate(
                 #     self.feat_extr.ms_process.features
@@ -443,9 +462,11 @@ class SimDINO(nn.Module):
         # if x.shape[1] == 4:
         #     x = F.pad(x, (0, 0, 0, 0, 0, 6), "constant", 0)
 
-        if x.shape[1] == 4:
-            x = torch.split(x, [3, x.shape[1] - 3], dim=1)[0]
+        # if x.shape[1] == 4:
+        #     x = torch.split(x, [3, x.shape[1] - 3], dim=1)[0]
 
+        if x.shape[1] != 10:
+            x = F.pad(x, (0, 0, 0, 0, 0, 10 - x.shape[1]), "constant", 0)
         # if x.shape[1] == 6:
         #     x = F.pad(x, (0, 0, 0, 0, 0, 4), "constant", 0)
         # c0_2 = x[:, 0:3]  # [B,3,H,W] -> c0,c1,c2
@@ -487,7 +508,7 @@ class SimDINO(nn.Module):
                     else:
                         features = self.forward_swin(x)
 
-                # x = self.decoder_upernet_swin(features)
+                x = self.decoder_upernet_swin(features)
             else:
                 with torch.no_grad():
                     x = self.prepare_tokens(x)

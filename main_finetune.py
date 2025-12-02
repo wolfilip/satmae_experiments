@@ -42,6 +42,10 @@ import models.models_vit_temporal as models_vit_temporal
 
 # from models.simdinov2_models import build_model
 # from models.simdinov2_models.utils import load_pretrained_weights
+from models.terramind.model.terramind_register import build_terrammind_vit
+from models.terramind.model.terramind_vit import TerraMindViT
+from models.terramind.tokenizer.models.unet import nn
+from models.terramind.tokenizer.models.vit_models import LayerNorm
 import util.lr_decay as lrd
 import util.misc as misc
 from engine_finetune import (
@@ -63,6 +67,77 @@ from util.utils_swin import remap_pretrained_keys_swin
 import yaml
 
 from models.use_croma import PretrainedCROMA
+
+from models.terramind.tokenizer.tokenizer_register import (
+    terramind_v1_tokenizer_s2l2a,
+    terramind_v1_tokenizer_s1rtc,
+    terramind_v1_tokenizer_s1grd,
+    terramind_v1_tokenizer_dem,
+    terramind_v1_tokenizer_lulc,
+    terramind_v1_tokenizer_ndvi,
+    terramind_v01_tokenizer_s2l2a,
+    terramind_v01_tokenizer_s1grd,
+    terramind_v01_tokenizer_dem,
+    terramind_v01_tokenizer_lulc,
+    terramind_v01_caption_tokenizer,
+    terramind_v1_coords_tokenizer,
+)
+
+PRETRAINED_BANDS = {
+    "untok_sen2l2a@224": [
+        "COASTAL_AEROSOL",
+        "BLUE",
+        "GREEN",
+        "RED",
+        "RED_EDGE_1",
+        "RED_EDGE_2",
+        "RED_EDGE_3",
+        "NIR_BROAD",
+        "NIR_NARROW",
+        "WATER_VAPOR",
+        "SWIR_1",
+        "SWIR_2",
+    ],
+    "untok_sen2l1c@224": [
+        "COASTAL_AEROSOL",
+        "BLUE",
+        "GREEN",
+        "RED",
+        "RED_EDGE_1",
+        "RED_EDGE_2",
+        "RED_EDGE_3",
+        "NIR_BROAD",
+        "NIR_NARROW",
+        "WATER_VAPOR",
+        "CIRRUS",
+        "SWIR_1",
+        "SWIR_2",
+    ],
+    "untok_sen2rgb@224": ["RED", "GREEN", "BLUE"],
+    "untok_sen1grd@224": ["VV", "VH"],
+    "untok_sen1rtc@224": ["VV", "VH"],
+    "untok_dem@224": ["DEM"],
+}
+
+tokenizer_dict = {
+    "v1": {
+        "tok_sen2l2a@224": terramind_v1_tokenizer_s2l2a,
+        "tok_sen1rtc@224": terramind_v1_tokenizer_s1rtc,
+        "tok_sen1grd@224": terramind_v1_tokenizer_s1grd,
+        "tok_dem@224": terramind_v1_tokenizer_dem,
+        "tok_lulc@224": terramind_v1_tokenizer_lulc,
+        "tok_ndvi@224": terramind_v1_tokenizer_ndvi,
+        "coords": terramind_v1_coords_tokenizer,
+    },
+    "v01": {
+        "tok_sen2l2a@224": terramind_v01_tokenizer_s2l2a,
+        "tok_sen1grd@224": terramind_v01_tokenizer_s1grd,
+        "tok_dem@224": terramind_v01_tokenizer_dem,
+        "tok_lulc@224": terramind_v01_tokenizer_lulc,
+        "coords": terramind_v1_coords_tokenizer,
+        "caption": terramind_v01_caption_tokenizer,
+    },
+}
 
 
 def load_config(config_path):
@@ -122,6 +197,7 @@ def get_args_parser():
             "terrafm",
             "copernicusfm",
             "gfm",
+            "terramind",
         ],
         help="Use channel model",
     )
@@ -324,7 +400,7 @@ def get_args_parser():
             "geobench_forestnet",
             "geobench_so2sat",
             "PASTIS",
-            "fmow_example"
+            "fmow_example",
         ],
         help="Whether to use fmow rgb, sentinel, or other dataset.",
     )
@@ -619,6 +695,23 @@ def main(args):
         model = GFMModel(args, "cuda")
     elif args.model_type == "terrafm":
         model = TerraFMModel(args, "cuda")
+    elif args.model_type == "terramind":
+        model = build_terrammind_vit(
+            variant="terramind_v1_base",
+            encoder_depth=12,
+            dim=768,
+            num_heads=12,
+            mlp_ratio=4,
+            qkv_bias=False,
+            proj_bias=False,
+            mlp_bias=False,
+            num_register_tokens=0,
+            act_layer=nn.SiLU,
+            gated_mlp=True,
+            pretrained_bands=PRETRAINED_BANDS,
+            tokenizer_dict=tokenizer_dict["v1"],
+            num_channels=dataset_train.num_channels,
+        )
     else:
         model = models_vit.__dict__[args.model](
             patch_size=args.patch_size,
@@ -638,6 +731,7 @@ def main(args):
         and args.model_type != "terrafm"
         and args.model_type != "copernicusfm"
         and args.model_type != "gfm"
+        and args.model_type != "terramind"
         and "simdino" not in args.model_type
     ):
         checkpoint = torch.load(args.finetune, map_location="cpu")
@@ -751,6 +845,7 @@ def main(args):
         or args.model_type == "terrafm"
         or args.model_type == "copernicusfm"
         or args.model_type == "gfm"
+        or args.model_type == "terramind"
         or "simdino" in args.model_type
     ):
         param_groups = model_without_ddp.parameters()
@@ -811,6 +906,7 @@ def main(args):
             or args.model_type == "terrafm"
             or args.model_type == "copernicusfm"
             or args.model_type == "gfm"
+            or args.model_type == "terramind"
             or "simdino" in args.model_type
             or args.dataset_type == "fmow_example"
         ):
@@ -828,6 +924,7 @@ def main(args):
             or args.model_type == "terrafm"
             or args.model_type == "copernicusfm"
             or args.model_type == "gfm"
+            or args.model_type == "terramind"
             or "simdino" in args.model_type
         ):
             print(
@@ -885,6 +982,7 @@ def main(args):
                 or args.model_type == "terrafm"
                 or args.model_type == "copernicusfm"
                 or args.model_type == "gfm"
+                or args.model_type == "terramind"
                 or "simdino" in args.model_type
             ):
                 # test_stats = evaluate_segmentation(data_loader_val, model, device)
@@ -955,6 +1053,7 @@ def main(args):
             or args.model_type == "terrafm"
             or args.model_type == "copernicusfm"
             or args.model_type == "gfm"
+            or args.model_type == "terramind"
             or "simdino" in args.model_type
         ):
             test_stats, max_iou = evaluate_segmentation(
@@ -989,6 +1088,7 @@ def main(args):
                 or args.model_type == "terrafm"
                 or args.model_type == "copernicusfm"
                 or args.model_type == "gfm"
+                or args.model_type == "terramind"
                 or "simdino" in args.model_type
             )
             and args.dataset_type != "geobench_eurosat"
