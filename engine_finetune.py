@@ -263,7 +263,7 @@ def get_bce_loss(pred, mask):
 def get_bce_loss_ignore(pred, mask):
     # print(pred.unique(), mask.unique())
     # m = F.sigmoid(pred)
-    bce = F.cross_entropy(pred, mask.long(), ignore_index=0)
+    bce = F.cross_entropy(pred.flatten(2), mask.long().flatten(1), ignore_index=-1)
     # print(bce)
     # m = nn.Sigmoid()
     # pred = pred.argmax(1)
@@ -518,8 +518,8 @@ def train_one_epoch_segmentation(
 
     if args.dataset_type == "spacenet" or args.dataset_type == "mass_roads":  # type: ignore
         miou_metric = JaccardIndex(task="multiclass", num_classes=args.nb_classes)  # type: ignore
-    elif args.dataset_type == "sen1floods11":  # type: ignore
-        miou_metric = JaccardIndex(task="multiclass", num_classes=args.nb_classes, average="micro", ignore_index=0)  # type: ignore
+    elif args.dataset_type == "sen1floods11" or args.dataset_type == "soca":  # type: ignore
+        miou_metric = JaccardIndex(task="multiclass", num_classes=args.nb_classes, average="macro", ignore_index=-1)  # type: ignore
         # miou_metric = SegPangaea(num_classes=args.nb_classes, ignore_index=0)
     elif args.dataset_type == "isaid":
         miou_metric = JaccardIndex(
@@ -639,13 +639,13 @@ def train_one_epoch_segmentation(
             if args.dataset_type == "loveda" or args.dataset_type == "vaihingen" or args.dataset_type == "potsdam":  # type: ignore
                 mask = mask.squeeze(1)
 
-            if args.dataset_type != "isaid" and args.dataset_type != "geobench_eurosat" and args.dataset_type != "geobench_bigearthnet" and args.dataset_type != "geobench_forestnet" and args.dataset_type != "geobench_so2sat":  # type: ignore
+            if args.dataset_type != "isaid" and args.dataset_type != "geobench_eurosat" and args.dataset_type != "geobench_bigearthnet" and args.dataset_type != "geobench_forestnet" and args.dataset_type != "geobench_so2sat" and args.dataset_type != "soca":  # type: ignore
                 mask_one_hot = F.one_hot(mask, num_classes=args.nb_classes).permute(  # type: ignore
                     0, 3, 1, 2
                 )
             # print(mask_one_hot.unique())
             # if args.dataset_type == "sen1floods11" or args.dataset_type == "isaid" or "geobench" in args.dataset_type
-            if args.dataset_type == "sen1floods11" or args.dataset_type == "isaid":  # type: ignore
+            if args.dataset_type == "sen1floods11" or args.dataset_type == "isaid" or args.dataset_type == "soca":  # type: ignore
                 loss_value = get_bce_loss_ignore(pred, mask)
             elif args.dataset_type == "geobench_eurosat" or args.dataset_type == "geobench_forestnet" or args.dataset_type == "geobench_so2sat":  # type: ignore
                 loss_value = F.cross_entropy(pred, mask)
@@ -663,6 +663,7 @@ def train_one_epoch_segmentation(
                 and args.dataset_type != "mass_roads"
                 and "geobench" not in args.dataset_type
                 and args.dataset_type != "PASTIS"
+                and args.dataset_type != "soca"
             ):
                 miou_metric_2.update(pred.argmax(1), mask)
                 f1_score.update(pred.argmax(1), mask)
@@ -718,7 +719,7 @@ def train_one_epoch_segmentation(
 
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
-    if args.dataset_type == "spacenet" or args.dataset_type == "sen1floods11" or args.dataset_type == "mass_roads" or "geobench" in args.dataset_type or args.dataset_type == "PASTIS":  # type: ignore
+    if args.dataset_type == "spacenet" or args.dataset_type == "sen1floods11" or args.dataset_type == "mass_roads" or "geobench" in args.dataset_type or args.dataset_type == "PASTIS" or args.dataset_type == "soca":  # type: ignore
         print("* loss {losses.global_avg:.4f}".format(losses=metric_logger.loss))
     else:
         print(
@@ -968,8 +969,8 @@ def evaluate_segmentation(data_loader, is_test, model, device, epoch, max_iou, a
 
     if args.dataset_type == "spacenet" or args.dataset_type == "mass_roads":  # type: ignore
         miou_metric = JaccardIndex(task="multiclass", num_classes=args.nb_classes)  # type: ignore
-    elif args.dataset_type == "sen1floods11":  # type: ignore
-        miou_metric = JaccardIndex(task="multiclass", num_classes=args.nb_classes, average="micro", ignore_index=0)  # type: ignore
+    elif args.dataset_type == "sen1floods11" or args.dataset_type == "soca":  # type: ignore
+        miou_metric = JaccardIndex(task="multiclass", num_classes=args.nb_classes, average="macro", ignore_index=-1)  # type: ignore
         # miou_metric = SegPangaea(num_classes=args.nb_classes, ignore_index=0)
     elif args.dataset_type == "isaid":
         miou_metric = JaccardIndex(
@@ -1099,7 +1100,7 @@ def evaluate_segmentation(data_loader, is_test, model, device, epoch, max_iou, a
             ):
                 mask = mask.squeeze(1)
 
-            if args.dataset_type != "geobench_eurosat" and args.dataset_type != "geobench_bigearthnet":  # type: ignore
+            if args.dataset_type != "geobench_eurosat" and args.dataset_type != "geobench_bigearthnet" and args.dataset_type != "soca":  # type: ignore
                 mask_one_hot = F.one_hot(mask, num_classes=args.nb_classes).permute(
                     0, 3, 1, 2
                 )
@@ -1108,6 +1109,8 @@ def evaluate_segmentation(data_loader, is_test, model, device, epoch, max_iou, a
                 or args.dataset_type == "geobench_bigearthnet"
             ):
                 loss = F.cross_entropy(pred, mask.long())
+            elif args.dataset_type == "soca":
+                loss = get_bce_loss_ignore(pred, mask)
             else:
                 loss = get_bce_loss(pred, mask_one_hot.float())
             # loss = 2
@@ -1121,6 +1124,7 @@ def evaluate_segmentation(data_loader, is_test, model, device, epoch, max_iou, a
                 and args.dataset_type != "mass_roads"
                 and args.dataset_type != "geobench_eurosat"
                 and args.dataset_type != "geobench_bigearthnet"
+                and args.dataset_type != "soca"
             ):
                 miou_metric_2.update(pred.argmax(1), mask)
                 # miou_metric_3.update(pred.argmax(1), mask)
@@ -1156,6 +1160,7 @@ def evaluate_segmentation(data_loader, is_test, model, device, epoch, max_iou, a
         args.dataset_type != "spacenet"
         and args.dataset_type != "sen1floods11"
         and args.dataset_type != "mass_roads"
+        and args.dataset_type != "soca"
     ):
         miou_2 = miou_metric_2.compute().item()
         # miou_3 = miou_metric_3.compute().item()
@@ -1227,6 +1232,7 @@ def evaluate_segmentation(data_loader, is_test, model, device, epoch, max_iou, a
                         if (
                             args.dataset_type == "sen1floods11"
                             or "geobench" in args.dataset_type
+                            or args.dataset_type == "soca"
                         ):
                             save_images(
                                 data_viz,
@@ -1318,6 +1324,17 @@ def evaluate_segmentation(data_loader, is_test, model, device, epoch, max_iou, a
                             feature_accumulator,
                             base_output_dir,
                         )
+                    elif args.dataset_type == "soca":
+                        save_images(
+                            data,
+                            mask,
+                            pred,
+                            features,
+                            cnt,
+                            args,
+                            feature_accumulator,
+                            base_output_dir,
+                        )
                     else:
                         save_images(
                             rgb_data,
@@ -1364,6 +1381,7 @@ def evaluate_segmentation(data_loader, is_test, model, device, epoch, max_iou, a
         args.dataset_type == "spacenet"
         or args.dataset_type == "sen1floods11"
         or args.dataset_type == "mass_roads"
+        or args.dataset_type == "soca"
     ):
         print(
             "* IoU {iou:.4f} loss {losses.global_avg:.4f}".format(
@@ -1391,8 +1409,8 @@ def save_results(mask, pred, device, epoch, cnt, miou_test, args):
 
     if args.dataset_type == "spacenet":  # type: ignore
         miou_temp = JaccardIndex(task="multiclass", num_classes=args.nb_classes)  # type: ignore
-    elif args.dataset_type == "sen1floods11":  # type: ignore
-        miou_temp = JaccardIndex(task="multiclass", num_classes=args.nb_classes, average="micro", ignore_index=0)  # type: ignore
+    elif args.dataset_type == "sen1floods11" or args.dataset_type == "soca":  # type: ignore
+        miou_temp = JaccardIndex(task="multiclass", num_classes=args.nb_classes, average="macro", ignore_index=-1)  # type: ignore
     else:
         miou_temp = JaccardIndex(
             task="multiclass", num_classes=args.nb_classes, average="micro"

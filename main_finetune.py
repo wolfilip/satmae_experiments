@@ -401,6 +401,7 @@ def get_args_parser():
             "geobench_so2sat",
             "PASTIS",
             "fmow_example",
+            "soca",
         ],
         help="Whether to use fmow rgb, sentinel, or other dataset.",
     )
@@ -1107,6 +1108,7 @@ def main(args):
                     args.dataset_type != "spacenet"
                     and args.dataset_type != "sen1floods11"
                     and args.dataset_type != "mass_roads"
+                    and args.dataset_type != "soca"
                 ):
                     log_writer.add_scalar("perf/val_f1", test_stats["f1"], epoch)
         else:
@@ -1201,6 +1203,7 @@ def main(args):
                 args.dataset_type != "spacenet"
                 and args.dataset_type != "sen1floods11"
                 and args.dataset_type != "mass_roads"
+                and args.dataset_type != "soca"
             ):
                 log_writer.add_scalar("perf/test_miou2", test_stats["iou2"], epoch)
     else:

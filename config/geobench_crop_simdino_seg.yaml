@@ -15,7 +15,7 @@ nb_classes: 10
 output_dir: /home/filip/satmae_experiments/outputs/
 log_dir: /home/filip/satmae_experiments/logs/
 finetune: /home/filip/pretrained_weights/simdino_checkpoints/simmim_swin_t_ms_fmow_hr280_50k_50e.pth
-# wandb: dl4rs-experiments
+wandb: dl4rs-experiments
 eval: false
 dist_eval: true
 num_workers: 10

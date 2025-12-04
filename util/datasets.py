@@ -24,6 +24,8 @@ from rasterio import logging
 from rasterio.enums import Resampling
 from torch.utils.data import Dataset
 import xml.etree.ElementTree as ET
+from pathlib import Path
+
 
 # import albumentations as A
 # from albumentations.pytorch import ToTensorV2
@@ -231,6 +233,122 @@ class SatelliteDataset(Dataset):
 
         # t.append(transforms.Normalize(mean, std))
         return transforms.Compose(t)
+
+
+class SocaDatasetMulti(Dataset):
+    def __init__(
+        self,
+        path,
+        modalities,
+        transform,
+        split: str = "train",
+        classes: list = [],
+        partition: float = 1.0,
+        reliability_level=0,
+        revision="v8",
+        data_ratio: float = 1.0,
+    ):
+        """
+        Initializes the dataset.
+        Args:
+            path (str): path to the dataset
+            modalities (list): list of modalities to use
+            transform (torch module): transform to apply to the data
+            split (str): split to use (train, val, test)
+            classes (list): name of the differrent classes
+            partition (float): proportion of the dataset to keep
+        """
+        self.split = split if split == "train" else "test"
+        self.path = Path(path) / revision / self.split
+
+        if int(revision[-1]) < 8:
+            raise ValueError("Only revisions >= v8 supported")
+
+        self.transform = transform
+        self.partition = partition
+        self.modalities = modalities
+        self.reliability_level = reliability_level
+
+        self.data_list = []
+        for file in Path(self.path).glob("*/*/drone_tiles/*.tif"):
+            location, date, _, fname = file.parts[-4:]
+            self.data_list.append((location, date, fname))
+        print(f"Found {len(self.data_list)} files in {self.path}")
+
+        if data_ratio < 1.0:
+            # k unique samples
+            sampled_data = random.sample(
+                self.data_list, int(data_ratio * len(self.data_list))
+            )
+            self.data_list = sampled_data
+            print(
+                f"Data ratio set to {data_ratio}, sampling random {len(self.data_list)} samples."
+            )
+        # self.collate_fn = collate_fn
+
+    def __getitem__(self, i):
+        """
+        Returns an item from the dataset.
+        Args:
+            i (int): index of the item
+        Returns:
+            dict: dictionary with keys "label", "name" and the other corresponding to the modalities used
+        """
+        location, date, fname = self.data_list[i]
+        curr_path = self.path / location / date
+        output = {"name": f"{location}_{date}_{Path(fname).stem}"}
+
+        if "aerial" in self.modalities:
+            with rasterio.open(curr_path / "drone_tiles" / fname) as f:
+                aer_rgba = torch.FloatTensor(f.read())
+                output["aerial"] = aer_rgba[:3, ...]
+
+        with rasterio.open(curr_path / "surface_mask_tiles" / fname) as f:
+            label = torch.FloatTensor(f.read())  # in range 0 - 1
+            # remove padded 255 vals:
+            label[label == 255] = 0
+            with rasterio.open(curr_path / "val_tiles" / fname) as f:
+                valid_mask = torch.FloatTensor(f.read())
+                invalid_mask = (valid_mask == 0.0).type(torch.int32)
+            masked_label = label * (1 - invalid_mask) - invalid_mask
+            output["label"] = masked_label.long()
+
+        with rasterio.open(curr_path / "depth_tiles" / fname) as f:
+            depth = torch.FloatTensor(f.read())
+            output["depth"] = depth
+
+        with rasterio.open(curr_path / "depth_reliability_tiles" / fname) as f:
+            reliability_mask = torch.FloatTensor(f.read())
+
+        # reliability: -9999 no-water, 0 inlier, 1 mild, 2 moderate, 3 severe outlier
+        # get valid depth aka >=0 and threshold reliability to get binary mask of reliable for given levelk
+        # I'm not sure why we even have a separate peth mask
+        depth_mask = (reliability_mask >= 0) * (
+            reliability_mask <= self.reliability_level
+        )
+        # fix data that is still invalid and not marked as such in mask?! (i.e is -9999)
+        depth_mask = depth_mask.bool() & (depth >= 0)
+
+        output["depth_mask"] = depth_mask
+
+        # B02,B03,B04,B05,B06,B07,B08,B8A,B11,B12
+        if "s2-mono" in self.modalities:
+            with rasterio.open(curr_path / "s2_tiles" / fname) as f:
+                numpy_array = f.read()
+            numpy_array = numpy_array.astype(np.float32)
+            output["s2-mono"] = torch.FloatTensor(numpy_array)
+            if len(numpy_array) != 10:
+                # fix reindexing
+                output["s2-mono"] = output["s2-mono"][
+                    [3, 2, 1, 4, 5, 6, 7, 8, 10, 11], :, :
+                ]
+
+        output = self.transform(output)
+
+        return output["aerial"], output["label"].squeeze(0)
+
+    def __len__(self):
+        return len(self.data_list)
 
 
 class DIORDataset(Dataset):
@@ -2692,6 +2810,36 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
             dataset = MassachusettsRoadsDataset(
                 data_paths_imgs_train, data_paths_ann_train, is_train, args
             )
+    elif args.dataset_type == "soca":
+
+        class TransformSocaFT(object):
+            def __init__(self, p=0.0, size=512, size_s2=10):
+                self.p = p
+                self.resize = transforms.Resize(size=[size, size])
+                self.resize_lbl = transforms.Resize(
+                    size=[size, size],
+                    interpolation=transforms.InterpolationMode.NEAREST,
+                )
+                self.resize_s2 = transforms.Resize(size=[size_s2, size_s2])
+
+            def __call__(self, batch):
+                keys = list(batch.keys())
+                # keys.remove("label")
+                keys.remove("name")
+
+                batch["aerial"] = self.resize(batch["aerial"])
+                # batch["s2-mono"] = self.resize_s2(batch["s2-mono"])
+
+                batch["label"] = self.resize_lbl(batch["label"])
+                # if "depth" in keys:
+                #     batch["depth"] = self.resize(batch["depth"])
+                #     batch["depth_mask"] = self.resize_lbl(batch["depth_mask"])
+
+                return batch
+
+        transform = TransformSocaFT()
+        path = "/storage/datasets/SocaFT/"
+        dataset = SocaDatasetMulti(path, "aerial", transform, split=data_split)
     elif args.dataset_type == "dior":
         dataset_root = "/mnt/c/Users/filip.wolf/Datasets/DIOR-VOC/DIOR-VOC/VOC2007"
 
