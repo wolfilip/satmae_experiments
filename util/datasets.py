@@ -345,7 +345,7 @@ class SocaDatasetMulti(Dataset):
 
         output = self.transform(output)
 
-        return output["aerial"], output["label"].squeeze(0)
+        return output["s2-mono"], output["label"].squeeze(0)
 
     def __len__(self):
         return len(self.data_list)
@@ -2827,8 +2827,8 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
                 # keys.remove("label")
                 keys.remove("name")
 
-                batch["aerial"] = self.resize(batch["aerial"])
-                # batch["s2-mono"] = self.resize_s2(batch["s2-mono"])
+                # batch["aerial"] = self.resize(batch["aerial"])
+                batch["s2-mono"] = self.resize_s2(batch["s2-mono"])
 
                 batch["label"] = self.resize_lbl(batch["label"])
                 # if "depth" in keys:
@@ -2839,7 +2839,7 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
 
         transform = TransformSocaFT()
         path = "/storage/datasets/SocaFT/"
-        dataset = SocaDatasetMulti(path, "aerial", transform, split=data_split)
+        dataset = SocaDatasetMulti(path, "s2-mono", transform, split=data_split)
     elif args.dataset_type == "dior":
         dataset_root = "/mnt/c/Users/filip.wolf/Datasets/DIOR-VOC/DIOR-VOC/VOC2007"
 
