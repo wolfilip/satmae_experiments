@@ -234,7 +234,7 @@ class SimDINO(nn.Module):
             config = {
                 "pool_scales": [1, 2, 3, 6],
                 "hidden_size": 512,
-                "num_labels": args.nb_classes - 1,
+                "num_labels": args.nb_classes,
                 "initializer_range": 0.02,
             }
 

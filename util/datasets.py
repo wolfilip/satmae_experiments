@@ -275,6 +275,9 @@ class SocaDatasetMulti(Dataset):
             self.data_list.append((location, date, fname))
         print(f"Found {len(self.data_list)} files in {self.path}")
 
+        # if self.split == "train":
+        #     data_ratio = 0.1
+
         if data_ratio < 1.0:
             # k unique samples
             sampled_data = random.sample(
@@ -301,7 +304,7 @@ class SocaDatasetMulti(Dataset):
         if "aerial" in self.modalities:
             with rasterio.open(curr_path / "drone_tiles" / fname) as f:
                 aer_rgba = torch.FloatTensor(f.read())
-                output["aerial"] = aer_rgba[:3, ...]
+                output["aerial"] = aer_rgba[:3, ...] / 255.0  # normalize to 0-1
 
         with rasterio.open(curr_path / "surface_mask_tiles" / fname) as f:
             label = torch.FloatTensor(f.read())  # in range 0 - 1
@@ -340,12 +343,12 @@ class SocaDatasetMulti(Dataset):
             if len(numpy_array) != 10:
                 # fix reindexing
                 output["s2-mono"] = output["s2-mono"][
-                    [3, 2, 1, 4, 5, 6, 7, 8, 10, 11], :, :
+                    [3, 2, 1, 4, 5, 6, 7, 8, 11, 12], :, :
                 ]
 
         output = self.transform(output)
 
-        return output["s2-mono"], output["label"].squeeze(0)
+        return output[self.modalities], output["label"].squeeze(0)
 
     def __len__(self):
         return len(self.data_list)
@@ -2813,7 +2816,7 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
     elif args.dataset_type == "soca":
 
         class TransformSocaFT(object):
-            def __init__(self, p=0.0, size=512, size_s2=10):
+            def __init__(self, p=0.0, size=512, size_s2=32):
                 self.p = p
                 self.resize = transforms.Resize(size=[size, size])
                 self.resize_lbl = transforms.Resize(
@@ -2822,13 +2825,75 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
                 )
                 self.resize_s2 = transforms.Resize(size=[size_s2, size_s2])
 
+                self.normalize_s2 = transforms.Normalize(
+                    (
+                        # original order
+                        # 1184.382,
+                        # 1120.771,
+                        # 1136.260,
+                        # reversed order
+                        1136.26026392,
+                        1120.77120066,
+                        1184.3824625,
+                        # rgb norms
+                        # 0.4182007312774658,
+                        # 0.4214799106121063,
+                        # 0.3991275727748871,
+                        1263.73947144,
+                        1645.40315151,
+                        1846.87040806,
+                        1762.59530783,
+                        1972.62420416,
+                        1732.16362238,
+                        1247.91870117,
+                    ),
+                    (
+                        # original order
+                        # 650.2842772,
+                        # 712.12507725,
+                        # 965.23119807,
+                        # reversed order
+                        965.23119807,
+                        712.12507725,
+                        650.2842772,
+                        # rgb norms
+                        # 0.28774282336235046,
+                        # 0.27541765570640564,
+                        # 0.2764017581939697,
+                        948.9819932,
+                        1108.06650639,
+                        1258.36394548,
+                        1233.1492281,
+                        1364.38688993,
+                        1310.36996126,
+                        1087.6020813,
+                    ),
+                )
+
+                self.normalize_aerial = transforms.Normalize(
+                    (
+                        # rgb norms
+                        0.4182007312774658,
+                        0.4214799106121063,
+                        0.3991275727748871,
+                    ),
+                    (
+                        # rgb norms
+                        0.28774282336235046,
+                        0.27541765570640564,
+                        0.2764017581939697,
+                    ),
+                )
+
             def __call__(self, batch):
                 keys = list(batch.keys())
                 # keys.remove("label")
                 keys.remove("name")
 
-                # batch["aerial"] = self.resize(batch["aerial"])
-                batch["s2-mono"] = self.resize_s2(batch["s2-mono"])
+                batch["aerial"] = self.resize(batch["aerial"])
+                batch["aerial"] = self.normalize_aerial(batch["aerial"])
+                # batch["s2-mono"] = self.resize_s2(batch["s2-mono"])
+                # batch["s2-mono"] = self.normalize_s2(batch["s2-mono"])
 
                 batch["label"] = self.resize_lbl(batch["label"])
                 # if "depth" in keys:
@@ -2839,7 +2904,7 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
 
         transform = TransformSocaFT()
         path = "/storage/datasets/SocaFT/"
-        dataset = SocaDatasetMulti(path, "s2-mono", transform, split=data_split)
+        dataset = SocaDatasetMulti(path, "aerial", transform, split=data_split)
     elif args.dataset_type == "dior":
         dataset_root = "/mnt/c/Users/filip.wolf/Datasets/DIOR-VOC/DIOR-VOC/VOC2007"
 

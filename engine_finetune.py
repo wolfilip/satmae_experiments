@@ -41,6 +41,92 @@ from torchmetrics.functional.classification import (
 # from util.visualize_features import visualize_features
 from sklearn.decomposition import PCA
 
+class SegPangaea(Metric):
+    """
+    SegPangaea is a class for evaluating segmentation models using a confusion matrix approach.
+
+    Attributes:
+        num_classes (int): Number of classes in the segmentation task
+        ignore_index (int): Index value to ignore when computing metrics
+        confusion_matrix (torch.Tensor): Matrix of shape (num_classes, num_classes) to store predictions
+
+    Methods:
+        update(pred, gt):
+            Updates the confusion matrix with new predictions and ground truth.
+            Args:
+                pred (torch.Tensor): Model predictions
+                gt (dict): Dictionary containing ground truth labels under 'label' key
+
+        compute():
+            Computes various metrics from the accumulated confusion matrix.
+            Returns:
+                dict: Dictionary containing the following metrics:
+                    - mIoU: Mean Intersection over Union across all classes
+                    - mF1: Mean F1 score across all classes
+                    - mAcc: Mean pixel accuracy
+    """
+
+    def __init__(self, num_classes, ignore_index):
+        super().__init__()
+        self.num_classes = num_classes
+        self.ignore_index = ignore_index
+        self.confusion_matrix = torch.zeros(num_classes, num_classes)
+
+    def update(self, pred, gt):
+        label = gt["label"].flatten(1).long()
+        pred = torch.argmax(pred["seg"], dim=1).flatten(1)
+        valid_mask = label != self.ignore_index
+        pred, target = pred[valid_mask], label[valid_mask]
+        count = torch.bincount(
+            (pred * self.num_classes + target), minlength=self.num_classes**2
+        )
+        self.confusion_matrix = self.confusion_matrix.to(pred.device)
+        self.confusion_matrix += count.view(self.num_classes, self.num_classes)
+
+    def reset(self) -> None:
+        self.confusion_matrix = torch.zeros(self.num_classes, self.num_classes)
+
+    def compute(self):
+        # Calculate IoU for each class
+        intersection = torch.diag(self.confusion_matrix)
+        union = (
+            self.confusion_matrix.sum(dim=1)
+            + self.confusion_matrix.sum(dim=0)
+            - intersection
+        )
+        iou = intersection / (union + 1e-6)
+
+        # Calculate precision and recall for each class
+        precision = intersection / (self.confusion_matrix.sum(dim=0) + 1e-6)
+        recall = intersection / (self.confusion_matrix.sum(dim=1) + 1e-6)
+
+        # Calculate F1-score for each class
+        f1 = 2 * (precision * recall) / (precision + recall + 1e-6)
+
+        # Calculate mean IoU, mean F1-score, and mean Accuracy
+        miou = iou.mean().item()
+        mf1 = f1.mean().item()
+        macc = (intersection.sum() / (self.confusion_matrix.sum() + 1e-6)).item()
+
+        # Convert metrics to CPU and to Python scalars
+        iou = iou.cpu()
+        f1 = f1.cpu()
+        precision = precision.cpu()
+        recall = recall.cpu()
+
+        # Prepare the metrics dictionary
+        metrics = {
+            "mIoU": miou,
+            "mF1": mf1,
+            "mAcc": macc,
+            "IoU-1": iou[1],
+            "f1-1": f1[1],
+        }
+
+        self.reset()
+
+        return metrics
+
 
 def visualize_features(args, features, is_swin=False):
     """
@@ -969,9 +1055,10 @@ def evaluate_segmentation(data_loader, is_test, model, device, epoch, max_iou, a
 
     if args.dataset_type == "spacenet" or args.dataset_type == "mass_roads":  # type: ignore
         miou_metric = JaccardIndex(task="multiclass", num_classes=args.nb_classes)  # type: ignore
-    elif args.dataset_type == "sen1floods11" or args.dataset_type == "soca":  # type: ignore
+    elif args.dataset_type == "sen1floods11":   # type: ignore
         miou_metric = JaccardIndex(task="multiclass", num_classes=args.nb_classes, average="macro", ignore_index=-1)  # type: ignore
-        # miou_metric = SegPangaea(num_classes=args.nb_classes, ignore_index=0)
+    elif args.dataset_type == "soca":
+        miou_metric = SegPangaea(num_classes=args.nb_classes, ignore_index=-1)
     elif args.dataset_type == "isaid":
         miou_metric = JaccardIndex(
             task="multiclass",
@@ -1042,8 +1129,9 @@ def evaluate_segmentation(data_loader, is_test, model, device, epoch, max_iou, a
         f1_score = f1_score.to(device)
         miou_metric_2 = miou_metric_2.to(device)
         overall_accuracy = overall_accuracy.to(device)
-
-    miou_metric = miou_metric.to(device)
+    
+    if args.dataset_type != "soca":
+        miou_metric = miou_metric.to(device)
 
     miou_test = 0
 
@@ -1154,7 +1242,12 @@ def evaluate_segmentation(data_loader, is_test, model, device, epoch, max_iou, a
         print("miou test: " + str(miou_test * args.world_size / 49))
 
     # gather the stats from all processes
-    miou = miou_metric.compute().item()
+    if args.dataset_type != "soca":
+        miou = miou_metric.compute().item()
+    else:
+        metrics = miou_metric.compute()
+        miou = metrics["mIoU"]
+        f1 = metrics["mF1"]
 
     if (
         args.dataset_type != "spacenet"
@@ -1170,9 +1263,13 @@ def evaluate_segmentation(data_loader, is_test, model, device, epoch, max_iou, a
 
     if is_test:
         print(f"Test IoU: {miou:.4f}")
+        if args.dataset_type == "soca":
+            print(f"Test F1: {f1:.4f}")
     else:
         max_iou = max(max_iou, miou)
         print(f"Max IoU: {max_iou:.4f}")
+        if args.dataset_type == "soca":
+            print(f"F1: {f1:.4f}")
 
     if args.save_images or args.visualize_features:
         cnt = 0
