@@ -14,6 +14,7 @@ from typing import Iterable, Optional
 
 import matplotlib
 import matplotlib.pyplot as plt
+from sklearn.metrics import confusion_matrix
 
 # from sklearn.metrics import precision_recall_fscore_support
 
@@ -40,6 +41,7 @@ from torchmetrics.functional.classification import (
 
 # from util.visualize_features import visualize_features
 from sklearn.decomposition import PCA
+
 
 class SegPangaea(Metric):
     """
@@ -287,9 +289,11 @@ class SegPangaea(Metric):
         self.ignore_index = ignore_index
         self.confusion_matrix = torch.zeros(num_classes, num_classes)
 
-    def update(self, pred, gt):
-        label = gt.flatten(1, 2)
-        pred = pred.flatten(1, 2)
+    def update(self, logits, label):
+        if logits.shape[1] == 1:
+            pred = (torch.sigmoid(logits) > 0.5).type(torch.int64).squeeze(dim=1)
+        else:
+            pred = torch.argmax(logits, dim=1)
         valid_mask = label != self.ignore_index
         pred, target = pred[valid_mask], label[valid_mask]
         count = torch.bincount(
@@ -306,31 +310,37 @@ class SegPangaea(Metric):
             + self.confusion_matrix.sum(dim=0)
             - intersection
         )
-        iou = intersection / (union + 1e-6)
+        iou = (intersection / (union + 1e-6)) * 100
 
         # Calculate precision and recall for each class
-        precision = intersection / (self.confusion_matrix.sum(dim=0) + 1e-6)
-        recall = intersection / (self.confusion_matrix.sum(dim=1) + 1e-6)
+        precision = intersection / (self.confusion_matrix.sum(dim=0) + 1e-6) * 100
+        recall = intersection / (self.confusion_matrix.sum(dim=1) + 1e-6) * 100
 
         # Calculate F1-score for each class
         f1 = 2 * (precision * recall) / (precision + recall + 1e-6)
 
         # Calculate mean IoU, mean F1-score, and mean Accuracy
-        miou = iou.mean().item()
-        mf1 = f1.mean().item()
-        macc = (intersection.sum() / (self.confusion_matrix.sum() + 1e-6)).item()
+        valid = self.valid_class_indices
+
+        miou = iou[valid].mean().item() if valid else 0.0
+        mf1 = f1[valid].mean().item() if valid else 0.0
+        macc = (intersection.sum() / (confusion_matrix.sum() + 1e-6)).item() * 100
 
         # Convert metrics to CPU and to Python scalars
-        iou = iou.cpu()
-        f1 = f1.cpu()
-        precision = precision.cpu()
-        recall = recall.cpu()
+        iou = [iou[i].item() for i in valid]
+        f1 = [f1[i].item() for i in valid]
+        precision = [precision[i].item() for i in valid]
+        recall = [recall[i].item() for i in valid]
 
         # Prepare the metrics dictionary
         metrics = {
+            "IoU": iou,
             "mIoU": miou,
+            "F1": f1,
             "mF1": mf1,
             "mAcc": macc,
+            "Precision": precision,
+            "Recall": recall,
         }
 
         return metrics
@@ -725,7 +735,7 @@ def train_one_epoch_segmentation(
             if args.dataset_type == "loveda" or args.dataset_type == "vaihingen" or args.dataset_type == "potsdam":  # type: ignore
                 mask = mask.squeeze(1)
 
-            if args.dataset_type != "isaid" and args.dataset_type != "geobench_eurosat" and args.dataset_type != "geobench_bigearthnet" and args.dataset_type != "geobench_forestnet" and args.dataset_type != "geobench_so2sat" and args.dataset_type != "soca":  # type: ignore
+            if args.dataset_type != "isaid" and args.dataset_type != "geobench_eurosat" and args.dataset_type != "geobench_bigearthnet" and args.dataset_type != "geobench_forestnet" and args.dataset_type != "geobench_so2sat" and args.dataset_type != "soca" and args.dataset_type != "sen1floods11":  # type: ignore
                 mask_one_hot = F.one_hot(mask, num_classes=args.nb_classes).permute(  # type: ignore
                     0, 3, 1, 2
                 )
@@ -1055,8 +1065,8 @@ def evaluate_segmentation(data_loader, is_test, model, device, epoch, max_iou, a
 
     if args.dataset_type == "spacenet" or args.dataset_type == "mass_roads":  # type: ignore
         miou_metric = JaccardIndex(task="multiclass", num_classes=args.nb_classes)  # type: ignore
-    elif args.dataset_type == "sen1floods11":   # type: ignore
-        miou_metric = JaccardIndex(task="multiclass", num_classes=args.nb_classes, average="macro", ignore_index=-1)  # type: ignore
+    elif args.dataset_type == "sen1floods11":  # type: ignore
+        miou_metric = JaccardIndex(task="multiclass", num_classes=args.nb_classes, average="micro", ignore_index=-1)  # type: ignore
     elif args.dataset_type == "soca":
         miou_metric = SegPangaea(num_classes=args.nb_classes, ignore_index=-1)
     elif args.dataset_type == "isaid":
@@ -1129,7 +1139,7 @@ def evaluate_segmentation(data_loader, is_test, model, device, epoch, max_iou, a
         f1_score = f1_score.to(device)
         miou_metric_2 = miou_metric_2.to(device)
         overall_accuracy = overall_accuracy.to(device)
-    
+
     if args.dataset_type != "soca":
         miou_metric = miou_metric.to(device)
 
@@ -1188,7 +1198,7 @@ def evaluate_segmentation(data_loader, is_test, model, device, epoch, max_iou, a
             ):
                 mask = mask.squeeze(1)
 
-            if args.dataset_type != "geobench_eurosat" and args.dataset_type != "geobench_bigearthnet" and args.dataset_type != "soca":  # type: ignore
+            if args.dataset_type != "geobench_eurosat" and args.dataset_type != "geobench_bigearthnet" and args.dataset_type != "soca" and args.dataset_type != "sen1floods11":  # type: ignore
                 mask_one_hot = F.one_hot(mask, num_classes=args.nb_classes).permute(
                     0, 3, 1, 2
                 )
@@ -1197,7 +1207,7 @@ def evaluate_segmentation(data_loader, is_test, model, device, epoch, max_iou, a
                 or args.dataset_type == "geobench_bigearthnet"
             ):
                 loss = F.cross_entropy(pred, mask.long())
-            elif args.dataset_type == "soca":
+            elif args.dataset_type == "soca" or args.dataset_type == "sen1floods11":
                 loss = get_bce_loss_ignore(pred, mask)
             else:
                 loss = get_bce_loss(pred, mask_one_hot.float())
@@ -1278,27 +1288,6 @@ def evaluate_segmentation(data_loader, is_test, model, device, epoch, max_iou, a
         feature_accumulator = None
         if args.visualize_features:
             feature_accumulator = {"features": [], "labels": [], "image_ids": []}
-
-        # Create unique folder structure once at the start
-        from datetime import datetime
-
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        folder_name = f"{args.method_name}_{timestamp}"
-
-        base_output_dir = os.path.join(
-            args.output_dir,
-            "images",
-            args.dataset_type + "_" + str(args.dataset_split) + "pc_results",
-            "individual_images",
-            folder_name,
-        )
-
-        # Create subdirectories for different image types
-        os.makedirs(os.path.join(base_output_dir, "rgb"), exist_ok=True)
-        os.makedirs(os.path.join(base_output_dir, "gt_mask"), exist_ok=True)
-        os.makedirs(os.path.join(base_output_dir, "pred_mask"), exist_ok=True)
-        if args.visualize_features:
-            os.makedirs(os.path.join(base_output_dir, "features"), exist_ok=True)
 
         if args.best_epoch:
             if (miou > max_iou and epoch > -1) or epoch == -1:
@@ -1386,6 +1375,27 @@ def evaluate_segmentation(data_loader, is_test, model, device, epoch, max_iou, a
                     )
 
         elif args.eval or is_test:
+            # Create unique folder structure once at the start
+            from datetime import datetime
+
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            folder_name = f"{args.method_name}_{timestamp}"
+
+            base_output_dir = os.path.join(
+                args.output_dir,
+                "images",
+                args.dataset_type + "_" + str(args.dataset_split) + "pc_results",
+                "individual_images",
+                folder_name,
+            )
+
+            # Create subdirectories for different image types
+            os.makedirs(os.path.join(base_output_dir, "rgb"), exist_ok=True)
+            os.makedirs(os.path.join(base_output_dir, "gt_mask"), exist_ok=True)
+            os.makedirs(os.path.join(base_output_dir, "pred_mask"), exist_ok=True)
+            if args.visualize_features:
+                os.makedirs(os.path.join(base_output_dir, "features"), exist_ok=True)
+
             for batch in data_loader:
                 data = batch[0]
                 rgb_data = batch[1]

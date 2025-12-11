@@ -1268,7 +1268,7 @@ class Sen1Floods11Dataset(Dataset):
             output["s2"].squeeze(0),
             # output["s2"].squeeze(0)[4, 5, 6, 7, 8, 11, 12],
             torch.from_numpy(s2_image).float()[[3, 2, 1]],
-            output["label"].squeeze(0).squeeze(0).long() + 1,
+            output["label"].squeeze(0).squeeze(0).long(),
         )
 
     # Calculate image-wise class distributions for segmentation

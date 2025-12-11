@@ -1,6 +1,6 @@
-batch_size: 16
+batch_size: 64
 epochs: 50
-accum_iter: 4
+accum_iter: 1
 visualize_features: false
 lr: 0.0001
 save_images: true
@@ -9,12 +9,12 @@ model: swin_b
 input_size: 512
 dataset_type: sen1floods11
 dataset_split: 100
-method_name: swin_bm_ms_fmow_hr_500k_100e_dinov3p34c_rgb_head_dconv_aug
+method_name: swin_bm_ms_fmow_hr_280k_100e_dinov3p34c_rgb_head_dconv_aug
 best_epoch: false
-nb_classes: 3
+nb_classes: 2
 output_dir: /home/filip/satmae_experiments/outputs/
 log_dir: /home/filip/satmae_experiments/logs/
-finetune: /home/filip/pretrained_weights/simdino_checkpoints/swin_bm_ms_fmow_hr_500k_100e_dinov3p34c_rgb_head_dconv_aug.pth
+finetune: /home/filip/pretrained_weights/simdino_checkpoints/swin_bm_ms_fmow_hr_280k_100e_dinov3p34c_rgb_head_dconv_aug.pth
 wandb: dl4rs-experiments
 eval: false
 dist_eval: true
