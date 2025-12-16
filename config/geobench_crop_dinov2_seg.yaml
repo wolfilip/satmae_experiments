@@ -3,7 +3,7 @@ epochs: 50
 accum_iter: 4
 visualize_features: false
 lr: 0.0001
-save_images: true
+save_images: false
 model_type: dinov2_segmentation
 model: basev3_0
 input_size: 256
@@ -14,7 +14,7 @@ best_epoch: false
 nb_classes: 10
 output_dir: /home/filip/satmae_experiments/outputs/
 log_dir: /home/filip/satmae_experiments/logs/
-wandb: dl4rs-experiments
+# wandb: dl4rs-experiments
 eval: false
 dist_eval: true
 num_workers: 10

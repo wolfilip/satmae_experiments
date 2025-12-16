@@ -1,6 +1,6 @@
-batch_size: 16
+batch_size: 8
 epochs: 50
-accum_iter: 4
+accum_iter: 8
 visualize_features: false
 lr: 0.0001
 save_images: false

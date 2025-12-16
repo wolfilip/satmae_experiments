@@ -4,6 +4,53 @@ import torch.nn as nn
 import torch.nn.functional as F
 from UPerNet.UPerNetHead import UperNetHead
 from util.LiFT_module import LiFT
+from util.convolutions import encoder
+
+
+class LiteFusionSeg(nn.Module):
+    def __init__(
+        self, num_classes, token_dim=768, conv_dim=256, up_hw=256, mid_dim=256
+    ):
+        super().__init__()
+        self.token_proj = nn.Linear(token_dim, conv_dim)
+        self.fuse_reduce = nn.Sequential(
+            nn.Conv2d(conv_dim + conv_dim, mid_dim, 1, bias=False),
+            nn.BatchNorm2d(mid_dim),
+            nn.ReLU(inplace=True),
+        )
+
+        # two depthwise-separable blocks
+        def dw_sep(in_ch):
+            return nn.Sequential(
+                nn.Conv2d(in_ch, in_ch, 3, padding=1, groups=in_ch, bias=False),
+                nn.BatchNorm2d(in_ch),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(in_ch, in_ch, 1, bias=False),
+                nn.BatchNorm2d(in_ch),
+                nn.ReLU(inplace=True),
+            )
+
+        self.block1 = dw_sep(mid_dim)
+        self.block2 = dw_sep(mid_dim)
+        self.head = nn.Conv2d(mid_dim, num_classes, 1)
+
+        self.up_hw = up_hw  # e.g., 256
+
+    def forward(self, conv_feats, tokens):
+        # conv_feats: (B, Cc, H, W) with H=W=256, Cc=256
+        # tokens: (B, 256, Ct) with Ct=768
+        B, _, H, W = conv_feats.shape
+        t = self.token_proj(tokens)  # (B, 256, 256)
+        t = t.permute(0, 2, 1).reshape(
+            B, -1, int(sqrt(t.shape[1])), int(sqrt(t.shape[1]))
+        )  # (B, 256, 16, 16)
+        t = F.interpolate(t, size=(H, W), mode="bilinear", align_corners=False)
+        x = torch.cat([conv_feats, t], dim=1)  # (B, 512, 256, 256)
+        x = self.fuse_reduce(x)  # (B, mid_dim, 256, 256)
+        x = self.block1(x)
+        x = self.block2(x)
+        logits = self.head(x)  # (B, num_classes, 256, 256)
+        return logits
 
 
 class DINOv2Segmenter(nn.Module):
@@ -110,40 +157,57 @@ class DINOv2Segmenter(nn.Module):
         else:
             self.task = "segmentation"
 
-            self.up_1 = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
-            self.up_2 = nn.Upsample(scale_factor=4, mode="bilinear", align_corners=True)
+            # self.up_1 = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
+            # self.up_2 = nn.Upsample(scale_factor=4, mode="bilinear", align_corners=True)
 
-            config = {
-                "pool_scales": [1, 2, 3, 6],
-                "hidden_size": 512,
-                "num_labels": args.nb_classes,
-                "initializer_range": 0.02,
-            }
+            # config = {
+            #     "pool_scales": [1, 2, 3, 6],
+            #     "hidden_size": 512,
+            #     "num_labels": args.nb_classes,
+            #     "initializer_range": 0.02,
+            # }
 
-            self.upernet_head = UperNetHead(config, feature_channels)
+            # self.upernet_head = UperNetHead(config, feature_channels)
 
-            # if self.conv_size > 0:
-            if args.dataset_type == "spacenet":
-                self.up = nn.Upsample(
-                    size=(64, 64), mode="bilinear", align_corners=True
-                )
-            elif (
-                args.dataset_type == "sen1floods11"
-                or args.dataset_type == "vaihingen"
-                or args.dataset_type == "potsdam"
-            ):
-                self.up = nn.Upsample(
-                    size=(144, 144), mode="bilinear", align_corners=True
-                )
-            elif args.dataset_type == "isaid":
-                self.up = nn.Upsample(
-                    size=(256, 256), mode="bilinear", align_corners=True
-                )
-            elif args.dataset_type == "mass_roads":
-                self.up = nn.Upsample(
-                    size=(428, 428), mode="bilinear", align_corners=True
-                )
-            # elif  args.dataset_type == "rgb":
+            # # if self.conv_size > 0:
+            # if args.dataset_type == "spacenet":
+            #     self.up = nn.Upsample(
+            #         size=(64, 64), mode="bilinear", align_corners=True
+            #     )
+            # elif (
+            #     args.dataset_type == "sen1floods11"
+            #     or args.dataset_type == "vaihingen"
+            #     or args.dataset_type == "potsdam"
+            # ):
+            #     self.up = nn.Upsample(
+            #         size=(144, 144), mode="bilinear", align_corners=True
+            #     )
+            # elif args.dataset_type == "isaid":
+            #     self.up = nn.Upsample(
+            #         size=(256, 256), mode="bilinear", align_corners=True
+            #     )
+            # elif args.dataset_type == "mass_roads":
+            #     self.up = nn.Upsample(
+            #         size=(428, 428), mode="bilinear", align_corners=True
+            #     )
+
+            self.encoder = encoder(
+                3,
+                256 // 2,
+                kernel_size=1,
+                ks_res=1,
+                num_layers=2,
+            )
+            self.sem_encoder = encoder(
+                3,
+                256 // 2,
+                kernel_size=3,
+                ks_res=3,
+                num_layers=2,
+            )
+
+            self.lite_segmenter = LiteFusionSeg(num_classes=args.nb_classes)
+        # elif  args.dataset_type == "rgb":
 
         # self.conv = nn.Conv2d(
         #     in_channels=256, out_channels=256, kernel_size=3, stride=2, padding=1
@@ -459,11 +523,14 @@ class DINOv2Segmenter(nn.Module):
         if x.shape[1] > 3:
             x = x[:, 1:4].flip(1)
 
-        conv_embeds = 0
-        if self.conv_size > 0:
-            conv_embeds = self.encoder_conv(x)
+        # conv_embeds = 0
+        # if self.conv_size > 0:
+        #     conv_embeds = self.encoder_conv(x)
         # x = self.encoder_forward(x)
         # x = self.decoder_upernet(x, conv_embeds)
+        image_embeds_1 = self.encoder(x)
+        image_embeds_2 = self.sem_encoder(x)
+        image_embeds = torch.cat([image_embeds_1, image_embeds_2], dim=1)
         features = self.get_features(x)
 
         ######## LIFT ###########
@@ -506,10 +573,11 @@ class DINOv2Segmenter(nn.Module):
         ######## LIFT ###########
 
         # x = self.encoder_forward(x)
-        if self.task == "classification":
-            x = self.classification_head(features)
-        else:
-            x = self.decoder_upernet(features, conv_embeds)
+        # if self.task == "classification":
+        #     x = self.classification_head(features)
+        # else:
+        #     x = self.decoder_upernet(features, conv_embeds)
+        x = self.lite_segmenter(image_embeds, features[-1])
         # new_features = []
 
         # new_features.append(
