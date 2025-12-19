@@ -1,6 +1,6 @@
 batch_size: 8
 epochs: 50
-lr: 0.0001
+lr: 0.001
 accum_iter: 8
 visualize_features: false
 save_images: true

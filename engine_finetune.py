@@ -10,11 +10,13 @@ import math
 import os
 import sys
 from argparse import ArgumentParser
+from tkinter import SE
 from typing import Iterable, Optional
 
 import matplotlib
 import matplotlib.pyplot as plt
 from sklearn.metrics import confusion_matrix
+import torchmetrics
 
 # from sklearn.metrics import precision_recall_fscore_support
 
@@ -41,6 +43,47 @@ from torchmetrics.functional.classification import (
 
 # from util.visualize_features import visualize_features
 from sklearn.decomposition import PCA
+
+
+def get_depth_loss(pred, depth, depth_mask):
+    gt_depth = depth.squeeze()
+    pred = pred.squeeze()
+    depth_mask = depth_mask.squeeze().bool()
+    loss = nn.functional.mse_loss(pred[depth_mask], gt_depth[depth_mask])
+    return loss
+
+
+class SegDepth(Metric):
+    def __init__(self):
+        super().__init__()
+        # self.seg = SegPangaea(num_classes, ignore_index)
+        self.depth_mse = torchmetrics.MeanSquaredError(squared=False)
+        self.depth_mae = torchmetrics.MeanAbsoluteError()
+
+    def update(self, pred, gt, depth_mask):
+        # self.seg.update(pred, gt)
+
+        gt_depth = gt.squeeze()
+        depth_mask = depth_mask.squeeze().bool()
+        pred_depth = pred.squeeze()
+
+        self.depth_mse.update(pred_depth[depth_mask], gt_depth[depth_mask])
+        self.depth_mae.update(pred_depth[depth_mask], gt_depth[depth_mask])
+
+    def reset(self) -> None:
+        # self.seg.reset()
+        self.depth_mse.reset()
+        self.depth_mae.reset()
+
+    def compute(self):
+        # metrics = self.seg.compute()
+        metrics = {}
+        metrics["depth_rmse"] = self.depth_mse.compute()
+        metrics["depth_mae"] = self.depth_mae.compute()
+
+        self.reset()
+
+        return metrics
 
 
 class SegPangaea(Metric):
@@ -359,7 +402,7 @@ def get_bce_loss(pred, mask):
 def get_bce_loss_ignore(pred, mask):
     # print(pred.unique(), mask.unique())
     # m = F.sigmoid(pred)
-    bce = F.cross_entropy(pred.flatten(2), mask.long().flatten(1), ignore_index=-1)
+    bce = F.cross_entropy(pred.flatten(2), mask.long().flatten(1), ignore_index=-9999)
     # print(bce)
     # m = nn.Sigmoid()
     # pred = pred.argmax(1)
@@ -615,8 +658,9 @@ def train_one_epoch_segmentation(
     if args.dataset_type == "spacenet" or args.dataset_type == "mass_roads":  # type: ignore
         miou_metric = JaccardIndex(task="multiclass", num_classes=args.nb_classes)  # type: ignore
     elif args.dataset_type == "sen1floods11" or args.dataset_type == "soca":  # type: ignore
-        miou_metric = JaccardIndex(task="multiclass", num_classes=args.nb_classes, average="macro", ignore_index=-1)  # type: ignore
+        # miou_metric = JaccardIndex(task="multiclass", num_classes=args.nb_classes, average="macro", ignore_index=-1)  # type: ignore
         # miou_metric = SegPangaea(num_classes=args.nb_classes, ignore_index=0)
+        miou_metric = SegDepth()
     elif args.dataset_type == "isaid":
         miou_metric = JaccardIndex(
             task="multiclass",
@@ -716,6 +760,7 @@ def train_one_epoch_segmentation(
         #     data_depth = data[1].to(device, non_blocking=True)
         # else:
         data = batch[0].to(device, non_blocking=True)
+        depth_mask = batch[1].to(device, non_blocking=True)
         mask = batch[-1].to(device, non_blocking=True)
         # label = batch[-1].to(device, non_blocking=True)
         # if args.dataset_type == "sen1floods11":
@@ -742,7 +787,8 @@ def train_one_epoch_segmentation(
             # print(mask_one_hot.unique())
             # if args.dataset_type == "sen1floods11" or args.dataset_type == "isaid" or "geobench" in args.dataset_type
             if args.dataset_type == "sen1floods11" or args.dataset_type == "isaid" or args.dataset_type == "soca":  # type: ignore
-                loss_value = get_bce_loss_ignore(pred, mask)
+                # loss_value = get_bce_loss_ignore(pred, mask)
+                loss_value = get_depth_loss(pred, mask, depth_mask)
             elif args.dataset_type == "geobench_eurosat" or args.dataset_type == "geobench_forestnet" or args.dataset_type == "geobench_so2sat":  # type: ignore
                 loss_value = F.cross_entropy(pred, mask)
             elif args.dataset_type == "geobench_bigearthnet":
@@ -1068,7 +1114,8 @@ def evaluate_segmentation(data_loader, is_test, model, device, epoch, max_iou, a
     elif args.dataset_type == "sen1floods11":  # type: ignore
         miou_metric = JaccardIndex(task="multiclass", num_classes=args.nb_classes, average="micro", ignore_index=-1)  # type: ignore
     elif args.dataset_type == "soca":
-        miou_metric = SegPangaea(num_classes=args.nb_classes, ignore_index=-1)
+        # miou_metric = SegPangaea(num_classes=args.nb_classes, ignore_index=-1)
+        miou_metric = SegDepth()
     elif args.dataset_type == "isaid":
         miou_metric = JaccardIndex(
             task="multiclass",
@@ -1140,14 +1187,15 @@ def evaluate_segmentation(data_loader, is_test, model, device, epoch, max_iou, a
         miou_metric_2 = miou_metric_2.to(device)
         overall_accuracy = overall_accuracy.to(device)
 
-    if args.dataset_type != "soca":
-        miou_metric = miou_metric.to(device)
+    # if args.dataset_type != "soca":
+    miou_metric = miou_metric.to(device)
 
     miou_test = 0
 
     for batch in metric_logger.log_every(data_loader, 50, header):
         data = batch[0]
         mask = batch[-1]
+        depth_mask = batch[1].to(device, non_blocking=True)
         # print('images and targets')
         # if len(data) == 2:
         #     data_rgb = data[0].to(device, non_blocking=True)
@@ -1208,13 +1256,17 @@ def evaluate_segmentation(data_loader, is_test, model, device, epoch, max_iou, a
             ):
                 loss = F.cross_entropy(pred, mask.long())
             elif args.dataset_type == "soca" or args.dataset_type == "sen1floods11":
-                loss = get_bce_loss_ignore(pred, mask)
+                # loss = get_bce_loss_ignore(pred, mask)
+                loss = get_depth_loss(pred, mask, depth_mask)
             else:
                 loss = get_bce_loss(pred, mask_one_hot.float())
             # loss = 2
             # dice_loss = DiceLoss()
             # loss_2 = dice_loss(pred, mask_one_hot.float())
-            miou_metric.update(pred.argmax(1), mask)
+            if args.dataset_type != "soca":
+                miou_metric.update(pred.argmax(1), mask)
+            else:
+                miou_metric.update(pred, mask, depth_mask)
             # miou_metric.update(pred, mask)
             if (
                 args.dataset_type != "spacenet"
@@ -1230,7 +1282,7 @@ def evaluate_segmentation(data_loader, is_test, model, device, epoch, max_iou, a
                 f1_score.update(pred.argmax(1), mask)
                 overall_accuracy.update(pred.argmax(1), mask)
 
-            miou_test = save_results(mask, pred, device, epoch, cnt, miou_test, args)
+            # miou_test = save_results(mask, pred, device, epoch, cnt, miou_test, args)
 
         cnt += args.batch_size
 
@@ -1256,8 +1308,10 @@ def evaluate_segmentation(data_loader, is_test, model, device, epoch, max_iou, a
         miou = miou_metric.compute().item()
     else:
         metrics = miou_metric.compute()
-        miou = metrics["mIoU"]
-        f1 = metrics["mF1"]
+        # miou = metrics["mIoU"]
+        # f1 = metrics["mF1"]
+        depth_rmse = metrics["depth_rmse"]
+        depth_mae = metrics["depth_mae"]
 
     if (
         args.dataset_type != "spacenet"
@@ -1272,14 +1326,18 @@ def evaluate_segmentation(data_loader, is_test, model, device, epoch, max_iou, a
         oa = overall_accuracy.compute().item()
 
     if is_test:
-        print(f"Test IoU: {miou:.4f}")
+        # print(f"Test IoU: {miou:.4f}")
         if args.dataset_type == "soca":
-            print(f"Test F1: {f1:.4f}")
+            # print(f"Test F1: {f1:.4f}")
+            print(f"Test Depth RMSE: {depth_rmse:.4f}")
+            print(f"Test Depth MAE: {depth_mae:.4f}")
     else:
-        max_iou = max(max_iou, miou)
-        print(f"Max IoU: {max_iou:.4f}")
+        # max_iou = max(max_iou, miou)
+        # print(f"Max IoU: {max_iou:.4f}")
         if args.dataset_type == "soca":
-            print(f"F1: {f1:.4f}")
+            # print(f"F1: {f1:.4f}")
+            print(f"Test Depth RMSE: {depth_rmse:.4f}")
+            print(f"Test Depth MAE: {depth_mae:.4f}")
 
     if args.save_images or args.visualize_features:
         cnt = 0
@@ -1482,7 +1540,7 @@ def evaluate_segmentation(data_loader, is_test, model, device, epoch, max_iou, a
 
     metric_logger.synchronize_between_processes()
 
-    metric_logger.update(IoU=miou)
+    metric_logger.update(IoU=depth_rmse)
 
     if (
         args.dataset_type == "spacenet"
@@ -1491,8 +1549,8 @@ def evaluate_segmentation(data_loader, is_test, model, device, epoch, max_iou, a
         or args.dataset_type == "soca"
     ):
         print(
-            "* IoU {iou:.4f} loss {losses.global_avg:.4f}".format(
-                iou=miou, losses=metric_logger.loss
+            "* depth_rmse {iou:.4f} loss {losses.global_avg:.4f}".format(
+                iou=depth_rmse, losses=metric_logger.loss
             )
         )
     else:
@@ -1517,7 +1575,8 @@ def save_results(mask, pred, device, epoch, cnt, miou_test, args):
     if args.dataset_type == "spacenet":  # type: ignore
         miou_temp = JaccardIndex(task="multiclass", num_classes=args.nb_classes)  # type: ignore
     elif args.dataset_type == "sen1floods11" or args.dataset_type == "soca":  # type: ignore
-        miou_temp = JaccardIndex(task="multiclass", num_classes=args.nb_classes, average="macro", ignore_index=-1)  # type: ignore
+        # miou_temp = JaccardIndex(task="multiclass", num_classes=args.nb_classes, average="macro", ignore_index=-1)  # type: ignore
+        miou_temp = SegDepth()
     else:
         miou_temp = JaccardIndex(
             task="multiclass", num_classes=args.nb_classes, average="micro"

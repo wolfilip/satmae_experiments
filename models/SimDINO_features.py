@@ -231,12 +231,20 @@ class SimDINO(nn.Module):
             # self.up_1 = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
             # self.up_2 = nn.Upsample(scale_factor=4, mode="bilinear", align_corners=True)
 
-            config = {
-                "pool_scales": [1, 2, 3, 6],
-                "hidden_size": 512,
-                "num_labels": args.nb_classes,
-                "initializer_range": 0.02,
-            }
+            if args.dataset_type == "soca":
+                config = {
+                    "pool_scales": [1, 2, 3, 6],
+                    "hidden_size": 512,
+                    "num_labels": 1,
+                    "initializer_range": 0.02,
+                }
+            else:
+                config = {
+                    "pool_scales": [1, 2, 3, 6],
+                    "hidden_size": 512,
+                    "num_labels": args.nb_classes,
+                    "initializer_range": 0.02,
+                }
 
             self.upernet_head = UperNetHead(config, feature_channels)
 

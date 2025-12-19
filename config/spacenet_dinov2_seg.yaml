@@ -1,7 +1,7 @@
 batch_size: 32
 epochs: 50
 accum_iter: 2
-lr: 0.01
+lr: 0.001
 visualize_features: false
 save_images: false
 model_type: dinov2_segmentation

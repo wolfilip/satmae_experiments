@@ -348,7 +348,7 @@ class SocaDatasetMulti(Dataset):
 
         output = self.transform(output)
 
-        return output[self.modalities], output["label"].squeeze(0)
+        return output[self.modalities], output["depth_mask"], output["depth"]
 
     def __len__(self):
         return len(self.data_list)
@@ -2887,7 +2887,7 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
 
             def __call__(self, batch):
                 keys = list(batch.keys())
-                # keys.remove("label")
+                keys.remove("label")
                 keys.remove("name")
 
                 batch["aerial"] = self.resize(batch["aerial"])
@@ -2895,10 +2895,10 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
                 # batch["s2-mono"] = self.resize_s2(batch["s2-mono"])
                 # batch["s2-mono"] = self.normalize_s2(batch["s2-mono"])
 
-                batch["label"] = self.resize_lbl(batch["label"])
-                # if "depth" in keys:
-                #     batch["depth"] = self.resize(batch["depth"])
-                #     batch["depth_mask"] = self.resize_lbl(batch["depth_mask"])
+                # batch["label"] = self.resize_lbl(batch["label"])
+                if "depth" in keys:
+                    batch["depth"] = self.resize(batch["depth"])
+                    batch["depth_mask"] = self.resize_lbl(batch["depth_mask"])
 
                 return batch
 
