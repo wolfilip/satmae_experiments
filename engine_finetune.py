@@ -46,10 +46,12 @@ from sklearn.decomposition import PCA
 
 
 def get_depth_loss(pred, depth, depth_mask):
-    gt_depth = depth.squeeze()
+    depth = depth.squeeze()
     pred = pred.squeeze()
     depth_mask = depth_mask.squeeze().bool()
-    loss = nn.functional.mse_loss(pred[depth_mask], gt_depth[depth_mask])
+    depth = depth[depth_mask]
+    pred = pred[depth_mask]
+    loss = F.mse_loss(pred, depth)
     return loss
 
 

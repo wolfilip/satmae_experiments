@@ -2890,21 +2890,21 @@ def build_fmow_dataset(is_train: bool, data_split, args) -> SatelliteDataset:
                 keys.remove("label")
                 keys.remove("name")
 
-                batch["aerial"] = self.resize(batch["aerial"])
-                batch["aerial"] = self.normalize_aerial(batch["aerial"])
-                # batch["s2-mono"] = self.resize_s2(batch["s2-mono"])
-                # batch["s2-mono"] = self.normalize_s2(batch["s2-mono"])
+                # batch["aerial"] = self.resize(batch["aerial"])
+                # batch["aerial"] = self.normalize_aerial(batch["aerial"])
+                batch["s2-mono"] = self.resize_s2(batch["s2-mono"])
+                batch["s2-mono"] = self.normalize_s2(batch["s2-mono"])
 
                 # batch["label"] = self.resize_lbl(batch["label"])
-                if "depth" in keys:
-                    batch["depth"] = self.resize(batch["depth"])
-                    batch["depth_mask"] = self.resize_lbl(batch["depth_mask"])
+                # if "depth" in keys:
+                #     batch["depth"] = self.resize(batch["depth"])
+                #     batch["depth_mask"] = self.resize_lbl(batch["depth_mask"])
 
                 return batch
 
         transform = TransformSocaFT()
         path = "/storage/datasets/SocaFT/"
-        dataset = SocaDatasetMulti(path, "aerial", transform, split=data_split)
+        dataset = SocaDatasetMulti(path, "s2-mono", transform, split=data_split)
     elif args.dataset_type == "dior":
         dataset_root = "/mnt/c/Users/filip.wolf/Datasets/DIOR-VOC/DIOR-VOC/VOC2007"
 
